@@ -10,7 +10,7 @@
 #   * Java 21 JRE (full AWT/Swing, not headless)
 #   * Auto-install JDownloader on first start into /config/JDownloader
 #   * Selectable UI language via JD_LANG (de, en, fr, ...)
-#   * Dark mode via JD_DARK_MODE (true/false)
+#   * Selectable theme via JD_THEME (JD_Plain_Dark, JD_Plain, JDDEFAULT, ...)
 #
 # Repository:  https://github.com/junkerderprovinz/jdownloader
 # License:     MIT (this wrapper) – JDownloader 2 has its own license
@@ -38,6 +38,8 @@ RUN set -eux; \
         openjdk-21-jre \
         # Download-Tools für Installer
         wget ca-certificates \
+        # ASCII-Banner im Init-Log
+        figlet \
         # Font-Support (Java rendert Schrift über fontconfig)
         fontconfig \
         fonts-noto fonts-noto-color-emoji \
@@ -67,21 +69,25 @@ RUN mkdir -p /opt/JDownloader && \
 # ---------------------------------------------------------------------------
 COPY rootfs/ /
 
+# ASCII-Banner: â → █ konvertieren
+RUN sed 's/â/█/g' /usr/local/share/banner-raw.txt > /usr/local/share/banner.txt
+
 RUN chmod +x \
     /usr/local/bin/jdownloader-language.sh \
     /usr/local/bin/jdownloader-theme.sh \
     /usr/local/bin/jdownloader-create-dark-theme.py \
+    /usr/local/bin/print-banner.sh \
     /etc/s6-overlay/s6-rc.d/init-jdownloader/run \
     /defaults/autostart
 
 # ---------------------------------------------------------------------------
 # Standard-ENV (durch Unraid-Template überschreibbar)
 # ---------------------------------------------------------------------------
-# JD_LANG      – UI-Sprache: ISO-Code (de, en, fr, ...) oder "system"
-# JD_DARK_MODE – true | false
-# JD_INST_DIR  – Installations-Pfad (nicht ändern außer für Debugging)
+# JD_LANG     – UI-Sprache: ISO-Code (de, en, fr, ...)
+# JD_THEME    – UI-Theme: JD_Plain_Dark | JD_Plain | JDDEFAULT | ...
+# JD_INST_DIR – Installations-Pfad (nicht ändern außer für Debugging)
 ENV JD_LANG=de \
-    JD_DARK_MODE=true \
+    JD_THEME=JD_Plain_Dark \
     JD_INST_DIR=/config/JDownloader \
     LANG=de_DE.UTF-8 \
     LANGUAGE=de_DE:de:en \

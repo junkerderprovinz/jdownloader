@@ -1,0 +1,28 @@
+name: Generate Assets
+
+on:
+  push:
+    paths:
+      - '.github/assets/icon.svg'
+  workflow_dispatch:
+
+jobs:
+  png:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Convert SVG to PNG
+        run: |
+          sudo apt-get install -y --no-install-recommends librsvg2-bin
+          rsvg-convert -w 256 -h 256 .github/assets/icon.svg -o .github/assets/icon.png
+
+      - name: Commit icon.png
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .github/assets/icon.png
+          git diff --staged --quiet && echo "icon.png unchanged" || (git commit -m "assets: regenerate icon.png from icon.svg" && git push)

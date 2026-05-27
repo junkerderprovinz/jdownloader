@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
 # -----------------------------------------------------------------------------
-# jdownloader-theme.sh <true|false>
+# jdownloader-theme.sh <theme-name>
 # -----------------------------------------------------------------------------
-# Dark Mode  = JD_Plain_Dark theme (Farben) + FlatDarkLaf (Window-Chrome)
-# Light Mode = JD_Plain theme + FlatLightLaf
+# Setzt das JDownloader UI-Theme und den passenden Look-and-Feel.
+# Themes mit "dark" im Namen (Groß-/Kleinschreibung egal) → FlatDarkLaf.
 #
-# JD_Plain_Dark wird beim ersten Aufruf von jdownloader-create-dark-theme.py
-# erzeugt (kopiert JD_Plain-Icons + dunkel eingefärbte theme.json).
+# Beispiele:
+#   jdownloader-theme.sh JD_Plain_Dark   → dark (Standard)
+#   jdownloader-theme.sh JD_Plain        → light
+#   jdownloader-theme.sh JDDEFAULT       → light
 # -----------------------------------------------------------------------------
 set -e
 
-DARK="${1:-true}"
+THEME="${1:-JD_Plain_Dark}"
 JD_DIR="${JD_INST_DIR:-/config/JDownloader}"
 JD_CFG="${JD_DIR}/cfg"
 
@@ -48,30 +50,20 @@ seed_json() {
 LAF_JSON="${JD_CFG}/org.jdownloader.gui.laf.json"
 THEME_JSON="${JD_CFG}/org.jdownloader.gui.theme.ThemeManager.json"
 
-if [[ "${DARK}" == "true" ]]; then
-    log "Enabling Dark Mode (JD_Plain_Dark + FlatDarkLaf)"
+# Dark-Erkennung: alle Theme-Namen mit "dark" (case-insensitive) → FlatDarkLaf
+case "${THEME}" in
+    *[Dd][Aa][Rr][Kk]*) LAF="com.formdev.flatlaf.FlatDarkLaf" ;;
+    *)                   LAF="com.formdev.flatlaf.FlatLightLaf" ;;
+esac
 
-    # Look-and-Feel: FlatDarkLaf als Window-Chrome
-    seed_json "${LAF_JSON}" '{"lafClassName":"com.formdev.flatlaf.FlatDarkLaf","active":true}'
-    update_json_key "${LAF_JSON}" "lafClassName" '"com.formdev.flatlaf.FlatDarkLaf"'
-    update_json_key "${LAF_JSON}" "active" 'true'
+log "Setting theme: ${THEME} (LAF: ${LAF})"
 
-    # Icon-Theme: JD_Plain_Dark
-    seed_json "${THEME_JSON}" '{"theme":"JD_Plain_Dark","variant":"__NONE__","iconSet":"DEFAULT"}'
-    update_json_key "${THEME_JSON}" "theme" '"JD_Plain_Dark"'
+seed_json "${LAF_JSON}" "{\"lafClassName\":\"${LAF}\",\"active\":true}"
+update_json_key "${LAF_JSON}" "lafClassName" "\"${LAF}\""
+update_json_key "${LAF_JSON}" "active" 'true'
 
-else
-    log "Disabling Dark Mode (JD_Plain + FlatLightLaf)"
+seed_json "${THEME_JSON}" "{\"theme\":\"${THEME}\",\"variant\":\"__NONE__\",\"iconSet\":\"DEFAULT\"}"
+update_json_key "${THEME_JSON}" "theme" "\"${THEME}\""
 
-    # Look-and-Feel: FlatLightLaf
-    seed_json "${LAF_JSON}" '{"lafClassName":"com.formdev.flatlaf.FlatLightLaf","active":true}'
-    update_json_key "${LAF_JSON}" "lafClassName" '"com.formdev.flatlaf.FlatLightLaf"'
-    update_json_key "${LAF_JSON}" "active" 'true'
-
-    # Icon-Theme: JD_Plain (Standard hell)
-    seed_json "${THEME_JSON}" '{"theme":"JD_Plain","variant":"__NONE__","iconSet":"DEFAULT"}'
-    update_json_key "${THEME_JSON}" "theme" '"JD_Plain"'
-fi
-
-log "Theme done (dark=${DARK})"
+log "Theme done (theme=${THEME})"
 exit 0

@@ -59,14 +59,14 @@
        UI PREFERENCES
        ======================================================== -->
   <Config Name="UI Language (JD_LANG)" Target="JD_LANG"
-          Default="de|en|fr|es|it|pt|nl|pl|cs|sk|hu|ro|ru|tr|ja|ko|zh|system" Mode=""
+          Default="de|en|fr|es|it|pt|nl|pl|cs|sk|hu|ro|ru|tr|ja|ko|zh" Mode=""
           Description="Language for the JDownloader UI. Re-applied on every start."
           Type="Variable" Display="always" Required="false" Mask="false">de</Config>
 
-  <Config Name="Dark Mode (JD_DARK_MODE)" Target="JD_DARK_MODE"
-          Default="true|false" Mode=""
-          Description="Enable or disable Dark Mode. true = FlatDarkLaf, false = FlatLightLaf."
-          Type="Variable" Display="always" Required="false" Mask="false">true</Config>
+  <Config Name="Theme (JD_THEME)" Target="JD_THEME"
+          Default="JD_Plain_Dark|JD_Plain|JDDEFAULT" Mode=""
+          Description="JDownloader UI-Theme. JD_Plain_Dark = dark (Breeze Dark), JD_Plain = light, JDDEFAULT = JD standard."
+          Type="Variable" Display="always" Required="false" Mask="false">JD_Plain_Dark</Config>
 
   <!-- ========================================================
        KASMVNC SECURITY

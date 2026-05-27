@@ -4,6 +4,11 @@
 # -----------------------------------------------------------------------------
 set -e
 
+/usr/local/bin/print-banner.sh \
+    "JDownloader for Unraid" \
+    "Modern dark UI · KasmVNC · Java 21" \
+    2>/dev/null || true
+
 log() { echo "[init-jdownloader] $*"; }
 
 JD_DIR="${JD_INST_DIR:-/config/JDownloader}"
@@ -74,7 +79,7 @@ fi
 # ---------------------------------------------------------------------------
 # 6) Theme/Dark-Mode setzen
 # ---------------------------------------------------------------------------
-/usr/local/bin/jdownloader-theme.sh "${JD_DARK_MODE:-true}" || log "theme hook failed (non-fatal)"
+/usr/local/bin/jdownloader-theme.sh "${JD_THEME:-JD_Plain_Dark}" || log "theme hook failed (non-fatal)"
 
 # ---------------------------------------------------------------------------
 # 7) Autostart in openbox einhängen
@@ -92,5 +97,5 @@ chown -R abc:abc /config 2>/dev/null || true
 log "=== init-jdownloader done ==="
 log "JD_DIR=${JD_DIR}"
 log "JD_LANG=${JD_LANG:-de}"
-log "JD_DARK_MODE=${JD_DARK_MODE:-true}"
+log "JD_THEME=${JD_THEME:-JD_Plain_Dark}"
 exit 0
