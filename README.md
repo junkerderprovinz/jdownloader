@@ -177,7 +177,7 @@ The base image also supports `/config/custom-cont-init.d/` for your own init scr
 - Make sure `shm_size` is at least `512mb` (Unraid template sets `1gb`)
 - Check the container log for KasmVNC startup errors
 - Try `https://<ip>:3001/` — sometimes browsers block WebSockets over plain HTTP
-- Wait up to **2 minutes** on the very first start — JDownloader is downloading and installing itself
+- Wait up to **5 minutes** on the very first start — JDownloader is downloading and installing itself. The screen will be black during this time — this is normal.
 </details>
 
 <details>

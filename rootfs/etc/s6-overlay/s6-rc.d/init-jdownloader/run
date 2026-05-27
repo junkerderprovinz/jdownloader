@@ -1,6 +1,6 @@
 #!/usr/bin/with-contenv bash
-# s6-rc oneshot — runs parallel to KasmVNC/openbox.
-# Only responsible for the slow JDownloader installation.
+# s6-rc oneshot — banner only.
+# Installation is handled by the autostart (runs with a live DISPLAY).
 
 /usr/local/bin/print-banner.sh \
     "JDownloader for Unraid" \
@@ -8,51 +8,6 @@
     2>/dev/null || true
 
 log() { echo "[init-jdownloader] $*"; }
-
-JD_DIR="${JD_INST_DIR:-/config/JDownloader}"
-INSTALLER_JAR="/opt/JDownloader/JDownloader.jar"
-
-if [[ -f "${JD_DIR}/JDownloader2.jar" ]]; then
-    log "JDownloader already installed in ${JD_DIR}"
-    log "JD_LANG=${JD_LANG:-de}  JD_THEME=${JD_THEME:-JD_Plain_Dark}"
-    exit 0
-fi
-
-log "First run – installing JDownloader into ${JD_DIR}"
-
-if [[ ! -f "${INSTALLER_JAR}" ]]; then
-    log "ERROR: installer JAR not found at ${INSTALLER_JAR}"
-    exit 1
-fi
-
-mkdir -p "${JD_DIR}"
-cp -a "${INSTALLER_JAR}" "${JD_DIR}/JDownloader.jar"
-
-# JDownloader's installer bootstraps in two phases:
-#   Run 1 – self-update (SmartRlyExitRequest), exits without creating JD2.jar
-#   Run 2 – full install, creates JDownloader2.jar
-for attempt in 1 2 3; do
-    log "Installer attempt ${attempt}/3 ..."
-    java \
-        -Djava.awt.headless=true \
-        -jar "${JD_DIR}/JDownloader.jar" \
-        -norestart \
-        2>&1 | tee "/tmp/jd-install-${attempt}.log" || true
-    log "Install log tail: $(tail -2 /tmp/jd-install-${attempt}.log | tr '\n' ' ')"
-    if [[ -f "${JD_DIR}/JDownloader2.jar" ]]; then
-        log "JDownloader2.jar created on attempt ${attempt} ✓"
-        break
-    fi
-    log "JDownloader2.jar not yet present, continuing..."
-done
-
-if [[ ! -f "${JD_DIR}/JDownloader2.jar" ]]; then
-    log "WARNING: JDownloader2.jar still missing after 3 attempts."
-    log "The autostart will retry every 2 s for up to 5 minutes."
-fi
-
-chown -R abc:abc "${JD_DIR}" 2>/dev/null || true
-
-log "=== init-jdownloader done ==="
-log "JD_DIR=${JD_DIR}"
+log "JD_LANG=${JD_LANG:-de}  JD_THEME=${JD_THEME:-JD_Plain_Dark}"
+log "First start may take up to 5 minutes while JDownloader installs itself."
 exit 0

@@ -1,38 +1,33 @@
-#!/usr/bin/env bash
-# -----------------------------------------------------------------------------
-# JDownloader 2 autostart für linuxserver/baseimage-kasmvnc
-# NOTE: openbox führt dieses Script mit /bin/sh aus — kein [[ verwenden
-# -----------------------------------------------------------------------------
+#!/bin/sh
+# NOTE: openbox executes this with /bin/sh — no [[ bash syntax allowed.
+# JDownloader launcher loop:
+#   - First start: JDownloader.jar bootstraps and installs JD2 (needs a live DISPLAY).
+#   - SmartRlyExitRequest (self-update): launcher exits, loop restarts it automatically.
+#   - Normal exits / crashes: loop restarts within 3 seconds.
 
-# Locale-Fallback
 export LANG="${LANG:-de_DE.UTF-8}"
 export LANGUAGE="${LANGUAGE:-de_DE:de:en}"
 export LC_ALL="${LC_ALL:-de_DE.UTF-8}"
 
-# Java-Flags für besseres Font-Rendering und Swing-Performance
-export JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS:-\
--Dawt.useSystemAAFontSettings=on \
--Dswing.aatext=true \
--Dsun.java2d.opengl=false}"
-
 JD_DIR="${JD_INST_DIR:-/config/JDownloader}"
+LAUNCHER="${JD_DIR}/JDownloader.jar"
 
-echo "[jdownloader-autostart] Starting JDownloader from ${JD_DIR}" >&2
-
-# Warten bis das Installation-Verzeichnis bereit ist (init-jdownloader läuft parallel)
-for i in $(seq 1 150); do
-    [ -f "${JD_DIR}/JDownloader2.jar" ] && break
-    echo "[jdownloader-autostart] Waiting for JDownloader install... (${i}/150)" >&2
-    sleep 2
-done
-
-if [ ! -f "${JD_DIR}/JDownloader2.jar" ]; then
-    echo "[jdownloader-autostart] ERROR: JDownloader2.jar not found in ${JD_DIR}" >&2
-    exit 1
+# Copy bootstrap from image if not yet present in config volume
+if [ ! -f "${LAUNCHER}" ]; then
+    echo "[jdownloader-autostart] Copying JDownloader launcher to ${JD_DIR}" >&2
+    mkdir -p "${JD_DIR}"
+    cp -a /opt/JDownloader/JDownloader.jar "${LAUNCHER}"
 fi
 
-exec java \
-    -Dawt.useSystemAAFontSettings=on \
-    -Dswing.aatext=true \
-    -Dsun.java2d.opengl=false \
-    -jar "${JD_DIR}/JDownloader2.jar"
+echo "[jdownloader-autostart] Starting JDownloader (first start may take up to 5 minutes)" >&2
+
+while true; do
+    java \
+        -Dawt.useSystemAAFontSettings=on \
+        -Dswing.aatext=true \
+        -Dsun.java2d.opengl=false \
+        -jar "${LAUNCHER}"
+    EXIT=$?
+    echo "[jdownloader-autostart] JDownloader exited (code ${EXIT}), restarting in 3 s..." >&2
+    sleep 3
+done

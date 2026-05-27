@@ -22,7 +22,8 @@
     &#xD;
     Notes:&#xD;
     • On the very first start, JDownloader downloads and installs itself –&#xD;
-      this takes 1–2 minutes depending on your connection.&#xD;
+      this can take up to 5 minutes. The WebUI will show a black screen&#xD;
+      during installation — this is normal. Do not restart the container.&#xD;
     • Default WebUI port is 3000 (HTTP). 3001 (HTTPS) is also exposed.&#xD;
     • PUID/PGID default to 99/100 (nobody/users on Unraid).&#xD;
     • Auth: leave Username and Password EMPTY for no login.&#xD;
