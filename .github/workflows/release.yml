@@ -21,7 +21,12 @@ jobs:
         run: |
           TAG="${GITHUB_REF_NAME}"
           FILE=".github/release-notes/${TAG}.md"
-          if [ -f "${FILE}" ]; then
+          # If the notes file is not in the tagged commit, fetch it from main
+          if [ ! -f "${FILE}" ]; then
+            git fetch origin main --depth=1 2>/dev/null || true
+            git show origin/main:"${FILE}" > "${FILE}" 2>/dev/null || true
+          fi
+          if [ -f "${FILE}" ] && [ -s "${FILE}" ]; then
             echo "has_notes=true"  >> "$GITHUB_OUTPUT"
             echo "notes_file=${FILE}" >> "$GITHUB_OUTPUT"
           else
