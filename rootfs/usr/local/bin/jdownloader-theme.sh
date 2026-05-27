@@ -12,12 +12,13 @@ log() { echo "[jdownloader-theme] $*"; }
 mkdir -p "${JD_CFG}"
 
 case "${THEME}" in
-    JD_Plain_Dark|*[Dd][Aa][Rr][Kk]*) LAF="FLATLAF_DARK"  ;;
-    JDDEFAULT)                         LAF="DEFAULT"        ;;
-    *)                                 LAF="FLATLAF_LIGHT"  ;;
+    JD_Plain_Dark|*[Dd][Aa][Rr][Kk]*) LAF="JD_PLAIN_DARK" ;;
+    JD_Plain)                          LAF="JD_PLAIN"      ;;
+    JDDEFAULT)                         LAF="DEFAULT"       ;;
+    *)                                 LAF="JD_PLAIN_DARK" ;;
 esac
 
-log "Theme=${THEME} → lookAndFeelTheme=${LAF}"
+log "Theme=${THEME} → lookandfeeltheme=${LAF}"
 
 GUI_JSON="${JD_CFG}/org.jdownloader.settings.GraphicalUserInterfaceSettings.json"
 python3 - <<PYEOF
@@ -33,7 +34,7 @@ if os.path.exists(path):
 data["lookandfeeltheme"] = "${LAF}"
 with open(path, "w") as f:
     json.dump(data, f, indent=2)
-print("[jdownloader-theme] lookAndFeelTheme=${LAF} → " + path)
+print("[jdownloader-theme] lookandfeeltheme=${LAF} → " + path)
 PYEOF
 
 log "done"
