@@ -12,11 +12,13 @@ export LC_ALL="${LC_ALL:-de_DE.UTF-8}"
 JD_DIR="${JD_INST_DIR:-/config/JDownloader}"
 LAUNCHER="${JD_DIR}/JDownloader.jar"
 
-# Copy bootstrap from image if not yet present in config volume
+# Download bootstrap JAR if not yet present in config volume
 if [ ! -f "${LAUNCHER}" ]; then
-    echo "[jdownloader-autostart] Copying JDownloader launcher to ${JD_DIR}" >&2
+    echo "[jdownloader-autostart] Downloading JDownloader launcher to ${JD_DIR}" >&2
     mkdir -p "${JD_DIR}"
-    cp -a /opt/JDownloader/JDownloader.jar "${LAUNCHER}"
+    wget -q -O "${LAUNCHER}.tmp" "http://installer.jdownloader.org/JDownloader.jar" \
+        && mv "${LAUNCHER}.tmp" "${LAUNCHER}" \
+        || { echo "[jdownloader-autostart] ERROR: download failed" >&2; rm -f "${LAUNCHER}.tmp"; exit 1; }
 fi
 
 echo "[jdownloader-autostart] Starting JDownloader (first start may take up to 5 minutes)" >&2

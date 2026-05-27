@@ -55,16 +55,6 @@ RUN set -eux; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-# ---------------------------------------------------------------------------
-# JDownloader Installer-JAR vorhalten
-# ---------------------------------------------------------------------------
-# Das JAR wird beim ersten Container-Start von init-jdownloader nach
-# /config/JDownloader kopiert und dort installiert. JDownloader aktualisiert
-# sich danach selbst. Das JAR im Image ist nur ein Bootstrap.
-RUN mkdir -p /opt/JDownloader && \
-    wget -q --show-progress \
-        -O /opt/JDownloader/JDownloader.jar \
-        "http://installer.jdownloader.org/JDownloader.jar"
 
 # ---------------------------------------------------------------------------
 # Skeleton-Configs + s6-overlay init scripts
