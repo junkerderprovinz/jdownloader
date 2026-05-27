@@ -9,8 +9,7 @@
 #   * JDownloader 2 (self-updating Java download manager)
 #   * Java 21 JRE (full AWT/Swing, not headless)
 #   * Auto-install JDownloader on first start into /config/JDownloader
-#   * Selectable UI language via JD_LANG (de, en, fr, ...)
-#   * Selectable theme via JD_THEME (JD_Plain_Dark, JD_Plain, JDDEFAULT, ...)
+#   * Selectable theme via JD_THEME (JD_Plain_Dark = dark, JD_Plain = light, JDDEFAULT)
 #
 # Repository:  https://github.com/junkerderprovinz/jdownloader
 # License:     MIT (this wrapper) – JDownloader 2 has its own license
@@ -63,6 +62,11 @@ COPY rootfs/ /
 
 # ASCII-Banner: â → █ konvertieren
 RUN sed 's/â/█/g' /usr/local/share/banner-raw.txt > /usr/local/share/banner.txt
+
+# Pre-download FlatLaf so FLATLAF_DARK works without an install dialog.
+# Placed on the JVM boot classpath in autostart so JD's own classloader finds it.
+RUN wget -q -O /opt/JDownloader/flatlaf.jar \
+    "https://repo1.maven.org/maven2/com/formdev/flatlaf/3.2.5/flatlaf-3.2.5.jar"
 
 RUN chmod +x \
     /usr/local/bin/jdownloader-language.sh \
