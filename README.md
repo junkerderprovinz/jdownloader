@@ -72,10 +72,10 @@ The defaults work out of the box, but you may want to tweak:
 - **Config (`/config`)** — defaults to `/mnt/user/appdata/jdownloader`
 - **Downloads (`/downloads`)** — defaults to `/mnt/user/downloads`; this is where JDownloader saves files
 - **UI Language** — dropdown, default `de`
-- **Dark Mode** — default `true`; set to `false` for light interface
+- **Theme** — default `JD_Plain_Dark` (dark Breeze palette); switch to `JD_Plain` for light
 - **KasmVNC Password** — leave empty for LAN-only, set anything for exposure beyond the LAN
 
-Click **Apply**. The first start takes **1–2 minutes** while JDownloader downloads and installs itself.
+Click **Apply**. The first start takes **up to 5 minutes** while JDownloader downloads and installs itself.
 
 ### Step 3 — Open the WebUI
 
@@ -96,7 +96,7 @@ services:
       - PGID=100
       - TZ=Europe/Vienna
       - JD_LANG=de
-      - JD_DARK_MODE=true
+      - JD_THEME=JD_Plain_Dark
     volumes:
       - /mnt/user/appdata/jdownloader:/config
       - /mnt/user/downloads:/downloads
@@ -118,7 +118,7 @@ services:
 | Variable | Default | Description |
 |---|---|---|
 | `JD_LANG` | `de` | UI language — see [Languages](#languages) |
-| `JD_DARK_MODE` | `true` | `true` = modern dark interface, `false` = light interface |
+| `JD_THEME` | `JD_Plain_Dark` | UI theme — `JD_Plain_Dark` = dark (Breeze Dark), `JD_Plain` = light, `JDDEFAULT` = JD default |
 | `PUID` | `99` | User ID — Unraid's *nobody* |
 | `PGID` | `100` | Group ID — Unraid's *users* |
 | `TZ` | `Europe/Vienna` | Timezone |
@@ -163,7 +163,7 @@ On the **first start**, JDownloader installs itself into `/config/JDownloader/`.
     └── JDownloader2.jar
 ```
 
-Two env-driven settings (`JD_LANG`, `JD_DARK_MODE`) are re-applied on **every start**, so you can flip them at any time via the Unraid template.
+The env-driven settings `JD_LANG` and `JD_THEME` are re-applied on **every start**, so you can change them at any time via the Unraid template.
 
 The base image also supports `/config/custom-cont-init.d/` for your own init scripts — see the [LinuxServer docs](https://docs.linuxserver.io/general/container-customization/).
 
@@ -191,9 +191,9 @@ The base image also supports `/config/custom-cont-init.d/` for your own init scr
 <details>
 <summary><b>Dark mode not active</b></summary>
 
-- Verify `JD_DARK_MODE=true` is set in your template
+- Verify `JD_THEME=JD_Plain_Dark` is set in your template
 - Check the container log for `[jdownloader-theme]` lines
-- The theme is applied at container start, not live — restart after changing `JD_DARK_MODE`
+- The theme is applied at container start, not live — restart after changing `JD_THEME`
 </details>
 
 <details>
