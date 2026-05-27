@@ -51,12 +51,6 @@ THEME_JSON="${JD_CFG}/org.jdownloader.gui.theme.ThemeManager.json"
 if [[ "${DARK}" == "true" ]]; then
     log "Enabling Dark Mode (JD_Plain_Dark + FlatDarkLaf)"
 
-    # JD_Plain_Dark Theme erstellen / aktualisieren
-    if command -v python3 >/dev/null 2>&1; then
-        python3 /usr/local/bin/jdownloader-create-dark-theme.py \
-            2>&1 | sed 's/^/[jdownloader-theme] /' || true
-    fi
-
     # Look-and-Feel: FlatDarkLaf als Window-Chrome
     seed_json "${LAF_JSON}" '{"lafClassName":"com.formdev.flatlaf.FlatDarkLaf","active":true}'
     update_json_key "${LAF_JSON}" "lafClassName" '"com.formdev.flatlaf.FlatDarkLaf"'

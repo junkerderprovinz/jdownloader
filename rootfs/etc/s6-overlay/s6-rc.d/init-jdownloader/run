@@ -44,7 +44,19 @@ fi
 mkdir -p "${JD_CFG}"
 
 # ---------------------------------------------------------------------------
-# 3) Sprache setzen
+# 3) Gebündelte Themes aus Image in Config-Volume kopieren
+#    So ist JD_Plain_Dark sofort beim ersten Start verfügbar
+# ---------------------------------------------------------------------------
+THEMES_SRC="/opt/JDownloader/themes-default"
+THEMES_DST="${JD_DIR}/themes"
+if [[ -d "${THEMES_SRC}" ]]; then
+    mkdir -p "${THEMES_DST}"
+    cp -rf "${THEMES_SRC}/." "${THEMES_DST}/"
+    log "Bundled themes copied → ${THEMES_DST}"
+fi
+
+# ---------------------------------------------------------------------------
+# 5) Sprache setzen
 # ---------------------------------------------------------------------------
 /usr/local/bin/jdownloader-language.sh "${JD_LANG:-de}" || log "language hook failed (non-fatal)"
 
@@ -60,12 +72,12 @@ if [[ -f /config/.profile.d/jdownloader-lang.sh ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 4) Theme/Dark-Mode setzen
+# 6) Theme/Dark-Mode setzen
 # ---------------------------------------------------------------------------
 /usr/local/bin/jdownloader-theme.sh "${JD_DARK_MODE:-true}" || log "theme hook failed (non-fatal)"
 
 # ---------------------------------------------------------------------------
-# 5) Autostart in openbox einhängen
+# 7) Autostart in openbox einhängen
 # ---------------------------------------------------------------------------
 CONFIG_HOME="/config/.config"
 mkdir -p "${CONFIG_HOME}/openbox"
@@ -73,7 +85,7 @@ cp -af "/defaults/autostart" "${CONFIG_HOME}/openbox/autostart"
 chmod 0755 "${CONFIG_HOME}/openbox/autostart"
 
 # ---------------------------------------------------------------------------
-# 6) Berechtigungen
+# 8) Berechtigungen
 # ---------------------------------------------------------------------------
 chown -R abc:abc /config 2>/dev/null || true
 

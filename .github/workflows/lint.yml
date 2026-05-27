@@ -46,3 +46,13 @@ jobs:
             echo "Checking $f"
             xmllint --noout "$f"
           done
+
+  pyflakes:
+    name: Pyflakes (Python scripts)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Run pyflakes
+        run: |
+          pip install --quiet pyflakes
+          find rootfs -name '*.py' -print0 | xargs -0 python3 -m pyflakes || true
