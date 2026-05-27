@@ -1,16 +1,7 @@
 #!/usr/bin/env bash
-# -----------------------------------------------------------------------------
-# jdownloader-theme.sh <theme-name>
-# -----------------------------------------------------------------------------
-# Setzt das JDownloader UI-Theme und den passenden Look-and-Feel.
-# Themes mit "dark" im Namen (Groß-/Kleinschreibung egal) → FlatDarkLaf.
-#
-# Beispiele:
-#   jdownloader-theme.sh JD_Plain_Dark   → dark (Standard)
-#   jdownloader-theme.sh JD_Plain        → light
-#   jdownloader-theme.sh JDDEFAULT       → light
-# -----------------------------------------------------------------------------
-set -e
+# jdownloader-theme.sh <theme>
+# Maps JD_THEME to JD's GraphicalUserInterfaceSettings.lookAndFeelTheme enum.
+# Always overwrites — env var wins over anything JD wrote on the previous run.
 
 THEME="${1:-JD_Plain_Dark}"
 JD_DIR="${JD_INST_DIR:-/config/JDownloader}"
@@ -20,50 +11,30 @@ log() { echo "[jdownloader-theme] $*"; }
 
 mkdir -p "${JD_CFG}"
 
-update_json_key() {
-    local file="$1" key="$2" value="$3"
-    [[ ! -f "$file" ]] && return 0
-    if command -v python3 >/dev/null 2>&1; then
-        python3 -c "
-import json
-try:
-    with open('$file') as f:
-        data = json.load(f)
-    data['$key'] = $value
-    with open('$file', 'w') as f:
-        json.dump(data, f, indent=2)
-    print('[jdownloader-theme] Updated $key in $file')
-except Exception as e:
-    print(f'[jdownloader-theme] Skipped $file: {e}')
-" 2>/dev/null || true
-    fi
-}
-
-seed_json() {
-    local file="$1" content="$2"
-    if [[ ! -f "$file" ]]; then
-        echo "$content" > "$file"
-        log "Seeded $file"
-    fi
-}
-
-LAF_JSON="${JD_CFG}/org.jdownloader.gui.laf.json"
-THEME_JSON="${JD_CFG}/org.jdownloader.gui.theme.ThemeManager.json"
-
-# Dark-Erkennung: alle Theme-Namen mit "dark" (case-insensitive) → FlatDarkLaf
 case "${THEME}" in
-    *[Dd][Aa][Rr][Kk]*) LAF="com.formdev.flatlaf.FlatDarkLaf" ;;
-    *)                   LAF="com.formdev.flatlaf.FlatLightLaf" ;;
+    JD_Plain_Dark|*[Dd][Aa][Rr][Kk]*) LAF="FLATLAF_DARK"  ;;
+    JDDEFAULT)                         LAF="DEFAULT"        ;;
+    *)                                 LAF="FLATLAF_LIGHT"  ;;
 esac
 
-log "Setting theme: ${THEME} (LAF: ${LAF})"
+log "Theme=${THEME} → lookAndFeelTheme=${LAF}"
 
-seed_json "${LAF_JSON}" "{\"lafClassName\":\"${LAF}\",\"active\":true}"
-update_json_key "${LAF_JSON}" "lafClassName" "\"${LAF}\""
-update_json_key "${LAF_JSON}" "active" 'true'
+GUI_JSON="${JD_CFG}/org.jdownloader.settings.GraphicalUserInterfaceSettings.json"
+python3 - <<PYEOF
+import json, os
+path = "${GUI_JSON}"
+data = {}
+if os.path.exists(path):
+    try:
+        with open(path) as f:
+            data = json.load(f)
+    except Exception:
+        pass
+data["lookAndFeelTheme"] = "${LAF}"
+with open(path, "w") as f:
+    json.dump(data, f, indent=2)
+print("[jdownloader-theme] lookAndFeelTheme=${LAF} → " + path)
+PYEOF
 
-seed_json "${THEME_JSON}" "{\"theme\":\"${THEME}\",\"variant\":\"__NONE__\",\"iconSet\":\"DEFAULT\"}"
-update_json_key "${THEME_JSON}" "theme" "\"${THEME}\""
-
-log "Theme done (theme=${THEME})"
+log "done"
 exit 0

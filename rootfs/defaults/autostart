@@ -30,6 +30,20 @@ while true; do
         -Dsun.java2d.opengl=false \
         -jar "${LAUNCHER}"
     EXIT=$?
-    echo "[jdownloader-autostart] JDownloader exited (code ${EXIT}), restarting in 3 s..." >&2
-    sleep 3
+    echo "[jdownloader-autostart] JDownloader exited (code ${EXIT})" >&2
+
+    # Wait briefly — JD may have spawned a self-updated process (SmartRlyExitRequest)
+    sleep 5
+
+    # Do not start a second bootstrap while a JD instance is already running.
+    # Happens when JD2 relaunched itself and the bootstrap exited first.
+    if pgrep -f "JDownloader" > /dev/null 2>&1; then
+        echo "[jdownloader-autostart] Another JD instance running — waiting for it to stop..." >&2
+        while pgrep -f "JDownloader" > /dev/null 2>&1; do
+            sleep 10
+        done
+        echo "[jdownloader-autostart] JD stopped, resuming restart loop" >&2
+    fi
+
+    echo "[jdownloader-autostart] Restarting JDownloader..." >&2
 done

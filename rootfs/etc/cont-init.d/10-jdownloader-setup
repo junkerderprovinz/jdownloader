@@ -43,6 +43,33 @@ fi
 # Theme
 /usr/local/bin/jdownloader-theme.sh "${JD_THEME:-JD_Plain_Dark}" || log "theme hook failed (non-fatal)"
 
+# Disable system tray extension — not supported in containers, causes error popup
+# Try both common config file locations; JD reads whichever one exists.
+for TRAY_JSON in \
+    "${JD_CFG}/org.jdownloader.gui.jdtrayicon.TrayExtension.json" \
+    "${JD_CFG}/org.jdownloader.gui.jdtrayicon.TrayExtensionConfig.json"; do
+    python3 - <<PYEOF 2>/dev/null || true
+import json, os
+path = "${TRAY_JSON}"
+data = {}
+if os.path.exists(path):
+    try:
+        with open(path) as f:
+            data = json.load(f)
+    except Exception:
+        pass
+data["enabled"] = False
+with open(path, "w") as f:
+    json.dump(data, f, indent=2)
+print("[jdownloader-setup] tray disabled → " + path)
+PYEOF
+done
+
+# Log cfg files present — helps diagnose config issues
+if ls "${JD_CFG}"/*.json >/dev/null 2>&1; then
+    log "cfg files: $(ls "${JD_CFG}"/*.json | xargs -n1 basename | tr '\n' ' ')"
+fi
+
 # Fix ownership
 chown -R abc:abc /config 2>/dev/null || true
 
