@@ -26,7 +26,7 @@ Auto-installs and self-updates JDownloader on first container start.
 ## Features
 
 - **KasmVNC web desktop** — open `http://your-unraid:3000` and JDownloader is ready
-- **Dark Mode** by default (FlatDarkLaf) — togglable via `JD_DARK_MODE`
+- **Dark Mode** by default (FlatLaf Dark) — togglable via `JD_DARK_MODE`
 - **Selectable UI language** — 20 languages via `JD_LANG` dropdown in the Unraid template
 - **Auto-install** — downloads and sets up JDownloader 2 on first start, no manual setup
 - **Self-updating** — JDownloader updates itself on start as it normally does
@@ -67,7 +67,7 @@ Open `http://your-host:3000` — on the first start, JDownloader downloads and i
 | Variable | Default | Description |
 |---|---|---|
 | `JD_LANG` | `de` | UI language: `de`, `en`, `fr`, `es`, `it`, `pt`, `nl`, `pl`, `cs`, `sk`, `hu`, `ro`, `ru`, `tr`, `ja`, `ko`, `zh`, `system` |
-| `JD_DARK_MODE` | `true` | Dark mode: `true` = FlatDarkLaf, `false` = FlatLightLaf |
+| `JD_DARK_MODE` | `true` | Dark mode: `true` = FlatLaf Dark, `false` = FlatLaf Light |
 | `PUID` | `99` | User ID (nobody on Unraid) |
 | `PGID` | `100` | Group ID (users on Unraid) |
 | `TZ` | `Europe/Vienna` | Timezone |
