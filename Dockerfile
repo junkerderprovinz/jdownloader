@@ -63,15 +63,19 @@ COPY rootfs/ /
 # ASCII-Banner: â → █ konvertieren
 RUN sed 's/â/█/g' /usr/local/share/banner-raw.txt > /usr/local/share/banner.txt
 
-# Pre-download FlatLaf so FLATLAF_DARK works without an install dialog.
-# Placed on the JVM boot classpath in autostart so JD's own classloader finds it.
-RUN wget -q -O /opt/JDownloader/flatlaf.jar \
-    "https://repo1.maven.org/maven2/com/formdev/flatlaf/3.2.5/flatlaf-3.2.5.jar"
+# Download FlatLaf and patch FlatDarkLaf.properties with Breeze Dark colours.
+# Result: FLATLAF_DARK visually = JD Plain Dark (no install dialog, no extra step).
+RUN wget -q -O /tmp/flatlaf-orig.jar \
+        "https://repo1.maven.org/maven2/com/formdev/flatlaf/3.2.5/flatlaf-3.2.5.jar" && \
+    python3 /usr/local/bin/patch-flatlaf.py \
+        /tmp/flatlaf-orig.jar /opt/JDownloader/flatlaf.jar && \
+    rm /tmp/flatlaf-orig.jar
 
 RUN chmod +x \
     /usr/local/bin/jdownloader-language.sh \
     /usr/local/bin/jdownloader-theme.sh \
     /usr/local/bin/jdownloader-create-dark-theme.py \
+    /usr/local/bin/patch-flatlaf.py \
     /usr/local/bin/print-banner.sh \
     /etc/cont-init.d/10-jdownloader-setup \
     /etc/s6-overlay/s6-rc.d/init-jdownloader/run \
