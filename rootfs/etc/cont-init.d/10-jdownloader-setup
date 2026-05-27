@@ -1,0 +1,49 @@
+#!/usr/bin/with-contenv bash
+# Runs synchronously before any service (incl. KasmVNC/openbox).
+
+log() { echo "[jdownloader-setup] $*"; }
+
+CONFIG_HOME="/config/.config"
+JD_DIR="${JD_INST_DIR:-/config/JDownloader}"
+JD_CFG="${JD_DIR}/cfg"
+
+# Always sync autostart from image so openbox never reads a stale version
+mkdir -p "${CONFIG_HOME}/openbox"
+cp -f /defaults/autostart "${CONFIG_HOME}/openbox/autostart"
+chmod 0755 "${CONFIG_HOME}/openbox/autostart"
+log "autostart synced from /defaults/autostart"
+
+# Ensure cfg dir exists (language/theme scripts seed files here)
+mkdir -p "${JD_CFG}"
+
+# Copy bundled themes from image into config volume
+THEMES_SRC="/opt/JDownloader/themes-default"
+THEMES_DST="${JD_DIR}/themes"
+if [[ -d "${THEMES_SRC}" ]]; then
+    mkdir -p "${THEMES_DST}"
+    cp -rf "${THEMES_SRC}/." "${THEMES_DST}/"
+    log "bundled themes copied → ${THEMES_DST}"
+fi
+
+# Language
+/usr/local/bin/jdownloader-language.sh "${JD_LANG:-de}" || log "language hook failed (non-fatal)"
+
+# Push locale into s6 env so all child processes inherit it
+mkdir -p /run/s6/container_environment
+if [[ -f /config/.profile.d/jdownloader-lang.sh ]]; then
+    _L=$(grep '^export LANG='     /config/.profile.d/jdownloader-lang.sh | head -1 | cut -d= -f2-)
+    _A=$(grep '^export LC_ALL='   /config/.profile.d/jdownloader-lang.sh | head -1 | cut -d= -f2-)
+    _C=$(grep '^export LANGUAGE=' /config/.profile.d/jdownloader-lang.sh | head -1 | cut -d= -f2-)
+    [[ -n "$_L" ]] && printf "%s" "$_L" > /run/s6/container_environment/LANG
+    [[ -n "$_A" ]] && printf "%s" "$_A" > /run/s6/container_environment/LC_ALL
+    [[ -n "$_C" ]] && printf "%s" "$_C" > /run/s6/container_environment/LANGUAGE
+    log "locale → s6 env: LANG=${_L:-unchanged}"
+fi
+
+# Theme
+/usr/local/bin/jdownloader-theme.sh "${JD_THEME:-JD_Plain_Dark}" || log "theme hook failed (non-fatal)"
+
+# Fix ownership
+chown -R abc:abc /config 2>/dev/null || true
+
+log "setup done (JD_LANG=${JD_LANG:-de}, JD_THEME=${JD_THEME:-JD_Plain_Dark})"

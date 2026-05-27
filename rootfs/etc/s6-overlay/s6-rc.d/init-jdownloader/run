@@ -1,7 +1,7 @@
 #!/usr/bin/with-contenv bash
-# -----------------------------------------------------------------------------
-# init-jdownloader  –  Installation, Config-Seeding & Language/Theme Bootstrap
-# -----------------------------------------------------------------------------
+# s6-rc oneshot — runs parallel to KasmVNC/openbox.
+# Only responsible for the slow JDownloader installation.
+
 /usr/local/bin/print-banner.sh \
     "JDownloader for Unraid" \
     "Modern dark UI · KasmVNC · Java 21" \
@@ -10,94 +10,49 @@
 log() { echo "[init-jdownloader] $*"; }
 
 JD_DIR="${JD_INST_DIR:-/config/JDownloader}"
-JD_CFG="${JD_DIR}/cfg"
 INSTALLER_JAR="/opt/JDownloader/JDownloader.jar"
 
-# ---------------------------------------------------------------------------
-# 1) ENV propagieren (s6-Schicht)
-# ---------------------------------------------------------------------------
-mkdir -p /run/s6/container_environment
+if [[ -f "${JD_DIR}/JDownloader2.jar" ]]; then
+    log "JDownloader already installed in ${JD_DIR}"
+    log "JD_LANG=${JD_LANG:-de}  JD_THEME=${JD_THEME:-JD_Plain_Dark}"
+    exit 0
+fi
 
-set_env() { printf "%s" "$2" > "/run/s6/container_environment/$1"; }
+log "First run – installing JDownloader into ${JD_DIR}"
 
-# ---------------------------------------------------------------------------
-# 2) Installation (nur beim ersten Start)
-# ---------------------------------------------------------------------------
-if [[ ! -f "${JD_DIR}/JDownloader2.jar" ]]; then
-    log "First run – installing JDownloader into ${JD_DIR}"
-    mkdir -p "${JD_DIR}"
-    if [[ ! -f "${INSTALLER_JAR}" ]]; then
-        log "ERROR: installer JAR not found at ${INSTALLER_JAR} – cannot install"
-        exit 1
-    fi
-    cp -a "${INSTALLER_JAR}" "${JD_DIR}/JDownloader.jar"
-    # Installer im Headless-Modus starten – legt JDownloader2.jar und
-    # alle Begleit-JARs an. -norestart verhindert automatischen Neustart.
+if [[ ! -f "${INSTALLER_JAR}" ]]; then
+    log "ERROR: installer JAR not found at ${INSTALLER_JAR}"
+    exit 1
+fi
+
+mkdir -p "${JD_DIR}"
+cp -a "${INSTALLER_JAR}" "${JD_DIR}/JDownloader.jar"
+
+# JDownloader's installer bootstraps in two phases:
+#   Run 1 – self-update (SmartRlyExitRequest), exits without creating JD2.jar
+#   Run 2 – full install, creates JDownloader2.jar
+for attempt in 1 2 3; do
+    log "Installer attempt ${attempt}/3 ..."
     java \
         -Djava.awt.headless=true \
         -jar "${JD_DIR}/JDownloader.jar" \
         -norestart \
-        2>&1 | tee /tmp/jd-install.log || true
-    log "Install log: $(tail -3 /tmp/jd-install.log)"
-    if [[ ! -f "${JD_DIR}/JDownloader2.jar" ]]; then
-        log "WARNING: JDownloader2.jar missing after installer run"
-        log "This can happen when the installer needs a first online update."
-        log "The autostart script will retry every 2 s for up to 60 s."
+        2>&1 | tee "/tmp/jd-install-${attempt}.log" || true
+    log "Install log tail: $(tail -2 /tmp/jd-install-${attempt}.log | tr '\n' ' ')"
+    if [[ -f "${JD_DIR}/JDownloader2.jar" ]]; then
+        log "JDownloader2.jar created on attempt ${attempt} ✓"
+        break
     fi
-else
-    log "JDownloader already installed in ${JD_DIR}"
+    log "JDownloader2.jar not yet present, continuing..."
+done
+
+if [[ ! -f "${JD_DIR}/JDownloader2.jar" ]]; then
+    log "WARNING: JDownloader2.jar still missing after 3 attempts."
+    log "The autostart will retry every 2 s for up to 5 minutes."
 fi
 
-mkdir -p "${JD_CFG}"
-
-# ---------------------------------------------------------------------------
-# 3) Gebündelte Themes aus Image in Config-Volume kopieren
-#    So ist JD_Plain_Dark sofort beim ersten Start verfügbar
-# ---------------------------------------------------------------------------
-THEMES_SRC="/opt/JDownloader/themes-default"
-THEMES_DST="${JD_DIR}/themes"
-if [[ -d "${THEMES_SRC}" ]]; then
-    mkdir -p "${THEMES_DST}"
-    cp -rf "${THEMES_SRC}/." "${THEMES_DST}/"
-    log "Bundled themes copied → ${THEMES_DST}"
-fi
-
-# ---------------------------------------------------------------------------
-# 5) Sprache setzen
-# ---------------------------------------------------------------------------
-/usr/local/bin/jdownloader-language.sh "${JD_LANG:-de}" || log "language hook failed (non-fatal)"
-
-# Locale in s6-ENV pushen damit alle Prozesse erben
-if [[ -f /config/.profile.d/jdownloader-lang.sh ]]; then
-    _L=$(grep '^export LANG='     /config/.profile.d/jdownloader-lang.sh | head -1 | cut -d= -f2-)
-    _A=$(grep '^export LC_ALL='   /config/.profile.d/jdownloader-lang.sh | head -1 | cut -d= -f2-)
-    _C=$(grep '^export LANGUAGE=' /config/.profile.d/jdownloader-lang.sh | head -1 | cut -d= -f2-)
-    [[ -n "$_L" ]] && set_env LANG     "$_L"
-    [[ -n "$_A" ]] && set_env LC_ALL   "$_A"
-    [[ -n "$_C" ]] && set_env LANGUAGE "$_C"
-    log "Locale -> s6 env: LANG=${_L:-unchanged}"
-fi
-
-# ---------------------------------------------------------------------------
-# 6) Theme/Dark-Mode setzen
-# ---------------------------------------------------------------------------
-/usr/local/bin/jdownloader-theme.sh "${JD_THEME:-JD_Plain_Dark}" || log "theme hook failed (non-fatal)"
-
-# ---------------------------------------------------------------------------
-# 7) Autostart in openbox einhängen
-# ---------------------------------------------------------------------------
-CONFIG_HOME="/config/.config"
-mkdir -p "${CONFIG_HOME}/openbox"
-cp -af "/defaults/autostart" "${CONFIG_HOME}/openbox/autostart"
-chmod 0755 "${CONFIG_HOME}/openbox/autostart"
-
-# ---------------------------------------------------------------------------
-# 8) Berechtigungen
-# ---------------------------------------------------------------------------
-chown -R abc:abc /config 2>/dev/null || true
+chown -R abc:abc "${JD_DIR}" 2>/dev/null || true
 
 log "=== init-jdownloader done ==="
 log "JD_DIR=${JD_DIR}"
-log "JD_LANG=${JD_LANG:-de}"
-log "JD_THEME=${JD_THEME:-JD_Plain_Dark}"
 exit 0
