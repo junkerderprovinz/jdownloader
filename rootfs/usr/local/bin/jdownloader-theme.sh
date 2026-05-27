@@ -30,7 +30,7 @@ if os.path.exists(path):
             data = json.load(f)
     except Exception:
         pass
-data["lookAndFeelTheme"] = "${LAF}"
+data["lookandfeeltheme"] = "${LAF}"
 with open(path, "w") as f:
     json.dump(data, f, indent=2)
 print("[jdownloader-theme] lookAndFeelTheme=${LAF} → " + path)
