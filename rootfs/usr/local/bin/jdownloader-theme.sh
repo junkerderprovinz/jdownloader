@@ -42,28 +42,32 @@ seed_json() {
     fi
 }
 
-if [[ "${DARK}" == "true" ]]; then
-    log "Enabling Dark Mode"
+THEME_JSON="${JD_CFG}/org.jdownloader.gui.theme.ThemeManager.json"
 
-    # Look-and-Feel: JD_Plain Dark (falls verfügbar) oder FlatDarkLaf
-    # JD speichert den LAF-Namen in org.jdownloader.gui.laf.json
+if [[ "${DARK}" == "true" ]]; then
+    log "Enabling Dark Mode (JD_Plain + FlatDarkLaf)"
+
+    # Look-and-Feel: FlatDarkLaf als Window-Chrome
     LAF_JSON="${JD_CFG}/org.jdownloader.gui.laf.json"
     seed_json "${LAF_JSON}" '{"lafClassName":"com.formdev.flatlaf.FlatDarkLaf","active":true}'
     update_json_key "${LAF_JSON}" "lafClassName" '"com.formdev.flatlaf.FlatDarkLaf"'
     update_json_key "${LAF_JSON}" "active" 'true'
 
-    # Theme Manager (ältere JD-Versionen)
-    THEME_JSON="${JD_CFG}/org.jdownloader.gui.theme.ThemeManager.json"
-    if [[ ! -f "${THEME_JSON}" ]]; then
-        echo '{"theme":"JD_Plain","variant":"__NONE__","iconSet":"DEFAULT"}' > "${THEME_JSON}"
-        log "Seeded ThemeManager.json (JD_Plain)"
-    fi
+    # Icon-Theme: JD_Plain — schöne flache Icons, immer erzwingen
+    seed_json "${THEME_JSON}" '{"theme":"JD_Plain","variant":"__NONE__","iconSet":"DEFAULT"}'
+    update_json_key "${THEME_JSON}" "theme" '"JD_Plain"'
 
 else
-    log "Disabling Dark Mode (Light)"
+    log "Disabling Dark Mode (JD_Plain + FlatLightLaf)"
+
+    # Look-and-Feel: FlatLightLaf
     LAF_JSON="${JD_CFG}/org.jdownloader.gui.laf.json"
     seed_json "${LAF_JSON}" '{"lafClassName":"com.formdev.flatlaf.FlatLightLaf","active":true}'
     update_json_key "${LAF_JSON}" "lafClassName" '"com.formdev.flatlaf.FlatLightLaf"'
+
+    # Icon-Theme: JD_Plain auch im Light Mode
+    seed_json "${THEME_JSON}" '{"theme":"JD_Plain","variant":"__NONE__","iconSet":"DEFAULT"}'
+    update_json_key "${THEME_JSON}" "theme" '"JD_Plain"'
 fi
 
 log "Theme done (dark=${DARK})"
