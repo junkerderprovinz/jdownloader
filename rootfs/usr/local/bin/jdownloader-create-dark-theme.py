@@ -25,32 +25,38 @@ THEMES    = Path(JD_DIR) / "themes"
 SRC       = "JD_Plain"
 DST       = "JD_Plain_Dark"
 
-# JDownloader colour tokens that can be overridden in theme.json
+# Breeze Dark colour palette (matching KDE Breeze Dark / Krusader)
+# Reference: krusader-logo-breeze.svg → #1b1e20, #232629, #2980b9, #1d6794, #fcfcfc
 DARK_PALETTE = {
-    "backgroundColor":              "#1e1f22",
-    "backgroundColorHover":         "#2b2d30",
-    "alternateRowBackground":       "#252628",
-    "foregroundColor":              "#dfe1e5",
-    "disabledForegroundColor":      "#6c7280",
-    "selectionBackground":          "#2d5986",
-    "selectionForeground":          "#dfe1e5",
-    "linkColor":                    "#589df6",
-    "borderColor":                  "#43454a",
-    "panelBackground":              "#1e1f22",
-    "headerBackground":             "#27292e",
-    "headerForeground":             "#dfe1e5",
-    "toolbarBackground":            "#2b2d30",
-    "menuBackground":               "#1e1f22",
-    "menuForeground":               "#dfe1e5",
-    "buttonBackground":             "#3c3f41",
-    "buttonForeground":             "#dfe1e5",
-    "tableBackground":              "#1e1f22",
-    "tableSelectionBackground":     "#2d5986",
-    "tableSelectionForeground":     "#dfe1e5",
-    "progressBarBackground":        "#2b2d30",
-    "progressBarForeground":        "#4e9f3d",
-    "tooltipBackground":            "#2b2d30",
-    "tooltipForeground":            "#dfe1e5",
+    "backgroundColor":              "#232629",  # Breeze Dark window background
+    "backgroundColorHover":         "#31363b",  # Breeze Dark hover
+    "alternateRowBackground":       "#1e2124",  # slightly darker than bg
+    "foregroundColor":              "#eff0f1",  # Breeze text (near-white)
+    "disabledForegroundColor":      "#7f8c8d",  # muted grey
+    "selectionBackground":          "#3daee9",  # Breeze selection blue
+    "selectionForeground":          "#eff0f1",
+    "linkColor":                    "#2980b9",  # Breeze link blue
+    "borderColor":                  "#2d3237",  # subtle border
+    "panelBackground":              "#31363b",  # slightly lighter panel
+    "headerBackground":             "#1b1e20",  # Breeze very dark header
+    "headerForeground":             "#eff0f1",
+    "toolbarBackground":            "#232629",
+    "menuBackground":               "#1b1e20",  # Breeze very dark menu
+    "menuForeground":               "#eff0f1",
+    "buttonBackground":             "#31363b",
+    "buttonForeground":             "#eff0f1",
+    "tableBackground":              "#232629",
+    "tableSelectionBackground":     "#3daee9",  # Breeze blue
+    "tableSelectionForeground":     "#eff0f1",
+    "progressBarBackground":        "#31363b",
+    "progressBarForeground":        "#2d8a42",  # JD_Plain_Dark green
+    "tooltipBackground":            "#31363b",
+    "tooltipForeground":            "#eff0f1",
+    "focusColor":                   "#3daee9",  # Breeze focus blue
+    "activeTabBackground":          "#232629",
+    "inactiveTabBackground":        "#1b1e20",
+    "activeTabForeground":          "#eff0f1",
+    "inactiveTabForeground":        "#a0a8b0",
 }
 
 
