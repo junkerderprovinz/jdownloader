@@ -1,0 +1,89 @@
+# syntax=docker/dockerfile:1.24
+#
+# JDownloader 2 for Unraid – community edition (KasmVNC)
+# -------------------------------------------------------
+# Built on the LinuxServer KasmVNC base image for a smooth,
+# hardware-accelerated, web-native Linux desktop.
+#
+# Features:
+#   * JDownloader 2 (self-updating Java download manager)
+#   * Java 21 JRE (full AWT/Swing, not headless)
+#   * Auto-install JDownloader on first start into /config/JDownloader
+#   * Selectable UI language via JD_LANG (de, en, fr, ...)
+#   * Dark mode via JD_DARK_MODE (true/false)
+#
+# Repository:  https://github.com/junkerderprovinz/jdownloader
+# License:     MIT (this wrapper) – JDownloader 2 has its own license
+#
+ARG BASE_TAG=ubuntunoble
+
+FROM ghcr.io/linuxserver/baseimage-kasmvnc:${BASE_TAG}
+
+LABEL maintainer="junkerderprovinz"
+LABEL org.opencontainers.image.title="jdownloader"
+LABEL org.opencontainers.image.description="JDownloader 2 für Unraid mit KasmVNC, Dark Mode und Multi-Language-UI"
+LABEL org.opencontainers.image.source="https://github.com/junkerderprovinz/jdownloader"
+LABEL org.opencontainers.image.licenses="MIT"
+LABEL org.opencontainers.image.vendor="junkerderprovinz"
+
+ENV TITLE="JDownloader 2"
+
+# ---------------------------------------------------------------------------
+# Java 21 + Basis-Tools
+# ---------------------------------------------------------------------------
+RUN set -eux; \
+    apt-get update; \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        # Java – volles JRE (AWT/Swing für JDownloader-GUI erforderlich)
+        openjdk-21-jre \
+        # Download-Tools für Installer
+        wget ca-certificates \
+        # Font-Support (Java rendert Schrift über fontconfig)
+        fontconfig \
+        fonts-noto fonts-noto-color-emoji \
+        fonts-dejavu fonts-dejavu-core fonts-dejavu-extra \
+        fonts-liberation fonts-liberation2 \
+        fonts-hack \
+        # Locale
+        locales coreutils; \
+    # Font-Cache aufbauen damit Java die Fonts beim ersten Start sofort findet
+    fc-cache -f -v >/dev/null 2>&1 || true; \
+    apt-get clean; \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# ---------------------------------------------------------------------------
+# JDownloader Installer-JAR vorhalten
+# ---------------------------------------------------------------------------
+# Das JAR wird beim ersten Container-Start von init-jdownloader nach
+# /config/JDownloader kopiert und dort installiert. JDownloader aktualisiert
+# sich danach selbst. Das JAR im Image ist nur ein Bootstrap.
+RUN mkdir -p /opt/JDownloader && \
+    wget -q --show-progress \
+        -O /opt/JDownloader/JDownloader.jar \
+        "http://installer.jdownloader.org/JDownloader.jar"
+
+# ---------------------------------------------------------------------------
+# Skeleton-Configs + s6-overlay init scripts
+# ---------------------------------------------------------------------------
+COPY rootfs/ /
+
+RUN chmod +x \
+    /usr/local/bin/jdownloader-language.sh \
+    /usr/local/bin/jdownloader-theme.sh \
+    /etc/s6-overlay/s6-rc.d/init-jdownloader/run \
+    /defaults/autostart
+
+# ---------------------------------------------------------------------------
+# Standard-ENV (durch Unraid-Template überschreibbar)
+# ---------------------------------------------------------------------------
+# JD_LANG      – UI-Sprache: ISO-Code (de, en, fr, ...) oder "system"
+# JD_DARK_MODE – true | false
+# JD_INST_DIR  – Installations-Pfad (nicht ändern außer für Debugging)
+ENV JD_LANG=de \
+    JD_DARK_MODE=true \
+    JD_INST_DIR=/config/JDownloader \
+    LANG=de_DE.UTF-8 \
+    LANGUAGE=de_DE:de:en \
+    LC_ALL=de_DE.UTF-8
+
+# Ports werden vom Baseimage freigegeben (3000/HTTP, 3001/HTTPS).

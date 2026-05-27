@@ -1,0 +1,105 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>JDownloader</Name>
+  <Beta>false</Beta>
+  <Repository>ghcr.io/junkerderprovinz/jdownloader:latest</Repository>
+  <Registry>https://ghcr.io/junkerderprovinz/jdownloader</Registry>
+  <Network>bridge</Network>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <ReadMe>https://github.com/junkerderprovinz/jdownloader/blob/main/README.md</ReadMe>
+  <Support>https://github.com/junkerderprovinz/jdownloader/issues</Support>
+  <Project>https://github.com/junkerderprovinz/jdownloader</Project>
+  <Overview>
+    JDownloader 2 with native Dark Mode – built on KasmVNC for a smooth,
+    hardware-accelerated web desktop.&#xD;
+    &#xD;
+    What's pre-configured:&#xD;
+    • Dark Mode enabled by default (FlatDarkLaf)&#xD;
+    • Selectable UI language via dropdown (de, en, fr, es, it, pt, nl, ...)&#xD;
+    • Auto-installs and self-updates JDownloader on first start&#xD;
+    • Persistent config and downloads in /config and /downloads&#xD;
+    &#xD;
+    Notes:&#xD;
+    • On the very first start, JDownloader downloads and installs itself –&#xD;
+      this takes 1–2 minutes depending on your connection.&#xD;
+    • Default WebUI port is 3000 (HTTP). 3001 (HTTPS) is also exposed.&#xD;
+    • PUID/PGID default to 99/100 (nobody/users on Unraid).&#xD;
+    • Auth: leave Username and Password EMPTY for no login.&#xD;
+  </Overview>
+  <Category>Downloaders:</Category>
+  <WebUI>http://[IP]:[PORT:3000]/</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/junkerderprovinz/jdownloader/main/templates/jdownloader.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/junkerderprovinz/jdownloader/main/.github/assets/icon.png</Icon>
+  <ExtraParams>--restart=unless-stopped --shm-size=1gb</ExtraParams>
+
+  <!-- ========================================================
+       PORTS
+       ======================================================== -->
+  <Config Name="WebUI Port (HTTP / KasmVNC)" Target="3000" Default="3000" Mode="tcp"
+          Description="HTTP port of the KasmVNC WebUI."
+          Type="Port" Display="always" Required="true" Mask="false">3000</Config>
+
+  <Config Name="WebUI Port (HTTPS / KasmVNC)" Target="3001" Default="3001" Mode="tcp"
+          Description="HTTPS port (self-signed TLS). Optional."
+          Type="Port" Display="always" Required="false" Mask="false">3001</Config>
+
+  <!-- ========================================================
+       PATHS
+       ======================================================== -->
+  <Config Name="AppData (/config)" Target="/config" Default="/mnt/user/appdata/jdownloader" Mode="rw"
+          Description="Persistent JDownloader install, configs, and session data."
+          Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/jdownloader</Config>
+
+  <Config Name="Downloads (/downloads)" Target="/downloads" Default="/mnt/user/downloads" Mode="rw"
+          Description="Download target directory."
+          Type="Path" Display="always" Required="true" Mask="false">/mnt/user/downloads</Config>
+
+  <!-- ========================================================
+       UI PREFERENCES
+       ======================================================== -->
+  <Config Name="UI Language (JD_LANG)" Target="JD_LANG"
+          Default="de|en|fr|es|it|pt|nl|pl|cs|sk|hu|ro|ru|tr|ja|ko|zh|system" Mode=""
+          Description="Language for the JDownloader UI. Re-applied on every start."
+          Type="Variable" Display="always" Required="false" Mask="false">de</Config>
+
+  <Config Name="Dark Mode (JD_DARK_MODE)" Target="JD_DARK_MODE"
+          Default="true|false" Mode=""
+          Description="Enable or disable Dark Mode. true = FlatDarkLaf, false = FlatLightLaf."
+          Type="Variable" Display="always" Required="false" Mask="false">true</Config>
+
+  <!-- ========================================================
+       KASMVNC SECURITY
+       ======================================================== -->
+  <Config Name="KasmVNC Username" Target="CUSTOM_USER" Default="" Mode=""
+          Description="Optional. Username for HTTP-basic-auth. Leave EMPTY with password for no login."
+          Type="Variable" Display="always" Required="false" Mask="false"/>
+
+  <Config Name="KasmVNC Password" Target="PASSWORD" Default="" Mode=""
+          Description="Optional. Password for HTTP-basic-auth."
+          Type="Variable" Display="always" Required="false" Mask="true"/>
+
+  <!-- ========================================================
+       ADVANCED
+       ======================================================== -->
+  <Config Name="Title (browser tab)" Target="TITLE" Default="JDownloader 2" Mode=""
+          Description="Title shown in browser tab and KasmVNC top bar."
+          Type="Variable" Display="advanced" Required="false" Mask="false">JDownloader 2</Config>
+
+  <Config Name="Timezone (TZ)" Target="TZ" Default="Europe/Vienna" Mode=""
+          Description="Container timezone."
+          Type="Variable" Display="always" Required="false" Mask="false">Europe/Vienna</Config>
+
+  <Config Name="User ID (PUID)" Target="PUID" Default="99" Mode=""
+          Description="User-ID JDownloader runs as. Default 99 (nobody on Unraid)."
+          Type="Variable" Display="advanced" Required="true" Mask="false">99</Config>
+
+  <Config Name="Group ID (PGID)" Target="PGID" Default="100" Mode=""
+          Description="Group-ID. Default 100 (users on Unraid)."
+          Type="Variable" Display="advanced" Required="true" Mask="false">100</Config>
+
+  <Config Name="UMASK" Target="UMASK" Default="022" Mode=""
+          Description="Permission mask for newly created files."
+          Type="Variable" Display="advanced" Required="false" Mask="false">022</Config>
+
+</Container>

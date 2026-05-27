@@ -1,0 +1,2 @@
+#!/usr/bin/execlineb -P
+foreground { /etc/s6-overlay/s6-rc.d/init-jdownloader/run }

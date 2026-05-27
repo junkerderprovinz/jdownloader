@@ -1,0 +1,112 @@
+<h1 align="center">JDownloader 2 for Unraid</h1>
+
+<a href="https://jdownloader.org">
+  <img src="https://raw.githubusercontent.com/junkerderprovinz/jdownloader/main/.github/assets/jdownloader-banner.png" alt="JDownloader 2 for Unraid" width="100%">
+</a>
+
+<p align="center">
+  <a href="https://github.com/junkerderprovinz/jdownloader/actions/workflows/build.yml"><img src="https://img.shields.io/github/actions/workflow/status/junkerderprovinz/jdownloader/build.yml?branch=main&label=Build&style=for-the-badge&logo=githubactions&logoColor=white" alt="Build" height="36"></a>&nbsp;
+  <a href="https://github.com/junkerderprovinz/jdownloader/pkgs/container/jdownloader"><img src="https://img.shields.io/badge/Image-ghcr.io-1d99f3?style=for-the-badge&logo=docker&logoColor=white" alt="Image" height="36"></a>&nbsp;
+  <a href="https://github.com/junkerderprovinz/jdownloader/pkgs/container/jdownloader"><img src="https://img.shields.io/badge/Arch-amd64%20%7C%20arm64-success?style=for-the-badge&logo=linux&logoColor=white" alt="Arch" height="36"></a>&nbsp;
+  <a href="https://unraid.net"><img src="https://img.shields.io/badge/Unraid-Template-f15a2c?style=for-the-badge&logo=unraid&logoColor=white" alt="Unraid" height="36"></a>&nbsp;
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge&logo=opensourceinitiative&logoColor=white" alt="License" height="36"></a>&nbsp;
+  <a href="https://buymeacoffee.com/junkerderprovinz"><img src="https://img.shields.io/badge/Buy%20me%20a%20coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black" alt="Buy me a coffee" height="36"></a>
+</p>
+
+<br>
+
+<p align="center">
+JDownloader 2 running in a full web browser desktop via KasmVNC — no VNC client needed, no Java in the browser.
+Dark mode enabled by default, UI language selectable from the Unraid template dropdown.
+Auto-installs and self-updates JDownloader on first container start.
+</p>
+
+<br>
+
+## Features
+
+- **KasmVNC web desktop** — open `http://your-unraid:3000` and JDownloader is ready
+- **Dark Mode** by default (FlatDarkLaf) — togglable via `JD_DARK_MODE`
+- **Selectable UI language** — 20 languages via `JD_LANG` dropdown in the Unraid template
+- **Auto-install** — downloads and sets up JDownloader 2 on first start, no manual setup
+- **Self-updating** — JDownloader updates itself on start as it normally does
+- **Persistent** — all config, links, and session state survive container restarts in `/config`
+- **Download volume** — separate `/downloads` mount keeps data separate from config
+
+<br>
+
+## Quick Start
+
+```yaml
+# docker-compose
+services:
+  jdownloader:
+    image: ghcr.io/junkerderprovinz/jdownloader:latest
+    container_name: jdownloader
+    environment:
+      - PUID=99
+      - PGID=100
+      - TZ=Europe/Vienna
+      - JD_LANG=de
+      - JD_DARK_MODE=true
+    volumes:
+      - /mnt/user/appdata/jdownloader:/config
+      - /mnt/user/downloads:/downloads
+    ports:
+      - 3000:3000
+    restart: unless-stopped
+    shm_size: 1gb
+```
+
+Open `http://your-host:3000` — on the first start, JDownloader downloads and installs itself (1–2 min). After that, the GUI appears automatically.
+
+<br>
+
+## Environment Variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `JD_LANG` | `de` | UI language: `de`, `en`, `fr`, `es`, `it`, `pt`, `nl`, `pl`, `cs`, `sk`, `hu`, `ro`, `ru`, `tr`, `ja`, `ko`, `zh`, `system` |
+| `JD_DARK_MODE` | `true` | Dark mode: `true` = FlatDarkLaf, `false` = FlatLightLaf |
+| `PUID` | `99` | User ID (nobody on Unraid) |
+| `PGID` | `100` | Group ID (users on Unraid) |
+| `TZ` | `Europe/Vienna` | Timezone |
+| `CUSTOM_USER` | _(empty)_ | KasmVNC username — leave empty for no auth |
+| `PASSWORD` | _(empty)_ | KasmVNC password — leave empty for no auth |
+| `TITLE` | `JDownloader 2` | Browser tab title |
+| `UMASK` | `022` | File permission mask |
+
+<br>
+
+## Unraid Community Applications
+
+Add via the CA template URL:
+
+```
+https://raw.githubusercontent.com/junkerderprovinz/jdownloader/main/templates/jdownloader.xml
+```
+
+<br>
+
+## How It Works
+
+The image is built on [`ghcr.io/linuxserver/baseimage-kasmvnc`](https://github.com/linuxserver/docker-baseimage-kasmvnc) and uses s6-overlay for service management.
+
+On every container start:
+1. **init-jdownloader** runs: installs JDownloader on first start, seeds language and theme configs
+2. **KasmVNC** starts the web desktop
+3. **autostart** launches JDownloader inside the desktop session
+
+JDownloader stores all its data in `/config/JDownloader/` — this is part of the `/config` volume and persists across container updates.
+
+<br>
+
+## Support this project
+
+If this image saves you time or a debug night, consider buying me a coffee:
+
+<p align="center">
+  <a href="https://buymeacoffee.com/junkerderprovinz">
+    <img src=".github/assets/button-buy-me-a-coffee.svg" alt="Buy me a coffee" width="220">
+  </a>
+</p>

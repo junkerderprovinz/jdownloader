@@ -1,0 +1,46 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":semanticCommits",
+    ":dependencyDashboard",
+    ":enableVulnerabilityAlertsWithLabel(security)"
+  ],
+  "timezone": "Europe/Vienna",
+  "schedule": ["before 6am on monday"],
+  "labels": ["dependencies"],
+  "prHourlyLimit": 4,
+  "prConcurrentLimit": 6,
+  "packageRules": [
+    {
+      "description": "LinuxServer KasmVNC base image – manual review required",
+      "matchPackageNames": ["ghcr.io/linuxserver/baseimage-kasmvnc"],
+      "groupName": "LSIO KasmVNC base",
+      "commitMessageTopic": "LSIO KasmVNC base",
+      "commitMessagePrefix": "feat:",
+      "labels": ["base-image"]
+    },
+    {
+      "description": "GitHub Actions: auto-merge all updates",
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["major", "minor", "patch", "digest"],
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": true,
+      "commitMessagePrefix": "ci:",
+      "labels": ["github-actions"]
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Track LinuxServer KasmVNC base image tag",
+      "managerFilePatterns": ["/(^|/)Dockerfile$/"],
+      "matchStrings": [
+        "ARG BASE_TAG=(?<currentValue>[^\\s]+)"
+      ],
+      "depNameTemplate": "ghcr.io/linuxserver/baseimage-kasmvnc",
+      "datasourceTemplate": "docker"
+    }
+  ]
+}
