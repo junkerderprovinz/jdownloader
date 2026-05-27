@@ -70,6 +70,7 @@ COPY rootfs/ /
 RUN chmod +x \
     /usr/local/bin/jdownloader-language.sh \
     /usr/local/bin/jdownloader-theme.sh \
+    /usr/local/bin/jdownloader-create-dark-theme.py \
     /etc/s6-overlay/s6-rc.d/init-jdownloader/run \
     /defaults/autostart
 

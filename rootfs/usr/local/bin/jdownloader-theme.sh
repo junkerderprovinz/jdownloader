@@ -2,8 +2,11 @@
 # -----------------------------------------------------------------------------
 # jdownloader-theme.sh <true|false>
 # -----------------------------------------------------------------------------
-# Aktiviert oder deaktiviert Dark Mode in JDownloader 2.
-# JDownloader speichert das Theme in mehreren Config-Dateien unter cfg/.
+# Dark Mode  = JD_Plain_Dark theme (Farben) + FlatDarkLaf (Window-Chrome)
+# Light Mode = JD_Plain theme + FlatLightLaf
+#
+# JD_Plain_Dark wird beim ersten Aufruf von jdownloader-create-dark-theme.py
+# erzeugt (kopiert JD_Plain-Icons + dunkel eingefärbte theme.json).
 # -----------------------------------------------------------------------------
 set -e
 
@@ -42,30 +45,36 @@ seed_json() {
     fi
 }
 
+LAF_JSON="${JD_CFG}/org.jdownloader.gui.laf.json"
 THEME_JSON="${JD_CFG}/org.jdownloader.gui.theme.ThemeManager.json"
 
 if [[ "${DARK}" == "true" ]]; then
-    log "Enabling Dark Mode (JD_Plain + FlatDarkLaf)"
+    log "Enabling Dark Mode (JD_Plain_Dark + FlatDarkLaf)"
+
+    # JD_Plain_Dark Theme erstellen / aktualisieren
+    if command -v python3 >/dev/null 2>&1; then
+        python3 /usr/local/bin/jdownloader-create-dark-theme.py \
+            2>&1 | sed 's/^/[jdownloader-theme] /' || true
+    fi
 
     # Look-and-Feel: FlatDarkLaf als Window-Chrome
-    LAF_JSON="${JD_CFG}/org.jdownloader.gui.laf.json"
     seed_json "${LAF_JSON}" '{"lafClassName":"com.formdev.flatlaf.FlatDarkLaf","active":true}'
     update_json_key "${LAF_JSON}" "lafClassName" '"com.formdev.flatlaf.FlatDarkLaf"'
     update_json_key "${LAF_JSON}" "active" 'true'
 
-    # Icon-Theme: JD_Plain — schöne flache Icons, immer erzwingen
-    seed_json "${THEME_JSON}" '{"theme":"JD_Plain","variant":"__NONE__","iconSet":"DEFAULT"}'
-    update_json_key "${THEME_JSON}" "theme" '"JD_Plain"'
+    # Icon-Theme: JD_Plain_Dark
+    seed_json "${THEME_JSON}" '{"theme":"JD_Plain_Dark","variant":"__NONE__","iconSet":"DEFAULT"}'
+    update_json_key "${THEME_JSON}" "theme" '"JD_Plain_Dark"'
 
 else
     log "Disabling Dark Mode (JD_Plain + FlatLightLaf)"
 
     # Look-and-Feel: FlatLightLaf
-    LAF_JSON="${JD_CFG}/org.jdownloader.gui.laf.json"
     seed_json "${LAF_JSON}" '{"lafClassName":"com.formdev.flatlaf.FlatLightLaf","active":true}'
     update_json_key "${LAF_JSON}" "lafClassName" '"com.formdev.flatlaf.FlatLightLaf"'
+    update_json_key "${LAF_JSON}" "active" 'true'
 
-    # Icon-Theme: JD_Plain auch im Light Mode
+    # Icon-Theme: JD_Plain (Standard hell)
     seed_json "${THEME_JSON}" '{"theme":"JD_Plain","variant":"__NONE__","iconSet":"DEFAULT"}'
     update_json_key "${THEME_JSON}" "theme" '"JD_Plain"'
 fi
