@@ -2,8 +2,6 @@
 # -----------------------------------------------------------------------------
 # init-jdownloader  –  Installation, Config-Seeding & Language/Theme Bootstrap
 # -----------------------------------------------------------------------------
-set -e
-
 /usr/local/bin/print-banner.sh \
     "JDownloader for Unraid" \
     "Modern dark UI · KasmVNC · Java 21" \
@@ -28,6 +26,10 @@ set_env() { printf "%s" "$2" > "/run/s6/container_environment/$1"; }
 if [[ ! -f "${JD_DIR}/JDownloader2.jar" ]]; then
     log "First run – installing JDownloader into ${JD_DIR}"
     mkdir -p "${JD_DIR}"
+    if [[ ! -f "${INSTALLER_JAR}" ]]; then
+        log "ERROR: installer JAR not found at ${INSTALLER_JAR} – cannot install"
+        exit 1
+    fi
     cp -a "${INSTALLER_JAR}" "${JD_DIR}/JDownloader.jar"
     # Installer im Headless-Modus starten – legt JDownloader2.jar und
     # alle Begleit-JARs an. -norestart verhindert automatischen Neustart.

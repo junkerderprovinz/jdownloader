@@ -47,7 +47,9 @@ RUN set -eux; \
         fonts-liberation fonts-liberation2 \
         fonts-hack \
         # Locale
-        locales coreutils; \
+        locales coreutils \
+        # openbox-xdg-autostart braucht PyXDG
+        python3-xdg; \
     # Font-Cache aufbauen damit Java die Fonts beim ersten Start sofort findet
     fc-cache -f -v >/dev/null 2>&1 || true; \
     apt-get clean; \
