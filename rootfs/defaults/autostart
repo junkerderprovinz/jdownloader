@@ -9,6 +9,10 @@ export LANG="${LANG:-de_DE.UTF-8}"
 export LANGUAGE="${LANGUAGE:-de_DE:de:en}"
 export LC_ALL="${LC_ALL:-de_DE.UTF-8}"
 
+# Set X11 root window (desktop background) to Breeze Dark so the
+# area outside JD's window is dark instead of the default grey/white.
+xsetroot -solid '#232629' 2>/dev/null || true
+
 JD_DIR="${JD_INST_DIR:-/config/JDownloader}"
 LAUNCHER="${JD_DIR}/JDownloader.jar"
 
