@@ -76,6 +76,7 @@ RUN chmod +x \
     /usr/local/bin/jdownloader-theme.sh \
     /usr/local/bin/jdownloader-create-dark-theme.py \
     /usr/local/bin/patch-flatlaf.py \
+    /usr/local/bin/seed-flatlaf.py \
     /usr/local/bin/print-banner.sh \
     /etc/cont-init.d/10-jdownloader-setup \
     /etc/s6-overlay/s6-rc.d/init-jdownloader/run \

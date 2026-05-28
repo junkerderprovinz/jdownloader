@@ -25,42 +25,14 @@ if [[ -d "${THEMES_SRC}" ]]; then
     log "bundled themes copied → ${THEMES_DST}"
 fi
 
-# Pre-seed patched FlatLaf 3.7 (Breeze Dark) into JD's libs/laf/ so no install dialog appears.
-# AWU checks hash in dep.json — we compute it from our patched JAR so JD considers it "installed".
-FLATLAF_SRC="/opt/JDownloader/flatlaf.jar"
-FLATLAF_LIB="${JD_DIR}/libs/laf"
-if [[ -f "${FLATLAF_SRC}" ]]; then
-    mkdir -p "${FLATLAF_LIB}"
-    cp -f "${FLATLAF_SRC}" "${FLATLAF_LIB}/flatlaf.jar"
-    python3 - <<PYEOF 2>/dev/null || true
-import hashlib, json
-jar = "${FLATLAF_LIB}/flatlaf.jar"
-with open(jar, "rb") as f:
-    sha256 = hashlib.sha256(f.read()).hexdigest()
-dep = {
-    "artefact": "com.formdev/flatlaf",
-    "installed": {
-        "date": "2025-12-11T14:11:30.883+01:00",
-        "description": "Flat Look and Feel",
-        "hashes": {"flatlaf.jar": sha256},
-        "licenses": [{"name": "The Apache License, Version 2.0",
-                       "url": "https://www.apache.org/licenses/LICENSE-2.0.txt"}],
-        "minJRE": "JVM_1_8",
-        "name": "FlatLaf",
-        "version": "3.7"
-    },
-    "minJRE": "1.8",
-    "provider": "maven",
-    "requiredBy": [],
-    "autoRenameEnabled": True,
-    "confirm": True
-}
-with open("${FLATLAF_LIB}/flatlaf.dep.json", "w") as f:
-    json.dump(dep, f, indent=2)
-print("[jdownloader-setup] FlatLaf 3.7 (Breeze Dark) pre-seeded → ${FLATLAF_LIB}/flatlaf.dep.json hash=" + sha256[:12] + "...")
-PYEOF
-    log "FlatLaf pre-seeded → ${FLATLAF_LIB}/flatlaf.jar"
-fi
+# Pre-seed patched FlatLaf 3.7 (Breeze Dark) into JD's libs/laf/.
+# seed-flatlaf.py computes the SHA256 of our patched JAR and writes a matching
+# dep.json so JD's AWU registry considers FlatLaf already installed.
+python3 /usr/local/bin/seed-flatlaf.py \
+    /opt/JDownloader/flatlaf.jar \
+    "${JD_DIR}/libs/laf" \
+    && log "FlatLaf pre-seeded → ${JD_DIR}/libs/laf/flatlaf.jar" \
+    || log "FlatLaf seed failed (non-fatal)"
 
 # Build full JD_Plain_Dark: JD_Plain icons + Breeze Dark colours
 # (creates full copy with icons if JD_Plain is already installed, else colour-only stub)
@@ -83,7 +55,7 @@ if os.path.isdir(src):
             d = json.load(f)
         d["id"]   = "FLATLAF_DARK"
         d["name"] = "FlatLaf Dark"
-        d.pop("parent", None)
+        # Keep parent: JD_Plain so JD can resolve icons from the bundled JD_Plain set
         with open(tj, "w") as f:
             json.dump(d, f, indent=2)
     print("[jdownloader-setup] themes/FLATLAF_DARK ← JD_Plain_Dark (Breeze Dark, full)")

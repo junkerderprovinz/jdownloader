@@ -13,6 +13,8 @@ TARGET = "com/formdev/flatlaf/FlatDarkLaf.properties"
 # Breeze Dark palette — KDE Breeze Dark / matching JD_Plain_Dark theme.json
 BREEZE_DARK = b"""
 # ===== JD Plain Dark \xe2\x80\x94 Breeze Dark palette =====
+# @accentColor is FlatLaf's master accent variable (selection, focus rings, etc.)
+@accentColor=#3daee9
 @background=#232629
 @foreground=#eff0f1
 @disabledForeground=#7f8c8d
