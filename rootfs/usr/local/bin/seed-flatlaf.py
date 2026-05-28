@@ -18,8 +18,8 @@ def seed(src: str, lib_dir: str) -> None:
         return
     lib_path.mkdir(parents=True, exist_ok=True)
     dst = lib_path / "flatlaf.jar"
+    sha256 = hashlib.sha256(src_path.read_bytes()).hexdigest()
     shutil.copy2(src_path, dst)
-    sha256 = hashlib.sha256(dst.read_bytes()).hexdigest()
     dep = {
         "artefact": "com.formdev/flatlaf",
         "installed": {

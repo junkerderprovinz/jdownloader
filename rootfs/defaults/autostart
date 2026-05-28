@@ -48,21 +48,25 @@ names = [
     'org.jdownloader.gui.jdtrayicon.TrayExtensionConfig.json',
 ]
 while True:
-    cfg.mkdir(parents=True, exist_ok=True)
+    try:
+        cfg.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        time.sleep(1)
+        continue
     for name in names:
         p = cfg / name
         try:
             data = json.loads(p.read_text()) if p.exists() else {}
         except Exception:
             data = {}
-        if data.get('enabled', True) is not False:
+        if data.get('enabled', True) != False:
             data['enabled'] = False
             try:
                 p.write_text(json.dumps(data, indent=2))
             except Exception:
                 pass
     time.sleep(1)
-" "${JD_DIR}/cfg" &
+" "${JD_DIR}/cfg" >/dev/null 2>&1 &
     TRAY_GUARD=$!
 
     # Put FlatLaf on the JVM boot classpath so it is available before JD creates
