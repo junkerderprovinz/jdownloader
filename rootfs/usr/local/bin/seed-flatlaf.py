@@ -35,8 +35,8 @@ def seed(src: str, lib_dir: str) -> None:
         "minJRE": "1.8",
         "provider": "maven",
         "requiredBy": [],
-        "autoRenameEnabled": True,
-        "confirm": True
+        "autoRenameEnabled": False,
+        "confirm": False
     }
     (lib_path / "flatlaf.dep.json").write_text(
         json.dumps(dep, indent=2), encoding="utf-8"

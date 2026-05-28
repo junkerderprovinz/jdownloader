@@ -24,18 +24,20 @@ fi
 echo "[jdownloader-autostart] Starting JDownloader (first start may take up to 5 minutes)" >&2
 
 while true; do
-    # Re-seed Breeze-Dark-patched FlatLaf before every JD start.
-    # The JD bootstrap downloads an unpatched FlatLaf during first-run install,
-    # overwriting what the init script put in place. Re-seeding here ensures
-    # that every actual JD2 session uses our patched JAR.
+    # Pre-start: seed Breeze-Dark-patched FlatLaf (confirm=false → no install dialog).
     python3 /usr/local/bin/seed-flatlaf.py \
         /opt/JDownloader/flatlaf.jar \
         "${JD_DIR}/libs/laf" 2>/dev/null || true
+
+    # Pre-start: disable system tray — JD re-creates tray cfg on every first run.
+    python3 /usr/local/bin/disable-tray.py \
+        "${JD_DIR}/cfg" 2>/dev/null || true
 
     java \
         -Dawt.useSystemAAFontSettings=on \
         -Dswing.aatext=true \
         -Dsun.java2d.opengl=false \
+        -Dsun.awt.disablemixing=true \
         -jar "${LAUNCHER}"
     EXIT=$?
     echo "[jdownloader-autostart] JDownloader exited (code ${EXIT})" >&2
