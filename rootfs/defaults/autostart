@@ -3,7 +3,7 @@
 # JDownloader launcher loop:
 #   - First start: JDownloader.jar bootstraps and installs JD2 (needs a live DISPLAY).
 #   - SmartRlyExitRequest (self-update): launcher exits, loop restarts it automatically.
-#   - Normal exits / crashes: loop restarts within 3 seconds.
+#   - Normal exits / crashes: loop restarts within 5 seconds.
 
 export LANG="${LANG:-de_DE.UTF-8}"
 export LANGUAGE="${LANGUAGE:-de_DE:de:en}"
@@ -24,7 +24,7 @@ fi
 echo "[jdownloader-autostart] Starting JDownloader (first start may take up to 5 minutes)" >&2
 
 while true; do
-    # Pre-start: seed Breeze-Dark-patched FlatLaf (confirm=false → no install dialog).
+    # Pre-start: seed Breeze-Dark-patched FlatLaf (confirm=true → no install dialog).
     python3 /usr/local/bin/seed-flatlaf.py \
         /opt/JDownloader/flatlaf.jar \
         "${JD_DIR}/libs/laf" 2>/dev/null || true
@@ -33,6 +33,44 @@ while true; do
     python3 /usr/local/bin/disable-tray.py \
         "${JD_DIR}/cfg" 2>/dev/null || true
 
+    # Background tray guard: JD may overwrite tray cfg during bootstrap installation.
+    # This loop continuously re-applies enabled=false while JD is running.
+    python3 -c "
+import json, time, sys
+from pathlib import Path
+cfg = Path(sys.argv[1])
+names = [
+    'org.jdownloader.gui.jdtrayicon.TrayExtension.json',
+    'org.jdownloader.gui.jdtrayicon.TrayExtensionConfig.json',
+]
+while True:
+    cfg.mkdir(parents=True, exist_ok=True)
+    for name in names:
+        p = cfg / name
+        try:
+            data = json.loads(p.read_text()) if p.exists() else {}
+        except Exception:
+            data = {}
+        if data.get('enabled', True) is not False:
+            data['enabled'] = False
+            try:
+                p.write_text(json.dumps(data, indent=2))
+            except Exception:
+                pass
+    time.sleep(1)
+" "${JD_DIR}/cfg" &
+    TRAY_GUARD=$!
+
+    # Put FlatLaf on the JVM boot classpath so it is available before JD creates
+    # any Swing components — fixes the half-light/half-dark rendering issue caused
+    # by FlatLaf loading too late in JD's dynamic class-loading sequence.
+    LAF_JAR="${JD_DIR}/libs/laf/flatlaf.jar"
+    if [ -f "${LAF_JAR}" ]; then
+        export JAVA_TOOL_OPTIONS="-Xbootclasspath/a:${LAF_JAR}"
+    else
+        unset JAVA_TOOL_OPTIONS
+    fi
+
     java \
         -Dawt.useSystemAAFontSettings=on \
         -Dswing.aatext=true \
@@ -40,13 +78,23 @@ while true; do
         -Dsun.awt.disablemixing=true \
         -jar "${LAUNCHER}"
     EXIT=$?
+
+    # Kill background tray guard
+    kill "${TRAY_GUARD}" 2>/dev/null || true
+    wait "${TRAY_GUARD}" 2>/dev/null || true
+
     echo "[jdownloader-autostart] JDownloader exited (code ${EXIT})" >&2
+
+    # Re-seed after exit — catches the case where JD's bootstrap downloaded and
+    # replaced libs/laf/flatlaf.jar with the upstream (unpatched) version.
+    python3 /usr/local/bin/seed-flatlaf.py \
+        /opt/JDownloader/flatlaf.jar \
+        "${JD_DIR}/libs/laf" 2>/dev/null || true
 
     # Wait briefly — JD may have spawned a self-updated process (SmartRlyExitRequest)
     sleep 5
 
     # Do not start a second bootstrap while a JD instance is already running.
-    # Happens when JD2 relaunched itself and the bootstrap exited first.
     if pgrep -f "JDownloader" > /dev/null 2>&1; then
         echo "[jdownloader-autostart] Another JD instance running — waiting for it to stop..." >&2
         while pgrep -f "JDownloader" > /dev/null 2>&1; do
