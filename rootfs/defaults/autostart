@@ -20,7 +20,7 @@ LAUNCHER="${JD_DIR}/JDownloader.jar"
 if [ ! -f "${LAUNCHER}" ]; then
     echo "[jdownloader-autostart] Downloading JDownloader launcher to ${JD_DIR}" >&2
     mkdir -p "${JD_DIR}"
-    wget -q -O "${LAUNCHER}.tmp" "http://installer.jdownloader.org/JDownloader.jar" \
+    wget -q -O "${LAUNCHER}.tmp" "https://installer.jdownloader.org/JDownloader.jar" \
         && mv "${LAUNCHER}.tmp" "${LAUNCHER}" \
         || { echo "[jdownloader-autostart] ERROR: download failed" >&2; rm -f "${LAUNCHER}.tmp"; exit 1; }
 fi

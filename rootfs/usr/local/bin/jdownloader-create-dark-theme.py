@@ -113,6 +113,9 @@ def from_zip(src: Path, dst: Path) -> None:
         shutil.rmtree(dst)
     dst.mkdir(parents=True)
     with zipfile.ZipFile(src) as z:
+        for member in z.infolist():
+            if os.path.isabs(member.filename) or ".." in Path(member.filename).parts:
+                raise ValueError(f"unsafe zip entry: {member.filename}")
         z.extractall(dst)
     # ZIP might extract into a sub-dir – flatten if needed
     entries = list(dst.iterdir())
