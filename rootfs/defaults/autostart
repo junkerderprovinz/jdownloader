@@ -24,16 +24,10 @@ fi
 echo "[jdownloader-autostart] Starting JDownloader (first start may take up to 5 minutes)" >&2
 
 while true; do
-    # Add pre-bundled FlatLaf to JVM boot classpath so FLATLAF_DARK works without install dialog
-    FLATLAF_JAR="/opt/JDownloader/flatlaf.jar"
-    BOOT_CP=""
-    [ -f "${FLATLAF_JAR}" ] && BOOT_CP="-Xbootclasspath/a:${FLATLAF_JAR}"
-    # shellcheck disable=SC2086
     java \
         -Dawt.useSystemAAFontSettings=on \
         -Dswing.aatext=true \
         -Dsun.java2d.opengl=false \
-        ${BOOT_CP} \
         -jar "${LAUNCHER}"
     EXIT=$?
     echo "[jdownloader-autostart] JDownloader exited (code ${EXIT})" >&2
