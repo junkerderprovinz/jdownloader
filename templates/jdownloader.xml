@@ -15,8 +15,7 @@
     hardware-accelerated web desktop.&#xD;
     &#xD;
     What's pre-configured:&#xD;
-    • Dark Mode enabled by default (FlatDarkLaf)&#xD;
-    • Selectable UI language via dropdown (de, en, fr, es, it, pt, nl, ...)&#xD;
+    • Dark Mode enabled by default (JD_Plain Dark — flat icons, Breeze Dark colours)&#xD;
     • Auto-installs and self-updates JDownloader on first start&#xD;
     • Persistent config and downloads in /config and /downloads&#xD;
     &#xD;
@@ -59,15 +58,10 @@
   <!-- ========================================================
        UI PREFERENCES
        ======================================================== -->
-  <Config Name="UI Language (JD_LANG)" Target="JD_LANG"
-          Default="de|en|fr|es|it|pt|nl|pl|cs|sk|hu|ro|ru|tr|ja|ko|zh" Mode=""
-          Description="Language for the JDownloader UI. Re-applied on every start."
-          Type="Variable" Display="always" Required="false" Mask="false">de</Config>
-
   <Config Name="Theme (JD_THEME)" Target="JD_THEME"
-          Default="JD_Plain_Dark|JD_Plain|JDDEFAULT" Mode=""
-          Description="JDownloader UI-Theme. JD_Plain_Dark = dark (Breeze Dark), JD_Plain = light, JDDEFAULT = JD standard."
-          Type="Variable" Display="always" Required="false" Mask="false">JD_Plain_Dark</Config>
+          Default="Dark|Light" Mode=""
+          Description="Dark = JD Plain Dark (flat icons, Breeze Dark colours). Light = JD Plain (flat icons, light colours)."
+          Type="Variable" Display="always" Required="false" Mask="false">Dark</Config>
 
   <!-- ========================================================
        KASMVNC SECURITY

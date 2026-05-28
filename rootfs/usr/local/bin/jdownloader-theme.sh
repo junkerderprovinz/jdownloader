@@ -13,10 +13,10 @@ log() { echo "[jdownloader-theme] $*"; }
 mkdir -p "${JD_CFG}"
 
 case "${THEME}" in
-    JD_Plain_Dark|*[Dd][Aa][Rr][Kk]*) LAF="FLATLAF_DARK"  ;;
-    JD_Plain)                          LAF="FLATLAF_LIGHT" ;;
-    JDDEFAULT)                         LAF="DEFAULT"       ;;
-    *)                                 LAF="FLATLAF_DARK"  ;;
+    Dark|JD_Plain_Dark|*[Dd][Aa][Rr][Kk]*) LAF="FLATLAF_DARK"  ;;
+    Light|JD_Plain)                         LAF="FLATLAF_LIGHT" ;;
+    JDDEFAULT)                              LAF="DEFAULT"       ;;
+    *)                                      LAF="FLATLAF_DARK"  ;;
 esac
 
 log "Theme=${THEME} → lookandfeeltheme=${LAF}"
