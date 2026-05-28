@@ -25,16 +25,17 @@ if [[ -d "${THEMES_SRC}" ]]; then
     log "bundled themes copied → ${THEMES_DST}"
 fi
 
-# Build full JD_Plain_Dark (copies icons from JD_Plain if already installed, else stub)
+# Build full JD_Plain_Dark: JD_Plain icons + Breeze Dark colours
+# (creates full copy with icons if JD_Plain is already installed, else colour-only stub)
 /usr/local/bin/jdownloader-create-dark-theme.py \
     || log "create-dark-theme: JD_Plain not yet installed, stub written"
 
-# Replace JD_Plain with JD_Plain_Dark so FLATLAF_DARK = complete JD Plain Dark theme
-# id + parent are fixed to avoid a circular reference
+# Seed themes/FLATLAF_DARK/ = JD_Plain icons + Breeze Dark colours, named FLATLAF_DARK
+# JD discovers this directory on startup and treats the theme as already installed
 python3 - <<PYEOF 2>/dev/null || true
 import json, os, shutil
 src = "${THEMES_DST}/JD_Plain_Dark"
-dst = "${THEMES_DST}/JD_Plain"
+dst = "${THEMES_DST}/FLATLAF_DARK"
 if os.path.isdir(src):
     if os.path.isdir(dst):
         shutil.rmtree(dst)
@@ -43,13 +44,14 @@ if os.path.isdir(src):
     if os.path.exists(tj):
         with open(tj) as f:
             d = json.load(f)
-        d["id"] = "JD_Plain"
+        d["id"]   = "FLATLAF_DARK"
+        d["name"] = "FlatLaf Dark"
         d.pop("parent", None)
         with open(tj, "w") as f:
             json.dump(d, f, indent=2)
-    print("[jdownloader-setup] JD_Plain ← JD_Plain_Dark (Breeze Dark, complete)")
+    print("[jdownloader-setup] themes/FLATLAF_DARK ← JD_Plain_Dark (Breeze Dark, full)")
 else:
-    print("[jdownloader-setup] JD_Plain_Dark not found, JD_Plain unchanged")
+    print("[jdownloader-setup] JD_Plain_Dark not ready, FLATLAF_DARK not seeded yet")
 PYEOF
 
 # Language
