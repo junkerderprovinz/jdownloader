@@ -4,7 +4,6 @@
   <Beta>false</Beta>
   <Repository>ghcr.io/junkerderprovinz/jdownloader:latest</Repository>
   <Registry>https://ghcr.io/junkerderprovinz/jdownloader</Registry>
-  <Network>bridge</Network>
   <Shell>bash</Shell>
   <Privileged>false</Privileged>
   <ReadMe>https://github.com/junkerderprovinz/jdownloader/blob/main/README.md</ReadMe>
