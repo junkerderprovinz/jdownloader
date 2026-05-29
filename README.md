@@ -56,10 +56,16 @@ What's included beyond bare JDownloader:
 
 In Unraid: **Apps** → search for **JDownloader** → click **Install**.
 
-Or add the template URL directly in **Docker** → **Add Container** → Template dropdown → enter:
+If the Template dropdown in **Docker → Add Container** no longer accepts a URL
+on your Unraid version, drop the XML directly into the templates-user folder
+via SSH (or WinSCP). **Important:** the filename must be `my-JDownloader.xml`
+with the `my-` prefix and capital `J` — otherwise Unraid sees it as a separate
+template and a `Force Update` will reset all customizations because dockerMan
+can't reliably tell which file is yours.
 
-```
-https://raw.githubusercontent.com/junkerderprovinz/jdownloader/main/templates/jdownloader.xml
+```bash
+wget -O /boot/config/plugins/dockerMan/templates-user/my-JDownloader.xml \
+    https://raw.githubusercontent.com/junkerderprovinz/jdownloader/main/templates/jdownloader.xml
 ```
 
 ### Step 2 — Adjust paths and start

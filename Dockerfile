@@ -87,6 +87,12 @@ COPY scripts/ /scripts/
 # The old sed 's/â/█/g' ran in POSIX locale and corrupted block-art bytes (E2 prefix).
 RUN tr -d '\r' < /usr/local/share/banner-raw.txt > /usr/local/share/banner.txt
 
+# Suppress LSIO base-image branding: the ASCII art "linuxserver.io" block plus
+# the donate URL are printed by init-adduser via this file. Emptying it leaves
+# the rest of LSIO's GID/UID setup intact.
+RUN : > /etc/s6-overlay/s6-rc.d/init-adduser/branding 2>/dev/null || \
+    true
+
 # Download FlatLaf and patch FlatDarkLaf.properties with Breeze Dark colours.
 # Result: FLATLAF_DARK visually = JD Plain Dark (no install dialog, no extra step).
 # Bake in the JVM dark-theme agent built in the agent-builder stage.
