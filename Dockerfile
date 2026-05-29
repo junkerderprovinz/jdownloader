@@ -83,8 +83,11 @@ RUN set -eux; \
 COPY rootfs/ /
 COPY scripts/ /scripts/
 
-# Strip Windows CR and copy banner (tr is byte-safe, no locale issues with block chars).
-# The old sed 's/â/█/g' ran in POSIX locale and corrupted block-art bytes (E2 prefix).
+# Banner: single source of truth at .github/assets/banner-raw.txt — edit there.
+# COPY rootfs/ also placed a stale copy under /usr/local/share/; we overwrite
+# it with the canonical asset and strip Windows CR (tr is byte-safe, no locale
+# issues with the block characters).
+COPY .github/assets/banner-raw.txt /usr/local/share/banner-raw.txt
 RUN tr -d '\r' < /usr/local/share/banner-raw.txt > /usr/local/share/banner.txt
 
 # Suppress LSIO base-image branding: the ASCII art "linuxserver.io" block plus
