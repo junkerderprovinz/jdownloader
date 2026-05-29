@@ -81,6 +81,7 @@ RUN set -eux; \
 # Skeleton-Configs + s6-overlay init scripts
 # ---------------------------------------------------------------------------
 COPY rootfs/ /
+COPY scripts/ /scripts/
 
 # Strip Windows CR and copy banner (tr is byte-safe, no locale issues with block chars).
 # The old sed 's/â/█/g' ran in POSIX locale and corrupted block-art bytes (E2 prefix).
@@ -96,6 +97,32 @@ RUN wget -q -O /tmp/flatlaf-orig.jar \
     python3 /usr/local/bin/patch-flatlaf.py \
         /tmp/flatlaf-orig.jar /opt/JDownloader/flatlaf.jar && \
     rm /tmp/flatlaf-orig.jar
+
+# ---------------------------------------------------------------------------
+# Pre-install JDownloader 2 into a snapshot directory so the user's first
+# container start is a copy operation — no bootstrap, no install dialogs,
+# no tray popup. Xvfb provides a virtual display; xdotool dismisses any
+# popup that appears during install.
+#
+# The resulting /opt/JDownloader/snapshot/ is restored to /config/JDownloader
+# by cont-init.d/10-jdownloader-setup on first start if the volume is empty.
+# ---------------------------------------------------------------------------
+RUN set -eux; \
+    apt-get update; \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        xvfb xdotool; \
+    chmod +x /usr/local/bin/seed-flatlaf.py \
+             /usr/local/bin/disable-tray.py \
+             /usr/local/bin/kill-tray-extension.py \
+             /scripts/pre-install-jd.sh; \
+    /scripts/pre-install-jd.sh; \
+    mkdir -p /opt/JDownloader/snapshot; \
+    cp -a /tmp/JDownloader/. /opt/JDownloader/snapshot/; \
+    rm -rf /tmp/JDownloader; \
+    apt-get purge -y xvfb xdotool; \
+    apt-get autoremove -y; \
+    apt-get clean; \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 RUN chmod +x \
     /usr/local/bin/jdownloader-language.sh \
