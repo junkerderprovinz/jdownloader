@@ -27,6 +27,14 @@ LABEL org.opencontainers.image.vendor="junkerderprovinz"
 
 ENV TITLE="JDownloader 2"
 
+# Build provenance — passed from CI, written to image so users can verify
+# exactly which commit their running image was built from.
+# Inspect at runtime: `docker exec jdownloader cat /etc/jdownloader-build`
+ARG BUILD_SHA=dev
+ARG BUILD_DATE=unknown
+RUN echo "sha=${BUILD_SHA}"   >  /etc/jdownloader-build && \
+    echo "date=${BUILD_DATE}" >> /etc/jdownloader-build
+
 # ---------------------------------------------------------------------------
 # Java 21 + Basis-Tools
 # ---------------------------------------------------------------------------
