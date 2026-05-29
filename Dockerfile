@@ -60,8 +60,9 @@ RUN set -eux; \
 # ---------------------------------------------------------------------------
 COPY rootfs/ /
 
-# ASCII-Banner: â → █ konvertieren
-RUN sed 's/â/█/g' /usr/local/share/banner-raw.txt > /usr/local/share/banner.txt
+# Strip Windows CR and copy banner (tr is byte-safe, no locale issues with block chars).
+# The old sed 's/â/█/g' ran in POSIX locale and corrupted block-art bytes (E2 prefix).
+RUN tr -d '\r' < /usr/local/share/banner-raw.txt > /usr/local/share/banner.txt
 
 # Download FlatLaf and patch FlatDarkLaf.properties with Breeze Dark colours.
 # Result: FLATLAF_DARK visually = JD Plain Dark (no install dialog, no extra step).

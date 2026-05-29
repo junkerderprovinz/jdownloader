@@ -33,41 +33,13 @@ while true; do
         /opt/JDownloader/flatlaf.jar \
         "${JD_DIR}/libs/laf" 2>/dev/null || true
 
-    # Pre-start: disable system tray — JD re-creates tray cfg on every first run.
-    python3 /usr/local/bin/disable-tray.py \
-        "${JD_DIR}/cfg" 2>/dev/null || true
-
-    # Background tray guard: JD may overwrite tray cfg during bootstrap installation.
-    # This loop continuously re-applies enabled=false while JD is running.
-    python3 -c "
-import json, time, sys
-from pathlib import Path
-cfg = Path(sys.argv[1])
-names = [
-    'org.jdownloader.gui.jdtrayicon.TrayExtension.json',
-    'org.jdownloader.gui.jdtrayicon.TrayExtensionConfig.json',
-]
-while True:
-    try:
-        cfg.mkdir(parents=True, exist_ok=True)
-    except Exception:
-        time.sleep(1)
-        continue
-    for name in names:
-        p = cfg / name
-        try:
-            data = json.loads(p.read_text()) if p.exists() else {}
-        except Exception:
-            data = {}
-        if data.get('enabled', True) != False:
-            data['enabled'] = False
-            try:
-                p.write_text(json.dumps(data, indent=2))
-            except Exception:
-                pass
-    time.sleep(1)
-" "${JD_DIR}/cfg" >/dev/null 2>&1 &
-    TRAY_GUARD=$!
+    # Disable system tray and lock the cfg files read-only so JD's bootstrap
+    # installer cannot overwrite them with enabled=true during first-run setup.
+    python3 /usr/local/bin/disable-tray.py "${JD_DIR}/cfg" 2>/dev/null || true
+    chmod 444 \
+        "${JD_DIR}/cfg/org.jdownloader.gui.jdtrayicon.TrayExtension.json" \
+        "${JD_DIR}/cfg/org.jdownloader.gui.jdtrayicon.TrayExtensionConfig.json" \
+        2>/dev/null || true
 
     # Put FlatLaf on the JVM boot classpath so it is available before JD creates
     # any Swing components — fixes the half-light/half-dark rendering issue caused
@@ -91,9 +63,11 @@ while True:
         -jar "${LAUNCHER}"
     EXIT=$?
 
-    # Kill background tray guard
-    kill "${TRAY_GUARD}" 2>/dev/null || true
-    wait "${TRAY_GUARD}" 2>/dev/null || true
+    # Unlock tray cfg files so disable-tray.py can update them next iteration.
+    chmod 644 \
+        "${JD_DIR}/cfg/org.jdownloader.gui.jdtrayicon.TrayExtension.json" \
+        "${JD_DIR}/cfg/org.jdownloader.gui.jdtrayicon.TrayExtensionConfig.json" \
+        2>/dev/null || true
 
     echo "[jdownloader-autostart] JDownloader exited (code ${EXIT})" >&2
 
