@@ -13,19 +13,6 @@ cp -f /defaults/autostart "${CONFIG_HOME}/openbox/autostart"
 chmod 0755 "${CONFIG_HOME}/openbox/autostart"
 log "autostart synced from /defaults/autostart"
 
-# Restore pre-installed JD2 snapshot if /config/JDownloader is empty.
-# The snapshot was created during Docker build via pre-install-jd.sh —
-# it contains JDownloader.jar, libs/ (FlatLaf + extensions), and our
-# pre-seeded configs. First container start is a copy, not an install.
-SNAPSHOT="/opt/JDownloader/snapshot"
-if [[ -d "${SNAPSHOT}" ]] && [[ ! -f "${JD_DIR}/JDownloader.jar" ]]; then
-    log "first start — restoring pre-installed JD snapshot"
-    mkdir -p "${JD_DIR}"
-    cp -a "${SNAPSHOT}/." "${JD_DIR}/"
-    chown -R abc:abc "${JD_DIR}" 2>/dev/null || true
-    log "snapshot restored to ${JD_DIR}"
-fi
-
 # Ensure cfg dir exists (language/theme scripts seed files here)
 mkdir -p "${JD_CFG}"
 

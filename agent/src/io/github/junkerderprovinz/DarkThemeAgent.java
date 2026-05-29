@@ -1,9 +1,18 @@
 package io.github.junkerderprovinz;
 
+import javax.swing.AbstractButton;
+import javax.swing.JButton;
+import javax.swing.JDialog;
+import javax.swing.JLabel;
 import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
+import javax.swing.text.JTextComponent;
 import java.awt.Color;
+import java.awt.Component;
+import java.awt.Container;
+import java.awt.Dialog;
 import java.awt.Frame;
+import java.awt.Window;
 import java.lang.instrument.Instrumentation;
 
 /**
@@ -32,10 +41,111 @@ public class DarkThemeAgent {
     private static final Color LINK        = new Color(0x2980b9);
 
     public static void premain(String agentArgs, Instrumentation inst) {
-        System.out.println("[jd-dark-agent] premain — starting watcher");
-        Thread t = new Thread(DarkThemeAgent::watchAndApply, "jd-dark-agent");
-        t.setDaemon(true);
-        t.start();
+        System.out.println("[jd-dark-agent] premain — starting watchers");
+
+        Thread colorThread = new Thread(DarkThemeAgent::watchAndApply, "jd-dark-agent-colors");
+        colorThread.setDaemon(true);
+        colorThread.start();
+
+        Thread dialogThread = new Thread(DarkThemeAgent::watchDialogs, "jd-dark-agent-dialogs");
+        dialogThread.setDaemon(true);
+        dialogThread.start();
+    }
+
+    // -------------------------------------------------------------------------
+    // Dialog handling — runs from the start, dismisses or accepts JD's startup
+    // popups so the user never sees them.
+    //
+    //   * "Tray isn't supported!" Error dialog → dispose silently
+    //   * "JDownloader Design-Update" install prompt → click OK so the
+    //     FLATLAF_DARK design is registered and never asked about again
+    // -------------------------------------------------------------------------
+    private static void watchDialogs() {
+        long deadline = System.currentTimeMillis() + 600_000L; // 10 min watch window
+        while (System.currentTimeMillis() < deadline) {
+            try {
+                Thread.sleep(400);
+                SwingUtilities.invokeAndWait(DarkThemeAgent::handleDialogs);
+            } catch (InterruptedException e) {
+                return;
+            } catch (Exception e) {
+                // keep going on any swing-side exception
+            }
+        }
+    }
+
+    private static void handleDialogs() {
+        for (Window w : Window.getWindows()) {
+            if (!w.isShowing()) continue;
+
+            String title = "";
+            if (w instanceof Frame) {
+                title = nullToEmpty(((Frame) w).getTitle());
+            } else if (w instanceof Dialog) {
+                title = nullToEmpty(((Dialog) w).getTitle());
+            } else {
+                continue;
+            }
+
+            // Tray "isn't supported" error: dispose silently
+            if (title.equalsIgnoreCase("Error") || title.equalsIgnoreCase("Fehler")) {
+                String text = collectText(w);
+                if (text.contains("Tray isn't supported") ||
+                    text.contains("Tray wird nicht unterst")) {
+                    w.setVisible(false);
+                    w.dispose();
+                    System.out.println("[jd-dark-agent] dismissed tray-error dialog");
+                    continue;
+                }
+            }
+
+            // FLATLAF Design-Update install prompt: click OK
+            if (title.contains("Design-Update") || title.contains("Design Update")) {
+                JButton ok = findButtonByLabel(w, "OK");
+                if (ok == null) ok = findButtonByLabel(w, "Ok");
+                if (ok != null) {
+                    ok.doClick();
+                    System.out.println("[jd-dark-agent] accepted FLATLAF design-update");
+                }
+            }
+        }
+    }
+
+    private static String collectText(Container c) {
+        StringBuilder sb = new StringBuilder();
+        for (Component child : c.getComponents()) {
+            if (child instanceof JLabel) {
+                sb.append(nullToEmpty(((JLabel) child).getText())).append(' ');
+            } else if (child instanceof JTextComponent) {
+                sb.append(nullToEmpty(((JTextComponent) child).getText())).append(' ');
+            } else if (child instanceof AbstractButton) {
+                sb.append(nullToEmpty(((AbstractButton) child).getText())).append(' ');
+            }
+            if (child instanceof Container) {
+                sb.append(collectText((Container) child));
+            }
+        }
+        return sb.toString();
+    }
+
+    private static JButton findButtonByLabel(Container c, String label) {
+        for (Component child : c.getComponents()) {
+            if (child instanceof JButton) {
+                JButton b = (JButton) child;
+                if (label.equalsIgnoreCase(nullToEmpty(b.getText()).trim())) {
+                    return b;
+                }
+            }
+            if (child instanceof Container) {
+                JButton b = findButtonByLabel((Container) child, label);
+                if (b != null) return b;
+            }
+        }
+        return null;
+    }
+
+    private static String nullToEmpty(String s) {
+        return s == null ? "" : s;
     }
 
     private static void watchAndApply() {

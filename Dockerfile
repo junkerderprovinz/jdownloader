@@ -107,31 +107,13 @@ RUN wget -q -O /tmp/flatlaf-orig.jar \
         /tmp/flatlaf-orig.jar /opt/JDownloader/flatlaf.jar && \
     rm /tmp/flatlaf-orig.jar
 
-# ---------------------------------------------------------------------------
-# Pre-install JDownloader 2 into a snapshot directory so the user's first
-# container start is a copy operation — no bootstrap, no install dialogs,
-# no tray popup. Xvfb provides a virtual display; xdotool dismisses any
-# popup that appears during install.
-#
-# The resulting /opt/JDownloader/snapshot/ is restored to /config/JDownloader
-# by cont-init.d/10-jdownloader-setup on first start if the volume is empty.
-# ---------------------------------------------------------------------------
-RUN set -eux; \
-    apt-get update; \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        xvfb xdotool; \
-    chmod +x /usr/local/bin/seed-flatlaf.py \
-             /usr/local/bin/disable-tray.py \
-             /usr/local/bin/kill-tray-extension.py \
-             /scripts/pre-install-jd.sh; \
-    /scripts/pre-install-jd.sh; \
-    mkdir -p /opt/JDownloader/snapshot; \
-    cp -a /tmp/JDownloader/. /opt/JDownloader/snapshot/; \
-    rm -rf /tmp/JDownloader; \
-    apt-get purge -y xvfb xdotool; \
-    apt-get autoremove -y; \
-    apt-get clean; \
-    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+# NOTE: Xvfb-based JD2 pre-install was removed (was scripts/pre-install-jd.sh).
+# JD's bootstrap downloads/installs incrementally over several minutes; in CI
+# we could only ever capture a partial snapshot (Core.jar yes, libs/laf/ and
+# libs/extensions/ no), which then got copied into the user's /config and
+# half-broke their install. The JVM agent (jd-dark-agent.jar) handles the
+# tray "isn't supported" error dialog and the FLATLAF Design-Update prompt
+# at runtime instead — works on every start regardless of snapshot state.
 
 RUN chmod +x \
     /usr/local/bin/jdownloader-language.sh \
