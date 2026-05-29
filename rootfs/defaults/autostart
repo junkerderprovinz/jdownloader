@@ -32,6 +32,16 @@ while true; do
     python3 /usr/local/bin/seed-flatlaf.py \
         /opt/JDownloader/flatlaf.jar \
         "${JD_DIR}/libs/laf" 2>/dev/null || true
+    # Lock FlatLaf JAR + dep.json so JD's AWU cannot replace them during install.
+    chmod 444 \
+        "${JD_DIR}/libs/laf/flatlaf.jar" \
+        "${JD_DIR}/libs/laf/flatlaf.dep.json" \
+        2>/dev/null || true
+
+    # Remove SystemTrayExtension JAR if JD's bootstrap installed it. The popup
+    # 'tray isn't supported' is triggered by the extension's startup probe; if
+    # the JAR is renamed, JD's extension loader skips it and the probe never runs.
+    python3 /usr/local/bin/kill-tray-extension.py "${JD_DIR}" 2>/dev/null || true
 
     # Overlay Breeze Dark colours onto themes/flat/theme.json so JD's download
     # list and link grabber (which read from the active iconset theme, not from
@@ -68,11 +78,18 @@ while true; do
         -jar "${LAUNCHER}"
     EXIT=$?
 
-    # Unlock tray cfg files so disable-tray.py can update them next iteration.
+    # Unlock cfg files so the next iteration's disable-tray.py / seed-flatlaf.py
+    # can update them. Re-locks happen at the top of the next loop iteration.
     chmod 644 \
         "${JD_DIR}/cfg/org.jdownloader.gui.jdtrayicon.TrayExtension.json" \
         "${JD_DIR}/cfg/org.jdownloader.gui.jdtrayicon.TrayExtensionConfig.json" \
+        "${JD_DIR}/libs/laf/flatlaf.jar" \
+        "${JD_DIR}/libs/laf/flatlaf.dep.json" \
         2>/dev/null || true
+
+    # Remove the tray extension JAR if JD downloaded it during this iteration.
+    # The next iteration's pre-start kill will be a no-op then.
+    python3 /usr/local/bin/kill-tray-extension.py "${JD_DIR}" 2>/dev/null || true
 
     echo "[jdownloader-autostart] JDownloader exited (code ${EXIT})" >&2
 
