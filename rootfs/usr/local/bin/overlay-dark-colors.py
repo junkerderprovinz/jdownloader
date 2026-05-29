@@ -50,21 +50,36 @@ DARK_PALETTE = {
 
 
 def overlay(themes_dir: str) -> None:
-    flat = Path(themes_dir) / "flat" / "theme.json"
-    if not flat.exists():
-        print(f"[overlay-dark] not found yet: {flat}", flush=True)
-        return
-    try:
-        data = json.loads(flat.read_text(encoding="utf-8"))
-    except Exception as e:
-        print(f"[overlay-dark] parse failed: {e}", flush=True)
-        return
+    flat_dir = Path(themes_dir) / "flat"
+    flat = flat_dir / "theme.json"
+
+    # Create themes/flat/ if missing — JD's iconset-flat extension installs
+    # icons here but does not ship a theme.json, so JD's custom widgets fall
+    # back to default light colours unless we put one in place.
+    flat_dir.mkdir(parents=True, exist_ok=True)
+
+    data = {}
+    if flat.exists():
+        # Force writable in case prior write left it read-only
+        import os, stat
+        try:
+            os.chmod(flat, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
+        except OSError:
+            pass
+        try:
+            data = json.loads(flat.read_text(encoding="utf-8"))
+        except Exception:
+            data = {}
+
+    data.setdefault("id", "flat")
+    data.setdefault("name", "JD Plain (Breeze Dark overlay)")
     data["dark"] = True
     if "colors" not in data:
         data["colors"] = {}
     data["colors"].update(DARK_PALETTE)
+
     flat.write_text(json.dumps(data, indent=2), encoding="utf-8")
-    print(f"[overlay-dark] applied to {flat}", flush=True)
+    print(f"[overlay-dark] wrote {flat}", flush=True)
 
 
 if __name__ == "__main__":
