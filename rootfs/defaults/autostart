@@ -33,6 +33,11 @@ while true; do
         /opt/JDownloader/flatlaf.jar \
         "${JD_DIR}/libs/laf" 2>/dev/null || true
 
+    # Overlay Breeze Dark colours onto themes/flat/theme.json so JD's download
+    # list and link grabber (which read from the active iconset theme, not from
+    # the Swing LAF) appear dark instead of white.
+    python3 /usr/local/bin/overlay-dark-colors.py "${JD_DIR}/themes" 2>/dev/null || true
+
     # Disable system tray and lock the cfg files read-only so JD's bootstrap
     # installer cannot overwrite them with enabled=true during first-run setup.
     python3 /usr/local/bin/disable-tray.py "${JD_DIR}/cfg" 2>/dev/null || true
