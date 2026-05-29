@@ -4,6 +4,7 @@
   <Beta>false</Beta>
   <Repository>ghcr.io/junkerderprovinz/jdownloader:latest</Repository>
   <Registry>https://ghcr.io/junkerderprovinz/jdownloader</Registry>
+  <Network>bridge</Network>
   <Shell>bash</Shell>
   <Privileged>false</Privileged>
   <ReadMe>https://github.com/junkerderprovinz/jdownloader/blob/main/README.md</ReadMe>
@@ -28,6 +29,7 @@
   </Overview>
   <Category>Downloaders:</Category>
   <WebUI>http://[IP]:[PORT:3000]/</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/junkerderprovinz/jdownloader/main/templates/jdownloader.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/junkerderprovinz/jdownloader/main/.github/assets/icon.png</Icon>
   <ExtraParams>--restart=unless-stopped --shm-size=1gb</ExtraParams>
 
