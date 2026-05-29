@@ -74,7 +74,11 @@ while True:
     # by FlatLaf loading too late in JD's dynamic class-loading sequence.
     LAF_JAR="${JD_DIR}/libs/laf/flatlaf.jar"
     if [ -f "${LAF_JAR}" ]; then
-        export JAVA_TOOL_OPTIONS="-Xbootclasspath/a:${LAF_JAR}"
+        # -Xbootclasspath/a puts FlatLaf on the JVM classpath before JD starts.
+        # -Dswing.defaultlaf sets FlatDarkLaf as the Swing UIManager LAF at JVM
+        # startup — before JD creates any Swing components (including the download
+        # list whose background is otherwise set to white with the default Metal LAF).
+        export JAVA_TOOL_OPTIONS="-Xbootclasspath/a:${LAF_JAR} -Dswing.defaultlaf=com.formdev.flatlaf.FlatDarkLaf"
     else
         unset JAVA_TOOL_OPTIONS
     fi
