@@ -60,12 +60,22 @@ while true; do
     # any Swing components — fixes the half-light/half-dark rendering issue caused
     # by FlatLaf loading too late in JD's dynamic class-loading sequence.
     LAF_JAR="${JD_DIR}/libs/laf/flatlaf.jar"
+    AGENT_JAR="/opt/JDownloader/jd-dark-agent.jar"
+    JVM_OPTS=""
     if [ -f "${LAF_JAR}" ]; then
-        # -Xbootclasspath/a puts FlatLaf on the JVM classpath before JD starts.
-        # -Dswing.defaultlaf sets FlatDarkLaf as the Swing UIManager LAF at JVM
-        # startup — before JD creates any Swing components (including the download
-        # list whose background is otherwise set to white with the default Metal LAF).
-        export JAVA_TOOL_OPTIONS="-Xbootclasspath/a:${LAF_JAR} -Dswing.defaultlaf=com.formdev.flatlaf.FlatDarkLaf"
+        # FlatLaf on boot classpath + swing.defaultlaf — FlatDarkLaf is the
+        # LAF the moment JD's main starts; window chrome is dark from frame 0.
+        JVM_OPTS="-Xbootclasspath/a:${LAF_JAR} -Dswing.defaultlaf=com.formdev.flatlaf.FlatDarkLaf"
+    fi
+    if [ -f "${AGENT_JAR}" ]; then
+        # JVM agent forces UIManager keys (Table.background, List.background,
+        # Panel.background, etc.) AFTER JD's LAF init — guarantees the
+        # download list and link grabber render dark regardless of any colour
+        # logic in JD's custom renderers.
+        JVM_OPTS="${JVM_OPTS} -javaagent:${AGENT_JAR}"
+    fi
+    if [ -n "${JVM_OPTS}" ]; then
+        export JAVA_TOOL_OPTIONS="${JVM_OPTS}"
     else
         unset JAVA_TOOL_OPTIONS
     fi
