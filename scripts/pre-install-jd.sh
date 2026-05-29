@@ -26,7 +26,7 @@ set -euo pipefail
 SNAP="/tmp/JDownloader"
 LAUNCHER="${SNAP}/JDownloader.jar"
 DISPLAY_NUM=99
-TIMEOUT=180
+TIMEOUT=300
 
 log() { echo "[pre-install] $*" >&2; }
 
@@ -67,26 +67,35 @@ cleanup() {
 trap cleanup EXIT
 
 # ---- 3. Background dialog dismisser ----------------------------------------
-# Polls every 1 second for any visible window. Sends Enter to dismiss any
-# popup, then Esc as a fallback. The main JD window is the largest one and
-# typically has "JDownloader" in its WM_NAME — we leave those alone.
+# Polls every 1 second for any visible window.
+#   - "JDownloader 2" — the main window; leave alone
+#   - "JDownloader Design-Update" — FLATLAF install prompt; click OK so the
+#     design is registered as "installed" inside the snapshot
+#   - "Error" / anything else — dismiss with Enter
+# Order matters: more specific patterns must come BEFORE the catch-all
+# "JDownloader"* match (otherwise Design-Update would be skipped as main window).
 log "start dialog dismisser"
 (
     while true; do
         sleep 1
-        # Find all visible windows
         for wid in $(xdotool search --onlyvisible "" 2>/dev/null || true); do
             wname=$(xdotool getwindowname "${wid}" 2>/dev/null || echo "")
-            # Skip the main JD window (we want JD to keep running)
             case "${wname}" in
-                "JDownloader 2"*|"JDownloader"*)
+                "JDownloader Design-Update"*)
+                    # FLATLAF install dialog — accept (OK is default button)
+                    xdotool windowactivate "${wid}" 2>/dev/null || true
+                    sleep 0.5
+                    xdotool key --window "${wid}" Return 2>/dev/null || true
+                    log "design-update accepted: ${wname}"
+                    sleep 30  # let the install actually complete before next pass
+                    ;;
+                "JDownloader 2"*)
                     continue
                     ;;
                 "")
                     continue
                     ;;
                 *)
-                    # Send Enter to accept any prompt
                     xdotool windowactivate "${wid}" 2>/dev/null || true
                     sleep 0.3
                     xdotool key --window "${wid}" Return 2>/dev/null || true
