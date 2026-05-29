@@ -6,7 +6,7 @@ before every JD start (not only once at container init).
 
 Usage: disable-tray.py <jd_cfg_dir>
 """
-import json, sys
+import json, os, stat, sys
 from pathlib import Path
 
 
@@ -20,6 +20,12 @@ def disable(cfg_dir: str) -> None:
         path = cfg / name
         data = {}
         if path.exists():
+            # Force writable in case a prior chmod 444 (autostart hardening)
+            # left the file unwriteable from a previous container instance.
+            try:
+                os.chmod(path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
+            except OSError:
+                pass
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
             except Exception:

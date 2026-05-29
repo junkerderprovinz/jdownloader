@@ -6,8 +6,17 @@ registry considers FlatLaf already installed — no install dialog on first star
 
 Usage: seed-flatlaf.py <src.jar> <dst_lib_dir>
 """
-import hashlib, json, shutil, sys
+import hashlib, json, os, shutil, stat, sys
 from pathlib import Path
+
+
+def _force_writable(p: Path) -> None:
+    """Make file writable so we can overwrite it; ignore if not present."""
+    if p.exists():
+        try:
+            os.chmod(p, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
+        except OSError:
+            pass
 
 
 def seed(src: str, lib_dir: str) -> None:
@@ -18,6 +27,12 @@ def seed(src: str, lib_dir: str) -> None:
         return
     lib_path.mkdir(parents=True, exist_ok=True)
     dst = lib_path / "flatlaf.jar"
+    dep_path = lib_path / "flatlaf.dep.json"
+    # Force destinations writable so prior chmod 444 (from autostart hardening)
+    # cannot block an updated patched JAR shipped in a newer image from
+    # replacing the file on disk.
+    _force_writable(dst)
+    _force_writable(dep_path)
     sha256 = hashlib.sha256(src_path.read_bytes()).hexdigest()
     shutil.copy2(src_path, dst)
     dep = {
