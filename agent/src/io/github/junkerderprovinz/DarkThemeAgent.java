@@ -106,6 +106,20 @@ public class DarkThemeAgent {
                 if (ok != null) {
                     ok.doClick();
                     System.out.println("[jd-dark-agent] accepted FLATLAF design-update");
+                    continue;
+                }
+            }
+
+            // "Erweiterungen verwalten" / "Manage Extensions" prompt: install
+            // the offered extension (typically the flatlaf-themes / iconset
+            // that JD wants installed for FLATLAF_DARK to work fully).
+            if (title.contains("Erweiterungen verwalten") || title.contains("Manage Extensions")) {
+                JButton install = findButtonByLabel(w, "Jetzt installieren");
+                if (install == null) install = findButtonByLabel(w, "Install now");
+                if (install == null) install = findButtonByLabel(w, "Install");
+                if (install != null) {
+                    install.doClick();
+                    System.out.println("[jd-dark-agent] accepted extension install");
                 }
             }
         }
@@ -149,7 +163,8 @@ public class DarkThemeAgent {
     }
 
     private static void watchAndApply() {
-        long deadline = System.currentTimeMillis() + 120_000L;
+        long deadline = System.currentTimeMillis() + 600_000L; // 10 min
+        int lastWindowCount = -1;
         int appliedCount = 0;
         while (System.currentTimeMillis() < deadline) {
             try {
@@ -157,22 +172,24 @@ public class DarkThemeAgent {
             } catch (InterruptedException e) {
                 return;
             }
-            Frame[] frames = Frame.getFrames();
-            if (frames.length == 0) {
+            int currentWindowCount = Window.getWindows().length;
+            // Re-apply only when window topology changed — catches new dialogs
+            // and JD's panel reloads without flickering on every poll.
+            if (currentWindowCount == lastWindowCount && appliedCount >= 3) {
+                continue;
+            }
+            if (currentWindowCount == 0) {
                 continue;
             }
             try {
                 SwingUtilities.invokeAndWait(DarkThemeAgent::applyColors);
                 appliedCount++;
-                System.out.println("[jd-dark-agent] colours applied (pass " + appliedCount + ", frames=" + frames.length + ")");
-                if (appliedCount >= 3) {
-                    return;
-                }
+                lastWindowCount = currentWindowCount;
+                System.out.println("[jd-dark-agent] colours applied (pass " + appliedCount + ", windows=" + currentWindowCount + ")");
             } catch (Exception e) {
                 System.err.println("[jd-dark-agent] apply failed: " + e);
             }
         }
-        System.out.println("[jd-dark-agent] deadline reached (no further updates)");
     }
 
     private static void applyColors() {
