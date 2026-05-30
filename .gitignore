@@ -6,6 +6,11 @@ Thumbs.db
 .idea/
 .vscode/
 
+# Python bytecode caches (locally run scripts)
+__pycache__/
+*.pyc
+*.pyo
+
 # Build artefacts
 *.tar
 *.tar.gz

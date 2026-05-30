@@ -81,12 +81,9 @@ RUN set -eux; \
 # Skeleton-Configs + s6-overlay init scripts
 # ---------------------------------------------------------------------------
 COPY rootfs/ /
-COPY scripts/ /scripts/
 
-# Banner: single source of truth at .github/assets/banner-raw.txt — edit there.
-# COPY rootfs/ also placed a stale copy under /usr/local/share/; we overwrite
-# it with the canonical asset and strip Windows CR (tr is byte-safe, no locale
-# issues with the block characters).
+# Banner: single source at .github/assets/banner-raw.txt. Strip Windows CR
+# (tr is byte-safe, no locale issues with the block characters used).
 COPY .github/assets/banner-raw.txt /usr/local/share/banner-raw.txt
 RUN tr -d '\r' < /usr/local/share/banner-raw.txt > /usr/local/share/banner.txt
 
@@ -106,14 +103,6 @@ RUN wget -q -O /tmp/flatlaf-orig.jar \
     python3 /usr/local/bin/patch-flatlaf.py \
         /tmp/flatlaf-orig.jar /opt/JDownloader/flatlaf.jar && \
     rm /tmp/flatlaf-orig.jar
-
-# NOTE: Xvfb-based JD2 pre-install was removed (was scripts/pre-install-jd.sh).
-# JD's bootstrap downloads/installs incrementally over several minutes; in CI
-# we could only ever capture a partial snapshot (Core.jar yes, libs/laf/ and
-# libs/extensions/ no), which then got copied into the user's /config and
-# half-broke their install. The JVM agent (jd-dark-agent.jar) handles the
-# tray "isn't supported" error dialog and the FLATLAF Design-Update prompt
-# at runtime instead — works on every start regardless of snapshot state.
 
 RUN chmod +x \
     /usr/local/bin/jdownloader-language.sh \

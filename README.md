@@ -97,7 +97,7 @@ services:
       - PUID=99
       - PGID=100
       - TZ=Europe/Vienna
-      - JD_THEME=JD_Plain_Dark
+      - JD_THEME=Dark
     volumes:
       - /mnt/user/appdata/jdownloader:/config
       - /mnt/user/downloads:/downloads
@@ -118,7 +118,7 @@ services:
 
 | Variable | Default | Description |
 |---|---|---|
-| `JD_THEME` | `JD_Plain_Dark` | UI theme — `JD_Plain_Dark` = dark (Breeze Dark), `JD_Plain` = light, `JDDEFAULT` = JD default |
+| `JD_THEME` | `Dark` | UI theme — `Dark` = JD Plain Dark with Breeze Dark palette, `Light` = JD Plain |
 | `PUID` | `99` | User ID — Unraid's *nobody* |
 | `PGID` | `100` | Group ID — Unraid's *users* |
 | `TZ` | `Europe/Vienna` | Timezone |
@@ -142,10 +142,10 @@ On the **first start**, JDownloader installs itself into `/config/JDownloader/`.
 /config/
 └── JDownloader/
     ├── cfg/           # all JDownloader config files (theme, accounts, …)
-    ├── downloads/     # optional: JD's own download dir (we map /downloads instead)
+    ├── libs/          # JD's libraries (FlatLaf, extensions, …)
     ├── themes/
     │   └── JD_Plain_Dark/   # pre-built dark theme (copied from image on every start)
-    └── JDownloader2.jar
+    └── JDownloader.jar
 ```
 
 The env-driven setting `JD_THEME` is re-applied on **every start**, so you can change it at any time via the Unraid template.
