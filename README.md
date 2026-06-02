@@ -11,8 +11,7 @@
   <a href="https://github.com/junkerderprovinz/jdownloader/pkgs/container/jdownloader"><img src="https://img.shields.io/badge/Arch-amd64%20%7C%20arm64-success?style=for-the-badge&logo=linux&logoColor=white" alt="Arch" height="36"></a>&nbsp;
   <a href="https://github.com/kasmtech/KasmVNC"><img src="https://img.shields.io/badge/Web-KasmVNC-3daee9?style=for-the-badge&logo=kde&logoColor=white" alt="KasmVNC" height="36"></a>&nbsp;
   <a href="https://unraid.net"><img src="https://img.shields.io/badge/Unraid-Template-f15a2c?style=for-the-badge&logo=unraid&logoColor=white" alt="Unraid" height="36"></a>&nbsp;
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge&logo=opensourceinitiative&logoColor=white" alt="License" height="36"></a>&nbsp;
-  <a href="https://buymeacoffee.com/junkerderprovinz"><img src="https://img.shields.io/badge/Buy%20me%20a%20coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black" alt="Buy me a coffee" height="36"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge&logo=opensourceinitiative&logoColor=white" alt="License" height="36"></a>
 </p>
 
 <br>
@@ -24,6 +23,30 @@ first-run configuration required.
 </p>
 
 <br>
+
+<p align="center">
+  <a href="https://buymeacoffee.com/junkerderprovinz">
+    <img src=".github/assets/button-buy-me-a-coffee.svg" alt="Buy me a coffee" width="220">
+  </a>
+</p>
+
+<br>
+
+## Table of Contents
+
+1. [Overview](#1-overview)
+2. [Quick Start](#2-quick-start)
+3. [Configuration](#3-configuration)
+4. [Customisation & Persistence](#4-customisation--persistence)
+5. [Troubleshooting](#5-troubleshooting)
+6. [Screenshots](#6-screenshots)
+7. [Architecture](#7-architecture)
+8. [Contributing / License](#8-contributing--license)
+9. [Support this project](#9-support-this-project)
+
+<br>
+
+## 1. Overview
 
 This image packages [JDownloader 2](https://jdownloader.org) into a self-contained Docker container that runs in any modern web browser. It is built on top of [`linuxserver/baseimage-kasmvnc`](https://github.com/linuxserver/docker-baseimage-kasmvnc), so it benefits from LSIO's hardware-accelerated KasmVNC stack and weekly security updates, while everything JDownloader-specific (dark theme, Java runtime, auto-install) is layered on top.
 
@@ -50,7 +73,7 @@ What's included beyond bare JDownloader:
 
 <br>
 
-## Quick Start
+## 2. Quick Start
 
 ### Step 1 — Install the template
 
@@ -114,7 +137,7 @@ services:
 
 <br>
 
-## Configuration
+## 3. Configuration
 
 | Variable | Default | Description |
 |---|---|---|
@@ -134,7 +157,7 @@ services:
 
 <br>
 
-## Customisation & Persistence
+## 4. Customisation & Persistence
 
 On the **first start**, JDownloader installs itself into `/config/JDownloader/`. All settings, link lists, accounts and download history live there and survive every `docker pull` and container update.
 
@@ -154,7 +177,7 @@ The base image also supports `/config/custom-cont-init.d/` for your own init scr
 
 <br>
 
-## Troubleshooting
+## 5. Troubleshooting
 
 <details>
 <summary><b>WebUI is black / desktop never appears</b></summary>
@@ -196,13 +219,13 @@ The base image also supports `/config/custom-cont-init.d/` for your own init scr
 
 <br>
 
-## Screenshots
+## 6. Screenshots
 
 *Screenshots will be added once the container has been tested on Unraid.*
 
 <br>
 
-## Architecture
+## 7. Architecture
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
@@ -223,7 +246,7 @@ The base image also supports `/config/custom-cont-init.d/` for your own init scr
 
 <br>
 
-## Contributing / License
+## 8. Contributing / License
 
 Pull requests welcome. Issues: <https://github.com/junkerderprovinz/jdownloader/issues>.
 
@@ -248,7 +271,7 @@ find . -name '*.xml' | xargs xmllint --noout
 
 <br>
 
-## Support this project
+## 9. Support this project
 
 If this image saves you time or a debug night, consider buying me a coffee:
 
