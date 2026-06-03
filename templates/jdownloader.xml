@@ -9,7 +9,7 @@
   <Privileged>false</Privileged>
   <ReadMe>https://github.com/junkerderprovinz/jdownloader/blob/main/README.md</ReadMe>
   <Support>https://github.com/junkerderprovinz/jdownloader/issues</Support>
-  <Project>https://github.com/junkerderprovinz/jdownloader</Project>
+  <Project>https://jdownloader.org</Project>
   <Overview>
     JDownloader 2 with native Dark Mode – built on KasmVNC for a smooth,
     hardware-accelerated web desktop.&#xD;
@@ -26,6 +26,8 @@
     • Default WebUI port is 3000 (HTTP). 3001 (HTTPS) is also exposed.&#xD;
     • PUID/PGID default to 99/100 (nobody/users on Unraid).&#xD;
     • Auth: leave Username and Password EMPTY for no login.&#xD;
+    &#xD;
+    Source on GitHub: https://github.com/junkerderprovinz/jdownloader&#xD;
   </Overview>
   <Category>Downloaders:</Category>
   <WebUI>http://[IP]:[PORT:3000]/</WebUI>
