@@ -87,9 +87,9 @@ Table/List/Panel/Viewport keys does not affect the content area, and adding a da
 value captured early / from a source the LAF does not drive. Fix would be to read
 `UIManager.getColor("Table.background"/"List.background")` at paint-time.
 
-**Environment**: JDownloader 2 (current), FlatLaf 3.7, Java 21. Reproduced on Linux
-(Ubuntu Noble, Docker/KasmVNC) AND on a stock Windows 11 desktop install — same result
-on both, so it is not container-specific.
+**Environment**: JDownloader 2 (core revision 50639, build 2026-06-02), FlatLaf 3.7,
+Java 21.0.10 (Eclipse Adoptium, 64-bit). Reproduced on Windows 11 (25H2) AND on Linux
+(Ubuntu Noble, Docker/KasmVNC) — same result on both, so it is not container-specific.
 
 ---
 
