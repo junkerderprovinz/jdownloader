@@ -2,8 +2,8 @@
 <Container version="2">
   <Name>JDownloader</Name>
   <Beta>false</Beta>
-  <Repository>ghcr.io/junkerderprovinz/jdownloader:latest</Repository>
-  <Registry>https://ghcr.io/junkerderprovinz/jdownloader</Registry>
+  <Repository>junkerderprovinz/jdownloader:latest</Repository>
+  <Registry>https://hub.docker.com/r/junkerderprovinz/jdownloader</Registry>
   <Network>bridge</Network>
   <Shell>bash</Shell>
   <Privileged>false</Privileged>
