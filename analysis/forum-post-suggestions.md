@@ -71,9 +71,9 @@ captured at component initialisation.
 3. Restart JD
 4. Observe: menu bar is dark, download list is white
 
-**Environment**: JDownloader 2 (current), FlatLaf 3.7, Java 21. Reproduced on Linux
-(Ubuntu Noble, Docker/KasmVNC) AND on a stock Windows 11 desktop install — identical
-result on both (dark chrome, white content area).
+**Environment**: JDownloader 2 (core revision 50639, build 2026-06-02), FlatLaf 3.7,
+Java 21.0.10 (Eclipse Adoptium, 64-bit). Reproduced on Windows 11 (25H2) AND on Linux
+(Ubuntu Noble, Docker/KasmVNC) — identical (dark chrome, white content area).
 
 Screenshots attached.
 
