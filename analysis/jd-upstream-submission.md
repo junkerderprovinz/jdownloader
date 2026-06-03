@@ -58,6 +58,8 @@ Thank you!
 
 **Title**: Custom content tables (download list, link grabber, advanced settings) stay light + low-contrast text under any dark Look & Feel
 
+**Forum thread**: https://board.jdownloader.org/showthread.php?t=98756
+
 **Description**:
 
 With any dark Look & Feel (FLATLAF_DARK, FLATLAF_MAC_DARK, BLACK_EYE, ...), JD's custom-rendered
@@ -95,6 +97,6 @@ Java 21.0.10 (Eclipse Adoptium, 64-bit). Reproduced on Windows 11 (25H2) AND Lin
 
 ## 4. Timeline
 
-- Submit forum post first (faster response)
-- If no response in ~1-2 weeks (board: earliest bump after 3 days) -> open GitHub issue
-- Link both so context is shared
+- Bug report POSTED: https://board.jdownloader.org/showthread.php?t=98756
+- Next: post the theme/request (Suggestions & Requests), linking to the bug thread
+- If no response in ~1-2 weeks (board: earliest bump after 3 days) -> open GitHub issue, link all
