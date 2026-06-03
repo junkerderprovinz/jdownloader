@@ -46,10 +46,12 @@ would benefit.
 While testing this theme — and also while testing the stock `FLATLAF_DARK` Look & Feel —
 I noticed a consistent rendering bug:
 
-When a dark Look & Feel is active (`FLATLAF_DARK`, `RADIANCE_GRAPHITE`, or any custom
-dark theme), the **menu bar, toolbar, tab headers, column headers, and scrollbars**
-correctly switch to dark colours. However, the **download list content area** and the
-**link grabber content area** keep a white/light background. See screenshots below.
+When a dark Look & Feel is active (`FLATLAF_DARK`, `FLATLAF_MAC_DARK`, `BLACK_EYE`, or
+any other dark theme), the **menu bar, toolbar, tab headers, column headers, and
+scrollbars** correctly switch to dark colours. However, JD's custom content areas — the
+**download list**, the **link grabber**, AND the **Advanced Settings table** — keep a
+white/light background, and the light theme text on them is barely readable in places.
+It affects both FlatLaf-based and Synthetica-based (BLACK_EYE) dark LAFs. See screenshots.
 
 This makes any dark theme look broken because the largest area of the UI is the wrong
 colour.

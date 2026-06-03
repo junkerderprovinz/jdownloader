@@ -2,56 +2,49 @@
 
 ## 1. Theme Contribution (JD_Plain_Dark)
 
-**Target**: JDownloader Forum → Themes & Templates section
+**Target**: JDownloader Forum -> Suggestions & Requests
 **URL**: https://board.jdownloader.org/forumdisplay.php?f=14
 
 ### Forum post draft (English)
 
 ---
 
-**Subject**: [Theme] JD Plain Dark — Breeze Dark colour palette for FlatLaf
+**Subject**: [Theme] JD Plain Dark — Breeze Dark colour palette
 
 Hi,
 
-I'd like to share a dark colour theme for JDownloader 2 based on the KDE Breeze Dark palette,
-designed to work with FlatLaf Dark as the Look & Feel.
+I'd like to share a dark colour theme for JDownloader 2 based on the KDE Breeze Dark palette.
 
-**What it does:**
-Replaces all JDownloader colour tokens (table backgrounds, selection colours, panels, tabs, etc.)
-with the Breeze Dark palette — the same colour scheme used in KDE Plasma and apps like Krusader.
+**What it does:** replaces JDownloader's colour tokens (table backgrounds, selection colours,
+panels, tabs, etc.) with the Breeze Dark palette — the scheme used in KDE Plasma and apps like
+Krusader.
 
-**Colour palette:**
+**Colour palette:** background #232629 | alternate row #1e2124 | panel #31363b |
+header/menu #1b1e20 | foreground #eff0f1 | selection/focus #3daee9 | link #2980b9 |
+progress #2d8a42
 
-| Token | Colour | Hex |
-|-------|--------|-----|
-| Background | Breeze Dark Window | `#232629` |
-| Alternate row | Slightly darker | `#1e2124` |
-| Foreground | Near-white | `#eff0f1` |
-| Selection | Breeze Blue | `#3daee9` |
-| Panel | Breeze Dark Panel | `#31363b` |
-| Header/Menu | Very dark | `#1b1e20` |
-| Progress | Breeze Green | `#2d8a42` |
-
-**Installation:**
-1. Download `JD_Plain_Dark_theme.zip` (attached)
-2. JDownloader → Settings → GUI → Themes → Import
-3. Restart JDownloader
+**Installation:** import `JD_Plain_Dark_theme.zip` (attached).
 
 **Bug report bundled with this submission:**
-When FlatLaf Dark is selected as the Look & Feel, the download list and link grabber content area
-stay white (see attached screenshots). Menu bar, toolbar and column headers turn dark correctly —
-only JD's ExtTable (download list / link grabber) stays light. I tried to fix it from the outside
-and could not reach it through the LAF: patching FlatLaf's FlatDarkLaf.properties with explicit
-Table/List/Panel keys did not change the content area, and adding a dark themes/flat/theme.json did
-not either. Only a JVM agent that forces the colours into UIManager *after* JD's LAF init made it
-dark. So the ExtTable appears to resolve its background from a source the active LAF does not drive.
-(The symptom and the failed external fixes are verified; the exact root cause is a hypothesis.)
+Under ANY dark Look & Feel (FLATLAF_DARK, FLATLAF_MAC_DARK, BLACK_EYE, ...), JD's custom-rendered
+content areas keep a LIGHT background while the chrome (menu/toolbar/headers/scrollbars) is
+correctly dark. Affected at least: the download list, the link grabber, AND the Advanced Settings
+table — and the light theme text on the light background is barely readable in places (screenshots
+attached). It happens with both FlatLaf-based and Synthetica-based (BLACK_EYE) dark LAFs, so it's
+JD's own rendering, not a single LAF. I confirmed externally that the LAF can't reach these areas:
+patching FlatLaf's FlatDarkLaf.properties (Table/List/Panel keys) and adding a dark
+themes/flat/theme.json didn't change them; only a JVM agent forcing the colours into UIManager
+after LAF init worked.
 
 **Request to developers:**
-1. Include JD_Plain_Dark as a built-in theme option
-2. Fix the download list / link grabber background to respect the active FlatLaf LAF colours
-   (use `UIManager.getColor("List.background")` or `UIManager.getColor("Panel.background")`
-   instead of a hardcoded or pre-initialized colour value)
+1. Include a built-in, correct dark theme (JD_Plain_Dark) selectable in Settings -> GUI.
+2. Fix JD's custom tables/panels (ExtTable) to follow the active LAF colours at paint-time
+   (UIManager.getColor("Table.background"/"List.background"/"Panel.background") + foreground),
+   so all dark Look & Feels render consistently.
+
+**Environment**: JDownloader 2 (core revision 50639, build 2026-06-02), FlatLaf 3.7,
+Java 21.0.10 (Eclipse Adoptium, 64-bit). Reproduced on Windows 11 (25H2) AND on Linux
+(Ubuntu Noble, Docker/KasmVNC) — same on both, not container-specific.
 
 Thank you!
 
@@ -59,47 +52,49 @@ Thank you!
 
 ## 2. GitHub Issue Draft
 
-**Target**: https://github.com/mirror/jd2 (or the official JD repo if accessible)
+**Target**: the official JDownloader repo if accessible
 
 ---
 
-**Title**: Download list background stays white when FlatLaf Dark is selected as Look & Feel
+**Title**: Custom content tables (download list, link grabber, advanced settings) stay light + low-contrast text under any dark Look & Feel
 
 **Description**:
 
-When `lookandfeeltheme=FLATLAF_DARK` is configured in `GraphicalUserInterfaceSettings.json`,
-the FlatLaf Dark Look & Feel is correctly applied to standard Swing components (menu bar,
-toolbar, tab headers, scrollbars all become dark grey). However, the main download list panel
-and the link grabber content area remain **white**.
+With any dark Look & Feel (FLATLAF_DARK, FLATLAF_MAC_DARK, BLACK_EYE, ...), JD's custom-rendered
+content areas keep a LIGHT background while standard Swing chrome (menu bar, toolbar, tab/column
+headers, scrollbars) turns dark correctly. Affected at least: the download list, the link grabber,
+and the Advanced Settings table. Combined with the theme's light foreground, some text becomes
+light-on-light and is barely readable.
 
-**Screenshots**: [attach the two screenshots]
+**Screenshots**: [download list + Advanced Settings, both light]
 
-**Expected**: All JD content areas (download list, link grabber, log panel) use dark background
-consistent with FlatLaf Dark.
+**Expected**: all JD content areas use the dark background of the active dark Look & Feel.
 
-**Observed**: Download list and link grabber content area background is white/light.
+**Observed**: content tables/panels stay light; text low-contrast in places.
 
-**Root cause (hypothesis)**: the ExtTable used by the download list / link grabber does not follow
-the active LAF. Verified externally: patching FlatLaf's FlatDarkLaf.properties with explicit
-Table/List/Panel/Viewport keys does not affect the content area, and adding a dark
-`themes/flat/theme.json` does not either — only a JVM agent that forces the colours into UIManager
-*after* the LAF is applied makes it dark. This suggests the ExtTable reads its background from a
-value captured early / from a source the LAF does not drive. Fix would be to read
-`UIManager.getColor("Table.background"/"List.background")` at paint-time.
+**Not LAF-specific**: reproduced with both FlatLaf-based (FLATLAF_DARK, FLATLAF_MAC_DARK) and
+Synthetica-based (BLACK_EYE) dark LAFs -> points to JD's own rendering.
+
+**Root cause (hypothesis)**: JD's custom tables/panels (ExtTable) don't read their colours from the
+active LAF at paint-time. Verified externally: patching FlatLaf properties (Table/List/Panel keys)
+and adding a dark themes/flat/theme.json don't reach them; only a JVM agent forcing the colours
+into UIManager after the LAF is applied works. Fix: read
+UIManager.getColor("Table.background"/"List.background"/"Panel.background") (+ foreground) at
+paint-time.
 
 **Environment**: JDownloader 2 (core revision 50639, build 2026-06-02), FlatLaf 3.7,
-Java 21.0.10 (Eclipse Adoptium, 64-bit). Reproduced on Windows 11 (25H2) AND on Linux
-(Ubuntu Noble, Docker/KasmVNC) — same result on both, so it is not container-specific.
+Java 21.0.10 (Eclipse Adoptium, 64-bit). Reproduced on Windows 11 (25H2) AND Linux
+(Ubuntu Noble, Docker/KasmVNC).
 
 ---
 
 ## 3. Attached Files
 
 - `JD_Plain_Dark_theme.zip` — importable theme package
-- Screenshots showing the half-light issue
+- Screenshots: light download list + light Advanced Settings under a dark LAF
 
 ## 4. Timeline
 
 - Submit forum post first (faster response)
-- If no response in 2 weeks → open GitHub issue
-- Link both in the issue/post so context is shared
+- If no response in ~1-2 weeks (board: earliest bump after 3 days) -> open GitHub issue
+- Link both so context is shared
