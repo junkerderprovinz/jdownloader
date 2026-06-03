@@ -38,11 +38,14 @@ with the Breeze Dark palette — the same colour scheme used in KDE Plasma and a
 3. Restart JDownloader
 
 **Bug report bundled with this submission:**
-When FlatLaf Dark is selected as the Look & Feel, the download list content area and link grabber
-remain white (see attached screenshots). The menu bar, toolbar, and column headers correctly turn
-dark — only JD's custom-rendered panels stay white. This appears to be a timing issue: JD's
-download list background is set before FlatLaf is activated, and JD's custom renderer does not
-re-read `UIManager.getColor("Table.background")` after the LAF switch.
+When FlatLaf Dark is selected as the Look & Feel, the download list and link grabber content area
+stay white (see attached screenshots). Menu bar, toolbar and column headers turn dark correctly —
+only JD's ExtTable (download list / link grabber) stays light. I tried to fix it from the outside
+and could not reach it through the LAF: patching FlatLaf's FlatDarkLaf.properties with explicit
+Table/List/Panel keys did not change the content area, and adding a dark themes/flat/theme.json did
+not either. Only a JVM agent that forces the colours into UIManager *after* JD's LAF init made it
+dark. So the ExtTable appears to resolve its background from a source the active LAF does not drive.
+(The symptom and the failed external fixes are verified; the exact root cause is a hypothesis.)
 
 **Request to developers:**
 1. Include JD_Plain_Dark as a built-in theme option
@@ -76,11 +79,13 @@ consistent with FlatLaf Dark.
 
 **Observed**: Download list and link grabber content area background is white/light.
 
-**Root cause hypothesis**: JD's custom download list renderer initialises its background colour
-before `UIManager.setLookAndFeel(new FlatDarkLaf())` is called, and does not subsequently
-re-read the UIManager colour. The fix would be to ensure the renderer uses
-`UIManager.getColor("Table.background")` (or the JD theme colour token `backgroundColor`)
-evaluated at paint-time, not at component initialisation time.
+**Root cause (hypothesis)**: the ExtTable used by the download list / link grabber does not follow
+the active LAF. Verified externally: patching FlatLaf's FlatDarkLaf.properties with explicit
+Table/List/Panel/Viewport keys does not affect the content area, and adding a dark
+`themes/flat/theme.json` does not either — only a JVM agent that forces the colours into UIManager
+*after* the LAF is applied makes it dark. This suggests the ExtTable reads its background from a
+value captured early / from a source the LAF does not drive. Fix would be to read
+`UIManager.getColor("Table.background"/"List.background")` at paint-time.
 
 **Environment**: JDownloader 2, FlatLaf 3.7, Java 21, Ubuntu Noble (Docker/KasmVNC)
 

@@ -54,14 +54,16 @@ correctly switch to dark colours. However, the **download list content area** an
 This makes any dark theme look broken because the largest area of the UI is the wrong
 colour.
 
-**Hypothesis**: JD's custom download list / link grabber renderer initialises its
-background colour at component-creation time and does not re-read `UIManager.getColor()`
-after the LAF is applied. This would explain why the chrome (standard Swing) goes dark
-but the content area (custom JD renderer) stays light.
+**Hypothesis** (symptom + failed fixes verified; exact cause not proven): JD's ExtTable
+(download list / link grabber) does not follow the active LAF. Patching FlatLaf's
+FlatDarkLaf.properties with explicit Table/List/Panel keys did not change the content
+area, and adding a dark themes/flat/theme.json did not either — only a JVM agent that
+forces the colours into UIManager *after* the LAF is applied worked. So the ExtTable
+seems to read its colour from a source the LAF does not drive.
 
-**Suggested fix**: have the renderer read `UIManager.getColor("Table.background")`
-(or `"List.background"` / `"Panel.background"`) at paint-time, or expose a theme
-colour token that custom renderers read at every repaint.
+**Suggested fix**: have the ExtTable read `UIManager.getColor("Table.background")`
+(or `"List.background"` / `"Panel.background"`) at paint-time, instead of a value
+captured at component initialisation.
 
 **Reproduction**:
 1. Start JDownloader on a fresh profile
@@ -69,8 +71,8 @@ colour token that custom renderers read at every repaint.
 3. Restart JD
 4. Observe: menu bar is dark, download list is white
 
-**Environment**: JDownloader 2 latest, FlatLaf 3.7, Java 21, Linux (also confirmed on
-Windows 11)
+**Environment**: JDownloader 2 (current), FlatLaf 3.7, Java 21, Linux (Ubuntu Noble,
+Docker/KasmVNC). Not yet tested on a vanilla desktop install or on Windows.
 
 Screenshots attached.
 
