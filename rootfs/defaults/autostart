@@ -39,20 +39,15 @@ fi
 echo "[jdownloader-autostart] Starting JDownloader (first start may take up to 5 minutes)" >&2
 
 while true; do
-    # Pre-start: seed Breeze-Dark-patched FlatLaf (confirm=true → no install dialog).
-    python3 /usr/local/bin/seed-flatlaf.py \
-        /opt/JDownloader/flatlaf-official.jar \
-        "${JD_DIR}/libs/laf" 2>/dev/null || true
-    # Lock FlatLaf JAR + dep.json so JD's AWU cannot replace them during install.
-    chmod 444 \
-        "${JD_DIR}/libs/laf/flatlaf.jar" \
-        "${JD_DIR}/libs/laf/flatlaf.dep.json" \
-        2>/dev/null || true
-
-    # Re-seed the bundled flat icon set + FLATLAF_DARK marker before each start.
-    # JD resets /config/.../themes on install / design changes, which would wipe
-    # the icons seeded in cont-init; re-applying here keeps iconsetid=flat resolving
-    # and the FLATLAF_DARK marker present (so no "design not installed" popup).
+    # Re-seed the bundled flat icon set before each start. JD resets
+    # /config/.../themes during its first install, which would wipe the icons
+    # seeded in cont-init; re-applying here keeps iconsetid=flat resolving.
+    #
+    # NOTE: we deliberately do NOT pre-seed FlatLaf into libs/laf. JD installs and
+    # manages the FLATLAF_DARK design itself (one-time, on first run) and records it
+    # in its own registry; pre-seeding our jar made JD never register the design as
+    # installed, so it re-asked on every start. The Breeze chrome comes from the
+    # /opt boot classpath below, which is invisible to JD's design check.
     mkdir -p "${JD_DIR}/themes"
     cp -rf /opt/JDownloader/themes-default/. "${JD_DIR}/themes/" 2>/dev/null || true
 
@@ -104,13 +99,11 @@ while true; do
         -jar "${LAUNCHER}"
     EXIT=$?
 
-    # Unlock cfg files so the next iteration's disable-tray.py / seed-flatlaf.py
-    # can update them. Re-locks happen at the top of the next loop iteration.
+    # Unlock the tray cfg files so the next iteration's disable-tray.py can update
+    # them. Re-locks happen at the top of the next loop iteration.
     chmod 644 \
         "${JD_DIR}/cfg/org.jdownloader.gui.jdtrayicon.TrayExtension.json" \
         "${JD_DIR}/cfg/org.jdownloader.gui.jdtrayicon.TrayExtensionConfig.json" \
-        "${JD_DIR}/libs/laf/flatlaf.jar" \
-        "${JD_DIR}/libs/laf/flatlaf.dep.json" \
         2>/dev/null || true
 
     # Remove the tray extension JAR if JD downloaded it during this iteration.
@@ -118,12 +111,6 @@ while true; do
     python3 /usr/local/bin/kill-tray-extension.py "${JD_DIR}" 2>/dev/null || true
 
     echo "[jdownloader-autostart] JDownloader exited (code ${EXIT})" >&2
-
-    # Re-seed after exit — catches the case where JD's bootstrap downloaded and
-    # replaced libs/laf/flatlaf.jar with the upstream (unpatched) version.
-    python3 /usr/local/bin/seed-flatlaf.py \
-        /opt/JDownloader/flatlaf-official.jar \
-        "${JD_DIR}/libs/laf" 2>/dev/null || true
 
     # Wait briefly — JD may have spawned a self-updated process (SmartRlyExitRequest)
     sleep 5
