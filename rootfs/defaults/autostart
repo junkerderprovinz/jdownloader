@@ -43,17 +43,22 @@ echo "" >&2
 # stable for ~20s so it does not fire during the install's restart cycle.
 (
     stable=0
+    waited=0
     while [ ! -f /tmp/.jd-ready ]; do
         if python3 -c "import socket,sys; s=socket.socket(); s.settimeout(1); sys.exit(0 if s.connect_ex(('127.0.0.1',9666))==0 else 1)" 2>/dev/null; then
             stable=$((stable + 1))
         else
             stable=0
         fi
-        if [ "${stable}" -ge 4 ]; then
+        waited=$((waited + 1))
+        # Fire when JD's port is stably up (normal case) OR after ~10 min as a fallback,
+        # in case the user disabled JD's Click'n'Load API (port 9666) — the WebUI is
+        # usable regardless, so the banner should still appear.
+        if [ "${stable}" -ge 4 ] || [ "${waited}" -ge 120 ]; then
             : > /tmp/.jd-ready
             echo "" >&2
             echo "  ############################################################" >&2
-            echo "   JDOWNLOADER IS READY  ->  open the WebUI now (port 3000)" >&2
+            echo "   JDOWNLOADER IS READY  ->  open the WebUI now (HTTPS 3001)" >&2
             echo "  ############################################################" >&2
             echo "" >&2
         fi

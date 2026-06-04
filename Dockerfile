@@ -9,7 +9,7 @@
 #   * JDownloader 2 (self-updating Java download manager)
 #   * Java 21 JRE (full AWT/Swing, not headless)
 #   * Auto-install JDownloader on first start into /config/JDownloader
-#   * Selectable theme via JD_THEME (JD_Plain_Dark = dark, JD_Plain = light, JDDEFAULT)
+#   * Selectable theme via JD_THEME (Dark = Carbon #161616 monochrome, Light)
 #
 # Repository:  https://github.com/junkerderprovinz/jdownloader
 # License:     MIT (this wrapper) – JDownloader 2 has its own license
@@ -35,7 +35,7 @@ FROM ghcr.io/linuxserver/baseimage-kasmvnc:${BASE_TAG}
 
 LABEL maintainer="junkerderprovinz"
 LABEL org.opencontainers.image.title="jdownloader"
-LABEL org.opencontainers.image.description="JDownloader 2 für Unraid — schlanke, moderne Dark-Mode-GUI (komplettes KDE Breeze Dark, nicht nur die Menüleiste) auf KasmVNC, Multi-Language"
+LABEL org.opencontainers.image.description="JDownloader 2 für Unraid — schlanke, moderne Dark-Mode-GUI (komplettes monochromes Carbon #161616, nicht nur die Menüleiste) auf KasmVNC, Multi-Language"
 LABEL org.opencontainers.image.source="https://github.com/junkerderprovinz/jdownloader"
 LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.vendor="junkerderprovinz"
@@ -141,10 +141,10 @@ RUN set -eux; \
 # Standard-ENV (durch Unraid-Template überschreibbar)
 # ---------------------------------------------------------------------------
 # JD_LANG     – UI-Sprache: ISO-Code (de, en, fr, ...)
-# JD_THEME    – UI-Theme: JD_Plain_Dark | JD_Plain | JDDEFAULT | ...
+# JD_THEME    – UI-Theme: Dark (Carbon #161616) | Light
 # JD_INST_DIR – Installations-Pfad (nicht ändern außer für Debugging)
 ENV JD_LANG=de \
-    JD_THEME=JD_Plain_Dark \
+    JD_THEME=Dark \
     JD_INST_DIR=/config/JDownloader \
     LANG=de_DE.UTF-8 \
     LANGUAGE=de_DE:de:en \
