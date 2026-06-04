@@ -83,20 +83,36 @@ public class DialogConfirmAgent {
     private static void enforceDarkChrome() {
         LookAndFeel laf = UIManager.getLookAndFeel();
         if (laf == null || !laf.getClass().getName().toLowerCase().contains("flat")) return;
-        if (Boolean.TRUE.equals(UIManager.get("jdp.darkChrome"))) return; // already done, not reset
 
         UIDefaults d = UIManager.getDefaults();
+        // Marker lives in the SAME defaults table as the colour overrides, so a JD
+        // self-update / in-process LAF swap (fresh UIDefaults) drops it together with the
+        // colours and we re-apply. (UIManager.put would write the developer-defaults table,
+        // which setLookAndFeel never clears — the marker would then outlive the colours and
+        // the chrome would never be re-applied.)
+        if (Boolean.TRUE.equals(d.get("jdp.darkChrome"))) return;
+
         List<Object> keys = new ArrayList<>(d.keySet()); // snapshot: we mutate while iterating
         for (Object key : keys) {
             Object val = d.get(key);
             if (!(val instanceof Color)) continue;
-            Color rep = remap((Color) val);
+            String ks = key.toString().toLowerCase();
+            // Selection backgrounds -> the visible lighter grey (no colour accent).
+            if (ks.contains("selectionbackground")) {
+                d.put(key, withAlpha(SEL, ((Color) val).getAlpha()));
+                continue;
+            }
+            // Foreground / text greys must stay readable: de-blue them but NEVER darken
+            // (the darken band would otherwise pull disabled/secondary greys onto the
+            // background colour and make them invisible).
+            boolean isText = ks.contains("foreground") || ks.contains("text")
+                    || ks.contains("caret") || ks.contains("accelerator");
+            Color rep = remap((Color) val, isText);
             if (rep != null) d.put(key, rep);
         }
-        // belt-and-suspenders for the few keys that drive the most visible surfaces
-        UIManager.put("Component.accentColor", SEL);   // kills FlatLaf's blue focus/selection
-        UIManager.put("TableHeader.background", HEADER);
-        UIManager.put("jdp.darkChrome", Boolean.TRUE);
+        d.put("Component.accentColor", SEL);   // FlatLaf derives focus/selection from this
+        d.put("TableHeader.background", HEADER);
+        d.put("jdp.darkChrome", Boolean.TRUE);
 
         for (Window w : Window.getWindows()) {
             try { SwingUtilities.updateComponentTreeUI(w); } catch (Exception ignore) { }
@@ -106,28 +122,33 @@ public class DialogConfirmAgent {
 
     /**
      * Map a FlatLaf default colour onto the Carbon greyscale.
-     *   - blue accent           -> grey selection #525252 (no colour accent)
-     *   - neutral chrome grey    -> same grey darkened onto the #161616 scale
+     *   - blue accent          -> neutral grey of the same brightness (hue removed,
+     *                             light/dark relationship preserved)
+     *   - neutral chrome grey   -> darkened onto the #161616 scale (backgrounds/borders
+     *                             only; skipped when isText so text stays readable)
      *   - everything else (light text, red/amber error colours, green) -> unchanged
      * Returns null to leave the colour as-is. Alpha is preserved.
      */
-    private static Color remap(Color c) {
+    private static Color remap(Color c, boolean isText) {
         int r = c.getRed(), g = c.getGreen(), b = c.getBlue(), a = c.getAlpha();
         int max = Math.max(r, Math.max(g, b));
         int min = Math.min(r, Math.min(g, b));
         int bright = (r + g + b) / 3;
 
-        // FlatLaf's blue accent (focus borders, selection, links) -> neutral grey
+        // FlatLaf's blue accent (focus borders, selection, links) -> neutral grey.
         if (b > r + 24 && b > g + 12 && b > 90) {
-            return new ColorUIResource(new Color(SEL.getRed(), SEL.getGreen(), SEL.getBlue(), a));
+            return new ColorUIResource(new Color(bright, bright, bright, a));
         }
-        // neutral-ish grey in the chrome band -> darken onto the #161616 scale.
-        // band stops at 110 so light foreground/disabled-text greys stay readable.
-        if ((max - min) <= 22 && bright >= 26 && bright <= 110) {
+        // Background / border chrome greys -> darken onto the #161616 scale.
+        if (!isText && (max - min) <= 22 && bright >= 26 && bright <= 110) {
             int o = Math.max(0x12, Math.round(bright * 0.40f));
             return new ColorUIResource(new Color(o, o, o, a));
         }
         return null;
+    }
+
+    private static ColorUIResource withAlpha(Color c, int a) {
+        return new ColorUIResource(new Color(c.getRed(), c.getGreen(), c.getBlue(), a));
     }
 
     // --------------------------------------------------------------- dialogs

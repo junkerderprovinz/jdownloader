@@ -5,12 +5,12 @@
 # "colorfor*" keys themselves — that is why the content areas go dark WITHOUT
 # the old JVM agent (same mechanism the community "Material Darker" theme uses).
 #
-#   Dark  = JD_Plain (flat) icons + KDE Breeze Dark "colorfor*" colours
+#   Dark  = JD_Plain (flat) icons + IBM Carbon #161616 monochrome "colorfor*" colours
 #   Light = JD_Plain (flat) icons + JD's default light colours
 #
 # Always overwrites — env var wins over anything JD wrote on the previous run.
 
-THEME="${1:-JD_Plain_Dark}"
+THEME="${1:-Dark}"
 JD_DIR="${JD_INST_DIR:-/config/JDownloader}"
 JD_CFG="${JD_DIR}/cfg"
 log() { echo "[jdownloader-theme] $*"; }
@@ -39,7 +39,7 @@ PYEOF
 
 # 2) JD's native per-LAF colours + icon set.
 if [ "${LAF}" = "FLATLAF_DARK" ]; then
-    # JD_Plain (flat) icons + KDE Breeze Dark "colorfor*" palette. JD reads these
+    # JD_Plain (flat) icons + IBM Carbon #161616 "colorfor*" palette. JD reads these
     # for the download list, link grabber, settings table, progress bars, etc.
     python3 - "${JD_CFG}/laf/FlatDarkLaf.json" <<'PYEOF'
 import json, os, sys

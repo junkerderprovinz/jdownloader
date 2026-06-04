@@ -52,6 +52,14 @@ case "${NORM}" in
     *)               LOCALE="${CODE}.UTF-8"; JD_CODE="${CODE}";;
 esac
 
+# Harden: only accept a safe locale-code charset (the *) fallback copies the raw
+# user value). Anything else becomes "system" so it cannot break the seeded JSON
+# or be interpolated unsafely downstream.
+if [[ -n "${JD_CODE}" && ! "${JD_CODE}" =~ ^[A-Za-z]{2}([_-][A-Za-z0-9]{2,4})?$ ]]; then
+    log "Ignoring unsafe JD_LANG value '${CODE}' – using system language"
+    LOCALE=""; JD_CODE=""
+fi
+
 if [[ -z "${LOCALE}" ]]; then
     log "JD_LANG=system – removing forced language"
     rm -f "${ENV_FILE}"
@@ -88,18 +96,19 @@ EOF
 else
     # Nur den langCode-Wert aktualisieren (JD schreibt weitere Keys darunter)
     if command -v python3 >/dev/null 2>&1; then
-        python3 -c "
+        python3 - "${LOCALE_JSON}" "${JD_CODE}" <<'PY' 2>/dev/null || true
 import json, sys
+path, code = sys.argv[1], sys.argv[2]
 try:
-    with open('${LOCALE_JSON}') as f:
+    with open(path) as f:
         data = json.load(f)
-    data['langCode'] = '${JD_CODE}'
-    with open('${LOCALE_JSON}', 'w') as f:
+    data['langCode'] = code
+    with open(path, 'w') as f:
         json.dump(data, f, indent=2)
-    print('[jdownloader-language] Updated langCode in ${LOCALE_JSON}')
+    print('[jdownloader-language] Updated langCode in ' + path)
 except Exception as e:
-    print(f'[jdownloader-language] Could not update locale JSON: {e}')
-" 2>/dev/null || true
+    print('[jdownloader-language] Could not update locale JSON:', e)
+PY
     fi
 fi
 
