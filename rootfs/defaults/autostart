@@ -13,6 +13,17 @@ export LC_ALL="${LC_ALL:-de_DE.UTF-8}"
 # area outside JD's window is dark instead of the default grey/white.
 xsetroot -solid '#232629' 2>/dev/null || true
 
+# Provide a minimal system tray so java.awt.SystemTray.isSupported() is TRUE.
+# JD's SystemTrayExtension is bundled in Core.jar and probes isSupported() on
+# every start regardless of config; with no tray it shows the "system tray isn't
+# supported" popup. stalonetray owns the _NET_SYSTEM_TRAY selection so the probe
+# passes and the popup never appears. 1x1 in the top-left corner, hidden behind
+# the maximised JD window — effectively invisible.
+if command -v stalonetray >/dev/null 2>&1 && ! pgrep -x stalonetray >/dev/null 2>&1; then
+    stalonetray --geometry 1x1+0+0 --icon-size 1 --background '#232629' \
+        >/dev/null 2>&1 &
+fi
+
 JD_DIR="${JD_INST_DIR:-/config/JDownloader}"
 LAUNCHER="${JD_DIR}/JDownloader.jar"
 
