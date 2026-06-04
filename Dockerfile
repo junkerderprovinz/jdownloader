@@ -16,20 +16,6 @@
 #
 ARG BASE_TAG=ubuntunoble
 
-# ---------------------------------------------------------------------------
-# Builder stage — compiles the JVM agent that forces dark UIManager colours
-# after JD's LAF has initialized. This bypasses JD's internal colour logic
-# entirely — colours are pushed at the Swing UIManager layer directly.
-# ---------------------------------------------------------------------------
-FROM eclipse-temurin:21-jdk AS agent-builder
-WORKDIR /build
-COPY agent/ /build/
-RUN set -eux; \
-    mkdir -p out; \
-    find src -name '*.java' > sources.txt; \
-    javac -d out @sources.txt; \
-    jar cfm jd-dark-agent.jar manifest.mf -C out .
-
 FROM ghcr.io/linuxserver/baseimage-kasmvnc:${BASE_TAG}
 
 LABEL maintainer="junkerderprovinz"
@@ -93,11 +79,8 @@ RUN tr -d '\r' < /usr/local/share/banner-raw.txt > /usr/local/share/banner.txt
 RUN : > /etc/s6-overlay/s6-rc.d/init-adduser/branding 2>/dev/null || \
     true
 
-# Download FlatLaf and patch FlatDarkLaf.properties with Breeze Dark colours.
-# Result: FLATLAF_DARK visually = JD Plain Dark (no install dialog, no extra step).
-# Bake in the JVM dark-theme agent built in the agent-builder stage.
-COPY --from=agent-builder /build/jd-dark-agent.jar /opt/JDownloader/jd-dark-agent.jar
-
+# Download FlatLaf and patch FlatDarkLaf.properties with Breeze Dark colours so
+# the window chrome (FLATLAF_DARK) matches the KDE Breeze Dark content palette.
 RUN wget -q -O /tmp/flatlaf-orig.jar \
         "https://repo1.maven.org/maven2/com/formdev/flatlaf/3.7/flatlaf-3.7.jar" && \
     python3 /usr/local/bin/patch-flatlaf.py \
@@ -111,7 +94,6 @@ RUN chmod +x \
     /usr/local/bin/patch-flatlaf.py \
     /usr/local/bin/seed-flatlaf.py \
     /usr/local/bin/disable-tray.py \
-    /usr/local/bin/overlay-dark-colors.py \
     /usr/local/bin/kill-tray-extension.py \
     /usr/local/bin/print-banner.sh \
     /etc/cont-init.d/10-jdownloader-setup \

@@ -102,8 +102,7 @@ fi
 /usr/local/bin/jdownloader-theme.sh "${JD_THEME:-JD_Plain_Dark}" || log "theme hook failed (non-fatal)"
 
 # Disable system tray extension — not supported in containers, would otherwise
-# trigger an error popup on every start. The JVM agent also dismisses the
-# popup at runtime if JD still raises it; this is the persistent baseline.
+# trigger an error popup on every start.
 python3 /usr/local/bin/disable-tray.py "${JD_CFG}" 2>/dev/null || \
     log "disable-tray failed (non-fatal)"
 
