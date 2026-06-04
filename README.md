@@ -267,6 +267,7 @@ find . -name '*.xml' | xargs xmllint --noout
 - [**JDownloader 2**](https://jdownloader.org) — AppWork GmbH & the JDownloader team
 - [**LinuxServer.io**](https://www.linuxserver.io) — for the excellent [`baseimage-kasmvnc`](https://github.com/linuxserver/docker-baseimage-kasmvnc)
 - [**KasmVNC**](https://github.com/kasmtech/KasmVNC) — for remote desktop in a browser that actually works
+- [**Icons8**](https://icons8.com) — the bundled "JD Plain" flat icon set uses JDownloader's Icons8 icons, redistributed verbatim under [CC BY-ND 3.0](https://icons8.com/license)
 - Inspiration: jlesage and jaymoulin JDownloader containers — they paved the way
 
 <br>
