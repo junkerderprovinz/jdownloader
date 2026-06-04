@@ -70,9 +70,7 @@ RUN set -eux; \
         # Locale
         locales coreutils \
         # openbox-xdg-autostart braucht PyXDG
-        python3-xdg \
-        # Fenster-Steuerung: openbox-Titelleiste ausblenden + JD maximieren (Kiosk)
-        wmctrl x11-utils; \
+        python3-xdg; \
     # Font-Cache aufbauen damit Java die Fonts beim ersten Start sofort findet
     fc-cache -f -v >/dev/null 2>&1 || true; \
     apt-get clean; \
