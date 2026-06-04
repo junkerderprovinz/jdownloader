@@ -9,9 +9,9 @@ export LANG="${LANG:-de_DE.UTF-8}"
 export LANGUAGE="${LANGUAGE:-de_DE:de:en}"
 export LC_ALL="${LC_ALL:-de_DE.UTF-8}"
 
-# Set X11 root window (desktop background) to Breeze Dark so the
-# area outside JD's window is dark instead of the default grey/white.
-xsetroot -solid '#232629' 2>/dev/null || true
+# Set X11 root window (desktop background) to the theme's #161616 base so
+# the area outside JD's window is dark instead of the default grey/white.
+xsetroot -solid '#161616' 2>/dev/null || true
 
 # (JD's "system tray isn't supported" popup — raised by the SystemTrayExtension in
 # Core.jar — is auto-dismissed by the dialog agent; see JAVA_TOOL_OPTIONS below.)
