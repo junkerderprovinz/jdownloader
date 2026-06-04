@@ -82,13 +82,17 @@ RUN tr -d '\r' < /usr/local/share/banner-raw.txt > /usr/local/share/banner.txt
 RUN : > /etc/s6-overlay/s6-rc.d/init-adduser/branding 2>/dev/null || \
     true
 
-# Download FlatLaf and patch FlatDarkLaf.properties with Breeze Dark colours so
-# the window chrome (FLATLAF_DARK) matches the KDE Breeze Dark content palette.
-RUN wget -q -O /tmp/flatlaf-orig.jar \
+# FlatLaf is kept in TWO copies:
+#   flatlaf-official.jar — UNMODIFIED upstream jar, seeded into libs/laf so JD's design
+#       check (compares against the official FlatLaf hash) passes -> the "FLATLAF_DARK
+#       design not installed" popup never fires.
+#   flatlaf.jar — SAME jar with FlatDarkLaf.properties patched to KDE Breeze Dark; loaded
+#       ONLY via the JVM boot classpath so the window chrome is Breeze. A patched jar in
+#       libs/laf would fail JD's hash check and re-trigger the popup, so it stays out of it.
+RUN wget -q -O /opt/JDownloader/flatlaf-official.jar \
         "https://repo1.maven.org/maven2/com/formdev/flatlaf/3.7/flatlaf-3.7.jar" && \
     python3 /usr/local/bin/patch-flatlaf.py \
-        /tmp/flatlaf-orig.jar /opt/JDownloader/flatlaf.jar && \
-    rm /tmp/flatlaf-orig.jar
+        /opt/JDownloader/flatlaf-official.jar /opt/JDownloader/flatlaf.jar
 
 RUN chmod +x \
     /usr/local/bin/jdownloader-language.sh \

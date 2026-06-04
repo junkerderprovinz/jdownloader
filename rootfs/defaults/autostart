@@ -41,7 +41,7 @@ echo "[jdownloader-autostart] Starting JDownloader (first start may take up to 5
 while true; do
     # Pre-start: seed Breeze-Dark-patched FlatLaf (confirm=true → no install dialog).
     python3 /usr/local/bin/seed-flatlaf.py \
-        /opt/JDownloader/flatlaf.jar \
+        /opt/JDownloader/flatlaf-official.jar \
         "${JD_DIR}/libs/laf" 2>/dev/null || true
     # Lock FlatLaf JAR + dep.json so JD's AWU cannot replace them during install.
     chmod 444 \
@@ -122,7 +122,7 @@ while true; do
     # Re-seed after exit — catches the case where JD's bootstrap downloaded and
     # replaced libs/laf/flatlaf.jar with the upstream (unpatched) version.
     python3 /usr/local/bin/seed-flatlaf.py \
-        /opt/JDownloader/flatlaf.jar \
+        /opt/JDownloader/flatlaf-official.jar \
         "${JD_DIR}/libs/laf" 2>/dev/null || true
 
     # Wait briefly — JD may have spawned a self-updated process (SmartRlyExitRequest)

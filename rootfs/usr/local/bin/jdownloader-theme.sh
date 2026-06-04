@@ -91,6 +91,10 @@ d.update({
     # toggles
     "tablealternaterowhighlightenabled":          True,
     "textantialiasenabled":                       True,
+    # No FlatLaf-drawn window title bar: openbox already runs JD's window
+    # undecorated + maximised (kiosk). Without this, FlatLaf paints its own
+    # title bar back inside the undecorated frame.
+    "windowdecorationenabled":                    False,
 })
 os.makedirs(os.path.dirname(path), exist_ok=True)
 json.dump(d, open(path, "w"), indent=2)
@@ -106,6 +110,7 @@ if os.path.exists(path):
     try: d = json.load(open(path))
     except Exception: pass
 d["iconsetid"] = "flat"
+d["windowdecorationenabled"] = False  # no FlatLaf-drawn title bar (kiosk)
 os.makedirs(os.path.dirname(path), exist_ok=True)
 json.dump(d, open(path, "w"), indent=2)
 print("[jdownloader-theme] light: iconsetid=flat -> %s" % path)
