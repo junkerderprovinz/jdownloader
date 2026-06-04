@@ -67,13 +67,15 @@ while true; do
         # LAF the moment JD's main starts; window chrome is dark from frame 0.
         JVM_OPTS="-Xbootclasspath/a:${LAF_JAR} -Dswing.defaultlaf=com.formdev.flatlaf.FlatDarkLaf"
     fi
-    if [ -f "${AGENT_JAR}" ]; then
-        # JVM agent forces UIManager keys (Table.background, List.background,
-        # Panel.background, etc.) AFTER JD's LAF init — guarantees the
-        # download list and link grabber render dark regardless of any colour
-        # logic in JD's custom renderers.
-        JVM_OPTS="${JVM_OPTS} -javaagent:${AGENT_JAR}"
-    fi
+    # [v2.0 dark-theme rework — iteration 1] JVM agent DISABLED on purpose:
+    # we are verifying whether the Breeze-patched FlatLaf (loaded via the boot
+    # classpath above) darkens the content areas (download list / link grabber /
+    # settings) ON ITS OWN, so the agent band-aid can be dropped. If the content
+    # stays dark without it, the agent goes for good; if it turns light, we know
+    # the agent was doing the work and re-enable it.
+    # if [ -f "${AGENT_JAR}" ]; then
+    #     JVM_OPTS="${JVM_OPTS} -javaagent:${AGENT_JAR}"
+    # fi
     if [ -n "${JVM_OPTS}" ]; then
         export JAVA_TOOL_OPTIONS="${JVM_OPTS}"
     else
