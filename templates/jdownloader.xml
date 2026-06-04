@@ -83,10 +83,6 @@
   <!-- ========================================================
        ADVANCED
        ======================================================== -->
-  <Config Name="Title (browser tab)" Target="TITLE" Default="JDownloader 2" Mode=""
-          Description="Title shown in browser tab and KasmVNC top bar."
-          Type="Variable" Display="advanced" Required="false" Mask="false">JDownloader 2</Config>
-
   <Config Name="Timezone (TZ)" Target="TZ" Default="Europe/Vienna" Mode=""
           Description="Container timezone."
           Type="Variable" Display="always" Required="false" Mask="false">Europe/Vienna</Config>

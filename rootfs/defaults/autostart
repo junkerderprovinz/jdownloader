@@ -54,11 +54,16 @@ while true; do
     # Put FlatLaf on the JVM boot classpath so it is available before JD creates
     # any Swing components — fixes the half-light/half-dark rendering issue caused
     # by FlatLaf loading too late in JD's dynamic class-loading sequence.
-    LAF_JAR="${JD_DIR}/libs/laf/flatlaf.jar"
+    #
+    # IMPORTANT: load FlatLaf from the IMMUTABLE image copy (/opt), NOT the
+    # AWU-managed libs/laf copy. On a fresh /config, JD's auto-updater DELETES
+    # libs/laf/flatlaf.jar during the first install — which leaves FLATLAF_DARK
+    # unable to load and the whole UI falls back to light. /opt/JDownloader/flatlaf.jar
+    # is baked into the image, read-only and always present, so FlatDarkLaf loads
+    # from the very first launch. JAVA_TOOL_OPTIONS is inherited by JD's relaunched
+    # child JVM, so the actual app JVM gets it too.
+    LAF_JAR="/opt/JDownloader/flatlaf.jar"
     if [ -f "${LAF_JAR}" ]; then
-        # FlatLaf on boot classpath + swing.defaultlaf — FlatDarkLaf is the
-        # LAF the moment JD's main starts; window chrome is dark from frame 0.
-        # JAVA_TOOL_OPTIONS is inherited by JD's self-updated child JVM too.
         export JAVA_TOOL_OPTIONS="-Xbootclasspath/a:${LAF_JAR} -Dswing.defaultlaf=com.formdev.flatlaf.FlatDarkLaf"
     else
         unset JAVA_TOOL_OPTIONS

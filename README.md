@@ -148,7 +148,6 @@ services:
 | `TZ` | `Europe/Vienna` | Timezone |
 | `CUSTOM_USER` | _(empty)_ | KasmVNC username — leave empty for no auth |
 | `PASSWORD` | _(empty)_ | KasmVNC password — **set this if exposed beyond LAN** |
-| `TITLE` | `JDownloader 2` | Browser tab title |
 | `UMASK` | `022` | File-creation mask |
 
 | Port | Purpose | | Volume | Purpose |
