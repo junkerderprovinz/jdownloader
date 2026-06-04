@@ -36,13 +36,16 @@ fi
 # Ensure cfg dir exists (language/theme scripts seed files here)
 mkdir -p "${JD_CFG}"
 
-# Copy bundled themes from image into config volume
+# Seed the bundled "flat" icon set (JD_Plain / icons8) into the config volume so
+# iconsetid=flat resolves from the very first start. JD ships this set but only
+# provisions it on GUI selection, so a fresh /config would otherwise fall back to
+# wrong icons. (icons8 CC BY-ND 3.0 — bundled verbatim, see flat/.../icons8.license.)
 THEMES_SRC="/opt/JDownloader/themes-default"
 THEMES_DST="${JD_DIR}/themes"
 if [[ -d "${THEMES_SRC}" ]]; then
     mkdir -p "${THEMES_DST}"
     cp -rf "${THEMES_SRC}/." "${THEMES_DST}/"
-    log "bundled themes copied → ${THEMES_DST}"
+    log "bundled flat icon set seeded → ${THEMES_DST}/flat"
 fi
 
 # Pre-seed patched FlatLaf 3.7 (Breeze Dark) into JD's libs/laf/.
@@ -53,35 +56,6 @@ python3 /usr/local/bin/seed-flatlaf.py \
     "${JD_DIR}/libs/laf" \
     && log "FlatLaf pre-seeded → ${JD_DIR}/libs/laf/flatlaf.jar" \
     || log "FlatLaf seed failed (non-fatal)"
-
-# Build full JD_Plain_Dark: JD_Plain icons + Breeze Dark colours
-# (creates full copy with icons if JD_Plain is already installed, else colour-only stub)
-/usr/local/bin/jdownloader-create-dark-theme.py \
-    || log "create-dark-theme: JD_Plain not yet installed, stub written"
-
-# Seed themes/FLATLAF_DARK/ = JD_Plain icons + Breeze Dark colours, named FLATLAF_DARK
-# JD discovers this directory on startup and treats the theme as already installed
-python3 - <<PYEOF 2>/dev/null || true
-import json, os, shutil
-src = "${THEMES_DST}/JD_Plain_Dark"
-dst = "${THEMES_DST}/FLATLAF_DARK"
-if os.path.isdir(src):
-    if os.path.isdir(dst):
-        shutil.rmtree(dst)
-    shutil.copytree(src, dst)
-    tj = os.path.join(dst, "theme.json")
-    if os.path.exists(tj):
-        with open(tj) as f:
-            d = json.load(f)
-        d["id"]   = "FLATLAF_DARK"
-        d["name"] = "FlatLaf Dark"
-        # Keep parent: JD_Plain so JD can resolve icons from the bundled JD_Plain set
-        with open(tj, "w") as f:
-            json.dump(d, f, indent=2)
-    print("[jdownloader-setup] themes/FLATLAF_DARK ← JD_Plain_Dark (Breeze Dark, full)")
-else:
-    print("[jdownloader-setup] JD_Plain_Dark not ready, FLATLAF_DARK not seeded yet")
-PYEOF
 
 # Language
 /usr/local/bin/jdownloader-language.sh "${JD_LANG:-de}" || log "language hook failed (non-fatal)"

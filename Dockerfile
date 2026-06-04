@@ -90,7 +90,6 @@ RUN wget -q -O /tmp/flatlaf-orig.jar \
 RUN chmod +x \
     /usr/local/bin/jdownloader-language.sh \
     /usr/local/bin/jdownloader-theme.sh \
-    /usr/local/bin/jdownloader-create-dark-theme.py \
     /usr/local/bin/patch-flatlaf.py \
     /usr/local/bin/seed-flatlaf.py \
     /usr/local/bin/disable-tray.py \
