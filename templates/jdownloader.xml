@@ -24,9 +24,11 @@
     • Persistent config and downloads in /config and /downloads.&#xD;
     &#xD;
     Notes:&#xD;
-    • On the very first start, JDownloader downloads and installs itself –&#xD;
-      this can take up to 5 minutes. The WebUI will show a black screen&#xD;
-      during installation — this is normal. Do not restart the container.&#xD;
+    • FIRST START takes a few minutes: JDownloader installs itself + its dark&#xD;
+      theme. The WebUI stays BLACK until done — this is normal, do NOT restart.&#xD;
+      Watch the container log and wait for the "JDOWNLOADER IS READY" banner.&#xD;
+    • First start only: JDownloader may ask ONCE to install its design and a few&#xD;
+      extensions — click [OK] / [Install now]. After that it stays dark, no prompts.&#xD;
     • Default WebUI port is 3000 (HTTP). 3001 (HTTPS) is also exposed.&#xD;
     • PUID/PGID default to 99/100 (nobody/users on Unraid).&#xD;
     • Auth: leave Username and Password EMPTY for no login.&#xD;
