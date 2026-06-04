@@ -69,7 +69,7 @@ d.update({
     "colorfortableselectedrowsforeground":        "#fff4f4f4",
     "colorfortablemouseoverrowbackground":        "#ff2a2a2a",
     "colorfortablemouseoverrowforeground":        "#fff4f4f4",
-    "colorfortablerowgap":                        "#ff393939",
+    "colorfortablerowgap":                        "#ff161616",  # = base; a lighter gap shows as a pale top-border on rows
     "colorfortablesortedcolumnview":              "#ff262626",
     "colorfortablefilteredview":                  "#ffa8a8a8",
     "colorfortooltipforeground":                  "#fff4f4f4",
