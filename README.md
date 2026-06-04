@@ -105,7 +105,7 @@ Click **Apply**. The first start takes **up to 5 minutes** while JDownloader dow
 
 ### Step 3 — Open the WebUI
 
-`http://<unraid-ip>:3000/` (HTTP) or `https://<unraid-ip>:3001/` (HTTPS, self-signed).
+Use **`https://<unraid-ip>:3001/`** (this is what the template's WebUI button opens). HTTPS is needed for **seamless clipboard** — copy on your PC and paste straight into JD; accept the self-signed cert warning once. Plain `http://<unraid-ip>:3000/` also works, but browsers block its clipboard (you'd use KasmVNC's clipboard panel).
 
 The JDownloader GUI appears automatically once the install completes.
 
@@ -187,6 +187,13 @@ The base image also supports `/config/custom-cont-init.d/` for your own init scr
 - Try `https://<ip>:3001/` — sometimes browsers block WebSockets over plain HTTP
 - **First start takes a few minutes** — JDownloader installs itself + its dark theme; the screen stays black until done. Watch the container log for the **`JDOWNLOADER IS READY`** banner, then refresh. Don't restart the container.
 - **First start only:** JDownloader may ask once to install its design + a few extensions — click **OK** / **Install now**. Afterwards it stays dark with no prompts.
+</details>
+
+<details>
+<summary><b>Can't paste into JD / clipboard only works via the KasmVNC panel</b></summary>
+
+- Open the WebUI over **HTTPS** (`https://<ip>:3001/` — the template's WebUI button). Browsers only allow the seamless clipboard API in a **secure context**; over plain HTTP it's blocked, so you'd have to use KasmVNC's clipboard panel.
+- If prompted, allow the browser's clipboard permission (lock icon → site settings).
 </details>
 
 <details>
