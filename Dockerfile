@@ -121,6 +121,35 @@ RUN chmod +x \
     /defaults/autostart
 
 # ---------------------------------------------------------------------------
+# Browser-tab favicon
+# ---------------------------------------------------------------------------
+# The web UI is served by the "kclient" wrapper (Node) on top of KasmVNC. The
+# browser tab favicon is its /favicon.ico — the page has no working <link rel=icon>
+# (only an apple-touch-icon that 404s), so the browser falls back to /favicon.ico,
+# i.e. the file /kclient/public/favicon.ico. We overwrite the real kclient favicon
+# (+ the kclient app icon.png, served at /public/icon.png, + the inner client icons
+# for good measure). The build fails loudly if the kclient favicon is gone (layout
+# changed), so CI / the weekly rebuild surfaces the regression. (Same fix as krusader.)
+COPY .github/assets/icon.png    /usr/local/share/jdownloader-icon.png
+COPY .github/assets/favicon.ico /usr/local/share/jdownloader-favicon.ico
+RUN set -eux; \
+    fav=/kclient/public/favicon.ico; \
+    [ -f "$fav" ] || { echo "ERROR: $fav missing — kclient layout changed, update the favicon override"; exit 1; }; \
+    cp /usr/local/share/jdownloader-favicon.ico "$fav"; \
+    echo "jdownloader: overwrote tab favicon $fav"; \
+    if [ -f /kclient/public/icon.png ]; then \
+        cp /usr/local/share/jdownloader-icon.png /kclient/public/icon.png; \
+        echo "jdownloader: overwrote /kclient/public/icon.png"; \
+    fi; \
+    n=0; \
+    for dest in /usr/share/kasmvnc/www/app/images/icons/368_kasm_logo_only_*.png; do \
+        [ -f "$dest" ] || continue; \
+        cp /usr/local/share/jdownloader-icon.png "$dest"; \
+        n=$((n + 1)); \
+    done; \
+    echo "jdownloader: also overwrote $n inner KasmVNC client icon(s)"
+
+# ---------------------------------------------------------------------------
 # Standard-ENV (durch Unraid-Template überschreibbar)
 # ---------------------------------------------------------------------------
 # JD_LANG     – UI-Sprache: ISO-Code (de, en, fr, ...)
