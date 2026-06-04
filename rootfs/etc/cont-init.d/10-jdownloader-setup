@@ -48,11 +48,12 @@ if [[ -d "${THEMES_SRC}" ]]; then
     log "bundled flat icon set seeded → ${THEMES_DST}/flat"
 fi
 
-# Pre-seed patched FlatLaf 3.7 (Breeze Dark) into JD's libs/laf/.
-# seed-flatlaf.py computes the SHA256 of our patched JAR and writes a matching
-# dep.json so JD's AWU registry considers FlatLaf already installed.
+# Pre-seed the OFFICIAL (unmodified) FlatLaf 3.7 into JD's libs/laf/ so JD's design
+# check passes and the "FLATLAF_DARK not installed" popup never fires. The Breeze-
+# patched jar is loaded separately via the boot classpath (see autostart) for the
+# window chrome; it must NOT go into libs/laf or its hash mismatch re-triggers the popup.
 python3 /usr/local/bin/seed-flatlaf.py \
-    /opt/JDownloader/flatlaf.jar \
+    /opt/JDownloader/flatlaf-official.jar \
     "${JD_DIR}/libs/laf" \
     && log "FlatLaf pre-seeded → ${JD_DIR}/libs/laf/flatlaf.jar" \
     || log "FlatLaf seed failed (non-fatal)"
