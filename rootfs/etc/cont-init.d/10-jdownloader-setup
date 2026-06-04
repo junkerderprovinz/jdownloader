@@ -48,15 +48,10 @@ if [[ -d "${THEMES_SRC}" ]]; then
     log "bundled flat icon set seeded → ${THEMES_DST}/flat"
 fi
 
-# Pre-seed the OFFICIAL (unmodified) FlatLaf 3.7 into JD's libs/laf/ so JD's design
-# check passes and the "FLATLAF_DARK not installed" popup never fires. The Breeze-
-# patched jar is loaded separately via the boot classpath (see autostart) for the
-# window chrome; it must NOT go into libs/laf or its hash mismatch re-triggers the popup.
-python3 /usr/local/bin/seed-flatlaf.py \
-    /opt/JDownloader/flatlaf-official.jar \
-    "${JD_DIR}/libs/laf" \
-    && log "FlatLaf pre-seeded → ${JD_DIR}/libs/laf/flatlaf.jar" \
-    || log "FlatLaf seed failed (non-fatal)"
+# NOTE: FlatLaf is intentionally NOT pre-seeded into libs/laf. JD installs and
+# registers the FLATLAF_DARK design itself on first run (one-time prompt); seeding
+# our own jar made JD never register it, so it re-asked every start. The Breeze
+# chrome is provided by the /opt boot classpath (see autostart), not libs/laf.
 
 # Language
 /usr/local/bin/jdownloader-language.sh "${JD_LANG:-de}" || log "language hook failed (non-fatal)"

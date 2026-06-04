@@ -82,23 +82,19 @@ RUN tr -d '\r' < /usr/local/share/banner-raw.txt > /usr/local/share/banner.txt
 RUN : > /etc/s6-overlay/s6-rc.d/init-adduser/branding 2>/dev/null || \
     true
 
-# FlatLaf is kept in TWO copies:
-#   flatlaf-official.jar — UNMODIFIED upstream jar, seeded into libs/laf so JD's design
-#       check (compares against the official FlatLaf hash) passes -> the "FLATLAF_DARK
-#       design not installed" popup never fires.
-#   flatlaf.jar — SAME jar with FlatDarkLaf.properties patched to KDE Breeze Dark; loaded
-#       ONLY via the JVM boot classpath so the window chrome is Breeze. A patched jar in
-#       libs/laf would fail JD's hash check and re-trigger the popup, so it stays out of it.
-RUN wget -q -O /opt/JDownloader/flatlaf-official.jar \
+# FlatLaf, patched with KDE Breeze Dark colours in FlatDarkLaf.properties. Loaded
+# ONLY via the JVM boot classpath (see autostart) so the window chrome is Breeze —
+# it never goes into libs/laf, which JD installs/manages for its own design registry.
+RUN wget -q -O /tmp/flatlaf-orig.jar \
         "https://repo1.maven.org/maven2/com/formdev/flatlaf/3.7/flatlaf-3.7.jar" && \
     python3 /usr/local/bin/patch-flatlaf.py \
-        /opt/JDownloader/flatlaf-official.jar /opt/JDownloader/flatlaf.jar
+        /tmp/flatlaf-orig.jar /opt/JDownloader/flatlaf.jar && \
+    rm /tmp/flatlaf-orig.jar
 
 RUN chmod +x \
     /usr/local/bin/jdownloader-language.sh \
     /usr/local/bin/jdownloader-theme.sh \
     /usr/local/bin/patch-flatlaf.py \
-    /usr/local/bin/seed-flatlaf.py \
     /usr/local/bin/disable-tray.py \
     /usr/local/bin/kill-tray-extension.py \
     /usr/local/bin/print-banner.sh \
