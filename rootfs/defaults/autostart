@@ -36,7 +36,40 @@ if [ ! -f "${LAUNCHER}" ]; then
         || { echo "[jdownloader-autostart] ERROR: download failed" >&2; rm -f "${LAUNCHER}.tmp"; exit 1; }
 fi
 
-echo "[jdownloader-autostart] Starting JDownloader (first start may take up to 5 minutes)" >&2
+echo "" >&2
+echo "  ============================================================" >&2
+echo "   JDownloader is starting." >&2
+echo "   The FIRST start installs JDownloader + its dark theme and" >&2
+echo "   can take a few minutes — the WebUI stays BLACK until done." >&2
+echo "   Do NOT restart the container. Wait for the READY banner below." >&2
+echo "  ============================================================" >&2
+echo "" >&2
+
+# Background: announce (loud + once) when JDownloader is actually up, so the user
+# knows the long first-start install has finished and the WebUI is usable. JD's
+# local Click'n'Load API (127.0.0.1:9666) listens once JD is running; require it
+# stable for ~20s so it does not fire during the install's restart cycle.
+(
+    stable=0
+    while [ ! -f /tmp/.jd-ready ]; do
+        if python3 -c "import socket,sys; s=socket.socket(); s.settimeout(1); sys.exit(0 if s.connect_ex(('127.0.0.1',9666))==0 else 1)" 2>/dev/null; then
+            stable=$((stable + 1))
+        else
+            stable=0
+        fi
+        if [ "${stable}" -ge 4 ]; then
+            : > /tmp/.jd-ready
+            echo "" >&2
+            echo "  ############################################################" >&2
+            echo "   JDOWNLOADER IS READY  ->  open the WebUI now (port 3000)" >&2
+            echo "  ############################################################" >&2
+            echo "" >&2
+        fi
+        sleep 5
+    done
+) &
+
+echo "[jdownloader-autostart] Starting JDownloader (first start may take a few minutes)" >&2
 
 while true; do
     # Re-seed the bundled flat icon set before each start. JD resets
@@ -64,23 +97,13 @@ while true; do
         "${JD_DIR}/cfg/org.jdownloader.gui.jdtrayicon.TrayExtensionConfig.json" \
         2>/dev/null || true
 
-    # Put FlatLaf on the JVM boot classpath so it is available before JD creates
-    # any Swing components — fixes the half-light/half-dark rendering issue caused
-    # by FlatLaf loading too late in JD's dynamic class-loading sequence.
-    #
-    # IMPORTANT: load FlatLaf from the IMMUTABLE image copy (/opt), NOT the
-    # AWU-managed libs/laf copy. On a fresh /config, JD's auto-updater DELETES
-    # libs/laf/flatlaf.jar during the first install — which leaves FLATLAF_DARK
-    # unable to load and the whole UI falls back to light. /opt/JDownloader/flatlaf.jar
-    # is baked into the image, read-only and always present, so FlatDarkLaf loads
-    # from the very first launch. JAVA_TOOL_OPTIONS is inherited by JD's relaunched
-    # child JVM, so the actual app JVM gets it too.
-    LAF_JAR="/opt/JDownloader/flatlaf.jar"
-    if [ -f "${LAF_JAR}" ]; then
-        export JAVA_TOOL_OPTIONS="-Xbootclasspath/a:${LAF_JAR} -Dswing.defaultlaf=com.formdev.flatlaf.FlatDarkLaf"
-    else
-        unset JAVA_TOOL_OPTIONS
-    fi
+    # FlatLaf is deliberately NOT forced onto the JVM boot classpath. A
+    # boot-classpath jar has a null classloader, and FlatLaf's lazy UI-delegate
+    # loading then throws (FlatLaf.java:817, getClassLoader() == null) and crashes
+    # JD's GUI in a restart loop. JD installs and loads the official FlatLaf
+    # (FLATLAF_DARK design) itself via its own classloader on first run; the dark
+    # *content* colours come from JD's native colorfor* config (jdownloader-theme.sh).
+    unset JAVA_TOOL_OPTIONS
 
     # Title bar / maximise is handled by an openbox <application> rule (see
     # 10-jdownloader-setup) — openbox only honours decorations at map time, so a
