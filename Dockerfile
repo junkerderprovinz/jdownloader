@@ -16,6 +16,21 @@
 #
 ARG BASE_TAG=ubuntunoble
 
+# ---------------------------------------------------------------------------
+# Builder stage — compiles the tiny dialog-confirm agent. JD FORCES its first-run /
+# update installer dialogs whenever the GUI is visible (UpdateController), so no
+# config can suppress them; this agent just auto-clicks them. It does NOT touch
+# colours (those come from JD's native colorfor* config).
+# ---------------------------------------------------------------------------
+FROM eclipse-temurin:21-jdk AS agent-builder
+WORKDIR /build
+COPY agent/ /build/
+RUN set -eux; \
+    mkdir -p out; \
+    find src -name '*.java' > sources.txt; \
+    javac -d out @sources.txt; \
+    jar cfm jd-dialog-agent.jar manifest.mf -C out .
+
 FROM ghcr.io/linuxserver/baseimage-kasmvnc:${BASE_TAG}
 
 LABEL maintainer="junkerderprovinz"
@@ -56,10 +71,7 @@ RUN set -eux; \
         # Locale
         locales coreutils \
         # openbox-xdg-autostart braucht PyXDG
-        python3-xdg \
-        # Minimaler System-Tray → java.awt.SystemTray.isSupported()==true,
-        # unterdrückt JDs "tray not supported"-Popup (Extension steckt in Core.jar)
-        stalonetray; \
+        python3-xdg; \
     # Font-Cache aufbauen damit Java die Fonts beim ersten Start sofort findet
     fc-cache -f -v >/dev/null 2>&1 || true; \
     apt-get clean; \
@@ -82,19 +94,13 @@ RUN tr -d '\r' < /usr/local/share/banner-raw.txt > /usr/local/share/banner.txt
 RUN : > /etc/s6-overlay/s6-rc.d/init-adduser/branding 2>/dev/null || \
     true
 
-# FlatLaf, patched with KDE Breeze Dark colours in FlatDarkLaf.properties. Loaded
-# ONLY via the JVM boot classpath (see autostart) so the window chrome is Breeze —
-# it never goes into libs/laf, which JD installs/manages for its own design registry.
-RUN wget -q -O /tmp/flatlaf-orig.jar \
-        "https://repo1.maven.org/maven2/com/formdev/flatlaf/3.7/flatlaf-3.7.jar" && \
-    python3 /usr/local/bin/patch-flatlaf.py \
-        /tmp/flatlaf-orig.jar /opt/JDownloader/flatlaf.jar && \
-    rm /tmp/flatlaf-orig.jar
+# Dialog-confirm agent (compiled in the builder stage); loaded via JAVA_TOOL_OPTIONS
+# in autostart so it auto-confirms JD's forced installer dialogs.
+COPY --from=agent-builder /build/jd-dialog-agent.jar /opt/JDownloader/jd-dialog-agent.jar
 
 RUN chmod +x \
     /usr/local/bin/jdownloader-language.sh \
     /usr/local/bin/jdownloader-theme.sh \
-    /usr/local/bin/patch-flatlaf.py \
     /usr/local/bin/disable-tray.py \
     /usr/local/bin/kill-tray-extension.py \
     /usr/local/bin/print-banner.sh \
