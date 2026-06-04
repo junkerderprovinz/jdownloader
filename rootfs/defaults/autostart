@@ -43,11 +43,6 @@ while true; do
     # the JAR is renamed, JD's extension loader skips it and the probe never runs.
     python3 /usr/local/bin/kill-tray-extension.py "${JD_DIR}" 2>/dev/null || true
 
-    # Overlay Breeze Dark colours onto themes/flat/theme.json so JD's download
-    # list and link grabber (which read from the active iconset theme, not from
-    # the Swing LAF) appear dark instead of white.
-    python3 /usr/local/bin/overlay-dark-colors.py "${JD_DIR}/themes" 2>/dev/null || true
-
     # Disable system tray and lock the cfg files read-only so JD's bootstrap
     # installer cannot overwrite them with enabled=true during first-run setup.
     python3 /usr/local/bin/disable-tray.py "${JD_DIR}/cfg" 2>/dev/null || true
@@ -60,24 +55,11 @@ while true; do
     # any Swing components — fixes the half-light/half-dark rendering issue caused
     # by FlatLaf loading too late in JD's dynamic class-loading sequence.
     LAF_JAR="${JD_DIR}/libs/laf/flatlaf.jar"
-    AGENT_JAR="/opt/JDownloader/jd-dark-agent.jar"
-    JVM_OPTS=""
     if [ -f "${LAF_JAR}" ]; then
         # FlatLaf on boot classpath + swing.defaultlaf — FlatDarkLaf is the
         # LAF the moment JD's main starts; window chrome is dark from frame 0.
-        JVM_OPTS="-Xbootclasspath/a:${LAF_JAR} -Dswing.defaultlaf=com.formdev.flatlaf.FlatDarkLaf"
-    fi
-    # [v2.0 dark-theme rework — iteration 1] JVM agent DISABLED on purpose:
-    # we are verifying whether the Breeze-patched FlatLaf (loaded via the boot
-    # classpath above) darkens the content areas (download list / link grabber /
-    # settings) ON ITS OWN, so the agent band-aid can be dropped. If the content
-    # stays dark without it, the agent goes for good; if it turns light, we know
-    # the agent was doing the work and re-enable it.
-    # if [ -f "${AGENT_JAR}" ]; then
-    #     JVM_OPTS="${JVM_OPTS} -javaagent:${AGENT_JAR}"
-    # fi
-    if [ -n "${JVM_OPTS}" ]; then
-        export JAVA_TOOL_OPTIONS="${JVM_OPTS}"
+        # JAVA_TOOL_OPTIONS is inherited by JD's self-updated child JVM too.
+        export JAVA_TOOL_OPTIONS="-Xbootclasspath/a:${LAF_JAR} -Dswing.defaultlaf=com.formdev.flatlaf.FlatDarkLaf"
     else
         unset JAVA_TOOL_OPTIONS
     fi
@@ -86,10 +68,10 @@ while true; do
     # 10-jdownloader-setup) — openbox only honours decorations at map time, so a
     # runtime _MOTIF_WM_HINTS change via xprop did not work.
     #
-    # -Dsun.awt.disablegrab=true: commonly recommended for Java/Swing under VNC.
-    # NOTE: it does NOT by itself fix the menu-close-on-mouse-release — that is a
-    # VNC pointer-event delivery issue (button state, not press/release), not a
-    # Swing grab issue — but it is harmless, so it stays.
+    # -Dsun.awt.disablegrab=true fixes the File/Settings/Extras menus closing on
+    # mouse-release under KasmVNC (Swing's popup X grab). It only works with the
+    # old title-bar poller gone — that poller kept stealing focus and re-closing
+    # the menus, which previously masked this fix.
     java \
         -Dawt.useSystemAAFontSettings=on \
         -Dswing.aatext=true \

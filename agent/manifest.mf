@@ -1,5 +1,0 @@
-Manifest-Version: 1.0
-Premain-Class: io.github.junkerderprovinz.DarkThemeAgent
-Can-Redefine-Classes: false
-Can-Retransform-Classes: false
-
