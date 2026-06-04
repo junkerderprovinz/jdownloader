@@ -49,6 +49,13 @@ while true; do
         "${JD_DIR}/libs/laf/flatlaf.dep.json" \
         2>/dev/null || true
 
+    # Re-seed the bundled flat icon set + FLATLAF_DARK marker before each start.
+    # JD resets /config/.../themes on install / design changes, which would wipe
+    # the icons seeded in cont-init; re-applying here keeps iconsetid=flat resolving
+    # and the FLATLAF_DARK marker present (so no "design not installed" popup).
+    mkdir -p "${JD_DIR}/themes"
+    cp -rf /opt/JDownloader/themes-default/. "${JD_DIR}/themes/" 2>/dev/null || true
+
     # Remove SystemTrayExtension JAR if JD's bootstrap installed it. The popup
     # 'tray isn't supported' is triggered by the extension's startup probe; if
     # the JAR is renamed, JD's extension loader skips it and the probe never runs.
