@@ -1,5 +1,13 @@
 # Upstream Submission — JDownloader Dark Theme
 
+> **Status 2026-06-04 — acknowledged upstream.** Reported on the forum (thread t=98756,
+> merged into ACRONYM's long-running FlatLAF-theme-issues thread). **Jiaz (JD Manager)
+> confirmed it:** JD still runs Synthetica + FlatLAF in parallel (not fully compatible),
+> which causes these dark-theme issues; they will be gone once JD fully migrates to
+> FlatLAF (no ETA, no individual fix). So **no separate GitHub issue is needed** — it is
+> acknowledged and tracked upstream. This draft is kept for reference only. Our container's
+> JVM-agent workaround stays until JD finishes the FlatLAF migration.
+
 ## 1. Theme Contribution (JD_Plain_Dark)
 
 **Target**: JDownloader Forum -> Suggestions & Requests
