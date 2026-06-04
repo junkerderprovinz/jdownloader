@@ -13,16 +13,8 @@ export LC_ALL="${LC_ALL:-de_DE.UTF-8}"
 # area outside JD's window is dark instead of the default grey/white.
 xsetroot -solid '#232629' 2>/dev/null || true
 
-# Provide a minimal system tray so java.awt.SystemTray.isSupported() is TRUE.
-# JD's SystemTrayExtension is bundled in Core.jar and probes isSupported() on
-# every start regardless of config; with no tray it shows the "system tray isn't
-# supported" popup. stalonetray owns the _NET_SYSTEM_TRAY selection so the probe
-# passes and the popup never appears. 1x1 in the top-left corner, hidden behind
-# the maximised JD window — effectively invisible.
-if command -v stalonetray >/dev/null 2>&1 && ! pgrep -x stalonetray >/dev/null 2>&1; then
-    stalonetray --geometry 1x1+0+0 --icon-size 1 --background '#232629' \
-        >/dev/null 2>&1 &
-fi
+# (JD's "system tray isn't supported" popup — raised by the SystemTrayExtension in
+# Core.jar — is auto-dismissed by the dialog agent; see JAVA_TOOL_OPTIONS below.)
 
 JD_DIR="${JD_INST_DIR:-/config/JDownloader}"
 LAUNCHER="${JD_DIR}/JDownloader.jar"
@@ -77,10 +69,10 @@ while true; do
     # seeded in cont-init; re-applying here keeps iconsetid=flat resolving.
     #
     # NOTE: we deliberately do NOT pre-seed FlatLaf into libs/laf. JD installs and
-    # manages the FLATLAF_DARK design itself (one-time, on first run) and records it
-    # in its own registry; pre-seeding our jar made JD never register the design as
-    # installed, so it re-asked on every start. The Breeze chrome comes from the
-    # /opt boot classpath below, which is invisible to JD's design check.
+    # manages the FLATLAF_DARK design itself (the dialog agent auto-confirms the
+    # install) and records it in its own registry; pre-seeding our jar made JD never
+    # register the design and re-ask every start. Dark chrome = JD's own FlatDarkLaf;
+    # dark content = JD's native colorfor* config (jdownloader-theme.sh).
     mkdir -p "${JD_DIR}/themes"
     cp -rf /opt/JDownloader/themes-default/. "${JD_DIR}/themes/" 2>/dev/null || true
 
@@ -97,13 +89,16 @@ while true; do
         "${JD_DIR}/cfg/org.jdownloader.gui.jdtrayicon.TrayExtensionConfig.json" \
         2>/dev/null || true
 
-    # FlatLaf is deliberately NOT forced onto the JVM boot classpath. A
-    # boot-classpath jar has a null classloader, and FlatLaf's lazy UI-delegate
-    # loading then throws (FlatLaf.java:817, getClassLoader() == null) and crashes
-    # JD's GUI in a restart loop. JD installs and loads the official FlatLaf
-    # (FLATLAF_DARK design) itself via its own classloader on first run; the dark
-    # *content* colours come from JD's native colorfor* config (jdownloader-theme.sh).
-    unset JAVA_TOOL_OPTIONS
+    # FlatLaf is deliberately NOT forced onto the JVM boot classpath (a boot-classpath
+    # jar has a null classloader and FlatLaf's lazy UI-delegate loading then NPEs at
+    # FlatLaf.java:817 and crashes JD's GUI in a loop). JD installs + loads the official
+    # FlatLaf itself; the dark content comes from JD's native colorfor* config.
+    #
+    # JAVA_TOOL_OPTIONS carries the dialog agent — it auto-confirms JD's forced
+    # first-run / update installer dialogs (UpdateController shows them whenever the GUI
+    # is visible, so no config can suppress them) so the user never sees them. It is
+    # inherited by JD's relaunched child JVM, where the GUI + dialogs actually live.
+    export JAVA_TOOL_OPTIONS="-javaagent:/opt/JDownloader/jd-dialog-agent.jar"
 
     # Title bar / maximise is handled by an openbox <application> rule (see
     # 10-jdownloader-setup) — openbox only honours decorations at map time, so a

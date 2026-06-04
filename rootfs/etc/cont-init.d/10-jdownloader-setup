@@ -13,23 +13,27 @@ cp -f /defaults/autostart "${CONFIG_HOME}/openbox/autostart"
 chmod 0755 "${CONFIG_HOME}/openbox/autostart"
 log "autostart synced from /defaults/autostart"
 
-# Hide the openbox title bar on JD's main window + maximise it (kiosk look).
-# openbox honours <decor>/<maximized> at MAP time (a runtime _MOTIF_WM_HINTS
-# change via xprop is ignored), so inject an <application> rule into the system
-# rc.xml, matched by JD's WM_CLASS. Idempotent + runs before openbox starts.
+# NO title bar on ANY JD window — the main frame AND the brief install dialogs.
+# The LSIO base ships an openbox catch-all rule <application class="*"> that
+# already maximises every window; we add <decor>no</decor> to it so openbox draws
+# no decorations at all. openbox honours this at MAP time and cont-init runs before
+# openbox starts. Idempotent (and injects the rule if the base ever drops it).
 RC=/etc/xdg/openbox/rc.xml
-if [[ -f "${RC}" ]] && ! grep -q 'org-jdownloader-update-launcher-JDLauncher' "${RC}"; then
-    python3 - "${RC}" <<'PYEOF' && log "openbox rc.xml: JD undecorate+maximize rule added" || log "openbox rc.xml patch failed (non-fatal)"
+if [[ -f "${RC}" ]]; then
+    python3 - "${RC}" <<'PYEOF' && log "openbox rc.xml: catch-all decor=no applied" || log "openbox rc.xml patch failed (non-fatal)"
 import sys
 rc = sys.argv[1]
 s = open(rc).read()
-rule = ('  <application class="org-jdownloader-update-launcher-JDLauncher">\n'
-        '    <decor>no</decor>\n'
-        '    <maximized>yes</maximized>\n'
-        '  </application>\n')
-if '</applications>' not in s:
-    raise SystemExit('no </applications> in rc.xml')
-open(rc, 'w').write(s.replace('</applications>', rule + '</applications>', 1))
+marker = '<application class="*">'
+if (marker + '<decor>no</decor>') in s:
+    pass  # already patched
+elif marker in s:
+    open(rc, 'w').write(s.replace(marker, marker + '<decor>no</decor>', 1))
+elif '</applications>' in s:
+    rule = '  <application class="*"><decor>no</decor></application>\n'
+    open(rc, 'w').write(s.replace('</applications>', rule + '</applications>', 1))
+else:
+    raise SystemExit('cannot patch rc.xml (no class=* rule, no </applications>)')
 PYEOF
 fi
 
