@@ -56,7 +56,10 @@ RUN set -eux; \
         # Locale
         locales coreutils \
         # openbox-xdg-autostart braucht PyXDG
-        python3-xdg; \
+        python3-xdg \
+        # Minimaler System-Tray → java.awt.SystemTray.isSupported()==true,
+        # unterdrückt JDs "tray not supported"-Popup (Extension steckt in Core.jar)
+        stalonetray; \
     # Font-Cache aufbauen damit Java die Fonts beim ersten Start sofort findet
     fc-cache -f -v >/dev/null 2>&1 || true; \
     apt-get clean; \
