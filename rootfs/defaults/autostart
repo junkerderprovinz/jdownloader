@@ -82,11 +82,33 @@ while true; do
         unset JAVA_TOOL_OPTIONS
     fi
 
+    # Kiosk look: hide the openbox title bar on JD's main window and maximise it.
+    # Runs in the background and polls — the Java window appears a few seconds
+    # after launch, and re-applying gently self-heals past the first-run splash.
+    (
+        i=0
+        while [ "${i}" -lt 40 ]; do
+            wid=$(wmctrl -l 2>/dev/null | awk 'tolower($0) ~ /jdownloader/ {print $1; exit}')
+            if [ -n "${wid}" ]; then
+                # _MOTIF_WM_HINTS: flags=DECORATIONS(0x2), decorations=0 -> no title bar
+                xprop -id "${wid}" -f _MOTIF_WM_HINTS 32c \
+                    -set _MOTIF_WM_HINTS "0x2, 0x0, 0x0, 0x0, 0x0" 2>/dev/null || true
+                wmctrl -i -r "${wid}" -b add,maximized_vert,maximized_horz 2>/dev/null || true
+            fi
+            i=$((i + 1))
+            sleep 3
+        done
+    ) &
+
+    # -Dsun.awt.disablegrab=true: Swing's X pointer-grab for popup menus breaks
+    # under KasmVNC/openbox, so menus close on mouse-release. Disabling the grab
+    # makes File/Settings/Extras menus stay open after the click (documented fix).
     java \
         -Dawt.useSystemAAFontSettings=on \
         -Dswing.aatext=true \
         -Dsun.java2d.opengl=false \
         -Dsun.awt.disablemixing=true \
+        -Dsun.awt.disablegrab=true \
         -jar "${LAUNCHER}"
     EXIT=$?
 
