@@ -11,13 +11,17 @@
   <Support>https://github.com/junkerderprovinz/jdownloader/issues</Support>
   <Project>https://jdownloader.org</Project>
   <Overview>
-    JDownloader 2 with native Dark Mode – built on KasmVNC for a smooth,
-    hardware-accelerated web desktop.&#xD;
+    JDownloader 2 with a sleek, modern DARK MODE GUI out of the box — a complete&#xD;
+    KDE Breeze Dark interface where the download list, link grabber AND settings are&#xD;
+    all dark (not just the menu bar), on a smooth, hardware-accelerated KasmVNC web&#xD;
+    desktop. No tweaking, no add-ons — it just looks great from the first start.&#xD;
     &#xD;
     What's pre-configured:&#xD;
-    • Dark Mode enabled by default (JD_Plain Dark — flat icons, Breeze Dark colours)&#xD;
-    • Auto-installs and self-updates JDownloader on first start&#xD;
-    • Persistent config and downloads in /config and /downloads&#xD;
+    • Full Dark Mode by default — JD Plain Dark (flat icons + Breeze Dark colours),&#xD;
+      shown in a clean maximised kiosk window (no title-bar clutter).&#xD;
+    • Switch to a matching Light theme any time via the Theme variable.&#xD;
+    • Auto-installs and self-updates JDownloader on first start.&#xD;
+    • Persistent config and downloads in /config and /downloads.&#xD;
     &#xD;
     Notes:&#xD;
     • On the very first start, JDownloader downloads and installs itself –&#xD;

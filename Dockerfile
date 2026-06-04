@@ -20,7 +20,7 @@ FROM ghcr.io/linuxserver/baseimage-kasmvnc:${BASE_TAG}
 
 LABEL maintainer="junkerderprovinz"
 LABEL org.opencontainers.image.title="jdownloader"
-LABEL org.opencontainers.image.description="JDownloader 2 für Unraid mit KasmVNC, Dark Mode und Multi-Language-UI"
+LABEL org.opencontainers.image.description="JDownloader 2 für Unraid — schlanke, moderne Dark-Mode-GUI (komplettes KDE Breeze Dark, nicht nur die Menüleiste) auf KasmVNC, Multi-Language"
 LABEL org.opencontainers.image.source="https://github.com/junkerderprovinz/jdownloader"
 LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.vendor="junkerderprovinz"
