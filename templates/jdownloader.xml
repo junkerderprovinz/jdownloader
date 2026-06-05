@@ -49,11 +49,11 @@
        ======================================================== -->
   <Config Name="WebUI Port (HTTP / KasmVNC)" Target="3000" Default="3000" Mode="tcp"
           Description="Plain HTTP WebUI. Browsers block seamless clipboard over HTTP — prefer HTTPS (3001)."
-          Type="Port" Display="always" Required="true" Mask="false">3000</Config>
+          Type="Port" Display="always" Required="false" Mask="false">3000</Config>
 
   <Config Name="WebUI Port (HTTPS / KasmVNC)" Target="3001" Default="3001" Mode="tcp"
           Description="HTTPS WebUI (self-signed TLS) — the WebUI button opens this; required for seamless clipboard."
-          Type="Port" Display="always" Required="false" Mask="false">3001</Config>
+          Type="Port" Display="always" Required="true" Mask="false">3001</Config>
 
   <!-- ========================================================
        PATHS
@@ -71,7 +71,7 @@
        ======================================================== -->
   <Config Name="Theme (JD_THEME)" Target="JD_THEME"
           Default="Dark|Light" Mode=""
-          Description="Dark = JD Plain Dark (flat icons, Carbon #161616 colours). Light = JD Plain (flat icons, light colours)."
+          Description="Dark = JD Plain Dark, Light = JD Plain."
           Type="Variable" Display="always" Required="false" Mask="false">Dark</Config>
 
   <!-- ========================================================
