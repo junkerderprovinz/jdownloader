@@ -66,19 +66,13 @@ echo "" >&2
     done
 ) &
 
-# On container stop, give JD a chance to save its settings (e.g. hidden columns, layout)
-# before it is killed. JD only persists them via its JVM shutdown hook ("Saving Storage"),
-# so forward SIGTERM to the running JVM and wait for it — otherwise a `docker restart`/stop
-# discards changes made since the last flush.
-JD_PID=""
-on_term() {
-    if [ -n "${JD_PID}" ]; then
-        kill -TERM "${JD_PID}" 2>/dev/null || true
-        wait "${JD_PID}" 2>/dev/null || true
-    fi
-    exit 0
-}
-trap on_term TERM INT HUP QUIT
+# IGNORE SIGHUP (and INT/QUIT). openbox-autostart sends THIS script a SIGHUP when it
+# finishes its own startup; the default action (terminate) — or a trap that exits, as a
+# previous version had — killed autostart before it ever launched java, so the WebUI stayed
+# black. Ignoring it lets the loop reach java. SIG_IGN is inherited by java too (harmless).
+# Column/layout persistence on stop is handled by the svc-de `finish` script (SIGTERM to the
+# JVM + S6_*_GRACETIME=30s), not by a trap here; TERM stays default so s6 can stop us.
+trap '' HUP INT QUIT
 
 # Clear a stale shutdown flag. The finish script sets it on stop; /tmp survives a
 # `docker restart`, so without this the loop below would see the old flag and exit
@@ -149,11 +143,8 @@ while true; do
         -Dsun.java2d.opengl=false \
         -Dsun.awt.disablemixing=true \
         -Dsun.awt.disablegrab=true \
-        -jar "${LAUNCHER}" &
-    JD_PID=$!
-    wait "${JD_PID}"
+        -jar "${LAUNCHER}"
     EXIT=$?
-    JD_PID=""
 
     # Unlock the tray cfg files so the next iteration's disable-tray.py can update
     # them. Re-locks happen at the top of the next loop iteration.
