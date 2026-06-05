@@ -142,7 +142,7 @@ services:
 
 | Variable | Default | Description |
 |---|---|---|
-| `JD_THEME` | `Dark` | UI theme — `Dark` = JD Plain Dark with Carbon #161616 palette, `Light` = JD Plain |
+| `JD_THEME` | `Dark` | UI theme — `Dark` = JD Plain Dark, `Light` = JD Plain |
 | `PUID` | `99` | User ID — Unraid's *nobody* |
 | `PGID` | `100` | Group ID — Unraid's *users* |
 | `TZ` | `Europe/Vienna` | Timezone |
