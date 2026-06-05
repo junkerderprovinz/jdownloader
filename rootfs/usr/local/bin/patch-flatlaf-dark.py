@@ -32,16 +32,25 @@ JAR = os.path.join(LAF, "flatlaf.jar")
 DEP = os.path.join(LAF, "flatlaf.dep.json")
 PROP = "com/formdev/flatlaf/FlatDarkLaf.properties"
 BLOCK_PREFIX = "#jdp-carbon-dark"          # any previous block starts with this
-MARKER = "#jdp-carbon-dark v4"             # bump when OVERRIDES change -> forces re-patch
+MARKER = "#jdp-carbon-dark v5"             # bump when OVERRIDES change -> forces re-patch
+
+# Custom progress-bar UI (compiled in the Docker builder, copied into the image). It is
+# injected into flatlaf.jar so it loads in FlatLaf's own classloader, and registered via
+# the ProgressBarUI key so the download/account bars stay dark on selected/hover rows
+# (FlatLaf paints the fill from the cell foreground, which JD's highlighter turns light).
+CLASS_SRC = "/opt/JDownloader/flatlaf-patch/io/github/junkerderprovinz/DarkFillProgressBarUI.class"
+CLASS_JARPATH = "io/github/junkerderprovinz/DarkFillProgressBarUI.class"
+UI_KEY_LINE = "ProgressBarUI = io.github.junkerderprovinz.DarkFillProgressBarUI"
 
 OVERRIDES = """
 
-#jdp-carbon-dark v4 - complete #161616 monochrome dark (no blue accent).
+#jdp-carbon-dark v5 - complete #161616 monochrome dark (no blue accent).
 # The progress-bar/slider fill is @accentSliderColor = if(@accentColor, @accentColor,
 # @accentBase2Color), and @accentBase2Color = lighten(... @accentBaseColor ...). FlatLaf
 # recomputes the accent at runtime (@accentColor = systemColor(accent)), so overriding
 # @accentColor / @accentSliderColor does NOT stick. The MASTER @accentBaseColor DOES and
 # cascades: @accentBaseColor -> @accentBase2Color -> @accentSliderColor -> ProgressBar.
+# The bar fill on selected/hover rows is forced dark by the injected ProgressBarUI below.
 @background = #161616
 @foreground = #f4f4f4
 @componentBackground = #1e1e1e
@@ -79,17 +88,32 @@ def main():
         log("read failed: %s" % e)
         return
 
-    # Drop any previous jdp block, then append the current one.
+    # The custom UI is only registered if its compiled class is actually present, so a
+    # missing/foreign .class can never point ProgressBarUI at an unloadable class (which
+    # would crash every JProgressBar). Without it, the bar just stays light on hover.
+    class_bytes = None
+    try:
+        if os.path.isfile(CLASS_SRC):
+            class_bytes = open(CLASS_SRC, "rb").read()
+    except Exception as e:
+        log("could not read custom ProgressBarUI class (%s) - skipping UI override" % e)
+
+    # Drop any previous jdp block, then append the current one (+ the UI key if we have it).
     idx = props.find(BLOCK_PREFIX)
     if idx != -1:
         props = props[:idx].rstrip() + "\n"
-    new_props = (props + OVERRIDES).encode("utf-8")
+    overrides = OVERRIDES + (UI_KEY_LINE + "\n" if class_bytes is not None else "")
+    new_props = (props + overrides).encode("utf-8")
 
     tmp = JAR + ".tmp"
     try:
         with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as z:
             for name, data in entries:
+                if name == CLASS_JARPATH:
+                    continue  # drop a stale copy; re-added fresh below
                 z.writestr(name, new_props if name == PROP else data)
+            if class_bytes is not None:
+                z.writestr(CLASS_JARPATH, class_bytes)
         os.replace(tmp, JAR)
     except Exception as e:
         log("rewrite failed: %s" % e)
@@ -106,7 +130,8 @@ def main():
         dep["installed"]["hashes"]["flatlaf.jar"] = new_sha
         with open(DEP, "w") as f:
             json.dump(dep, f)
-        log("patched FlatDarkLaf -> #161616 dark (v3); dep.json sha256 updated")
+        ui = "with dark ProgressBarUI" if class_bytes is not None else "without ProgressBarUI (class missing)"
+        log("patched FlatDarkLaf -> #161616 dark (v5) %s; dep.json sha256 updated" % ui)
     except Exception as e:
         log("dep.json update failed (JD may re-download stock): %s" % e)
 
