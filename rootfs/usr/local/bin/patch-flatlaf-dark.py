@@ -2,18 +2,24 @@
 """Patch JD's installed FlatLaf so the dark theme renders a COMPLETE #161616
 monochrome dark — chrome, dialogs, inputs AND the table JProgressBars (download list
 + account traffic). Those bars are FlatLaf JProgressBars whose colours come from
-FlatLaf's own UIManager defaults at creation time; JD's colorfor* config and a runtime
-UIManager agent cannot reach them (the agent's EDT task always runs after JD has built
-the table). Setting the colours in FlatLaf's own dark properties is the only place that
-covers everything, race-free.
+FlatLaf's own defaults at creation time; JD's colorfor* config and a runtime UIManager
+agent cannot reach them (the agent's EDT task always runs after JD built the table).
+Setting the colours in FlatLaf's own dark properties is the only place that covers
+everything, race-free.
 
 Mechanism (the "Material Darker" approach): append FlatLaf property overrides to
 com/formdev/flatlaf/FlatDarkLaf.properties inside flatlaf.jar, then update the SHA-256
 in flatlaf.dep.json so JD's dependency check accepts the modified jar instead of
 re-downloading the stock one.
 
-Idempotent (marker line) and version-agnostic (patches whatever version JD installed).
-No-op until JD has actually installed flatlaf.jar (first run downloads it).
+IMPORTANT: FlatLaf resolves a key like "ProgressBar.foreground = @accentSliderColor"
+from a VARIABLE. Overriding the *key* (ProgressBar.foreground = #...) does not win, but
+overriding the *variable* (@accentSliderColor = #...) does — same as @background. So the
+overrides below set the variables.
+
+Re-patchable: the previous jdp block (if any) is stripped before the current one is
+appended, so changing OVERRIDES here takes effect on the next start. Version-agnostic
+and idempotent (the versioned marker); no-op until JD has installed flatlaf.jar.
 """
 import hashlib
 import json
@@ -25,20 +31,23 @@ LAF = os.path.join(os.environ.get("JD_INST_DIR", "/config/JDownloader"), "libs",
 JAR = os.path.join(LAF, "flatlaf.jar")
 DEP = os.path.join(LAF, "flatlaf.dep.json")
 PROP = "com/formdev/flatlaf/FlatDarkLaf.properties"
-MARKER = "#jdp-carbon-dark"
+BLOCK_PREFIX = "#jdp-carbon-dark"          # any previous block starts with this
+MARKER = "#jdp-carbon-dark v3"             # bump when OVERRIDES change -> forces re-patch
 
 OVERRIDES = """
 
-#jdp-carbon-dark - force a complete #161616 monochrome dark (no blue accent)
+#jdp-carbon-dark v3 - complete #161616 monochrome dark (no blue accent).
+# Override the VARIABLES (FlatLaf resolves the component keys from them).
 @background = #161616
 @foreground = #f4f4f4
 @componentBackground = #1e1e1e
 @disabledForeground = #6f6f6f
 @accentColor = #525252
+@accentSliderColor = #555555
 @selectionBackground = #525252
 @selectionForeground = #f4f4f4
 ProgressBar.background = #262626
-ProgressBar.foreground = #4d4d4d
+ProgressBar.foreground = #555555
 ProgressBar.selectionForeground = #f4f4f4
 ProgressBar.selectionBackground = #f4f4f4
 """
@@ -61,15 +70,20 @@ def main():
                 return
             props = z.read(PROP).decode("utf-8", "replace")
             if MARKER in props:
-                return  # already patched
+                return  # already patched with the current overrides
             entries = [(n, z.read(n)) for n in names]
     except Exception as e:
         log("read failed: %s" % e)
         return
 
+    # Drop any previous jdp block, then append the current one.
+    idx = props.find(BLOCK_PREFIX)
+    if idx != -1:
+        props = props[:idx].rstrip() + "\n"
+    new_props = (props + OVERRIDES).encode("utf-8")
+
     tmp = JAR + ".tmp"
     try:
-        new_props = (props + OVERRIDES).encode("utf-8")
         with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as z:
             for name, data in entries:
                 z.writestr(name, new_props if name == PROP else data)
@@ -89,7 +103,7 @@ def main():
         dep["installed"]["hashes"]["flatlaf.jar"] = new_sha
         with open(DEP, "w") as f:
             json.dump(dep, f)
-        log("patched FlatDarkLaf -> #161616 dark; dep.json sha256 updated")
+        log("patched FlatDarkLaf -> #161616 dark (v3); dep.json sha256 updated")
     except Exception as e:
         log("dep.json update failed (JD may re-download stock): %s" % e)
 
