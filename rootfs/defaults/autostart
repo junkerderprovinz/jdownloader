@@ -78,8 +78,10 @@ while true; do
     # install) and records it in its own registry; pre-seeding our jar made JD never
     # register the design and re-ask every start. Dark chrome = JD's own FlatDarkLaf;
     # dark content = JD's native colorfor* config (jdownloader-theme.sh).
+    echo "[jda-trace] 1 loop-top" >&2
     mkdir -p "${JD_DIR}/themes"
     cp -rf /opt/JDownloader/themes-default/. "${JD_DIR}/themes/" 2>/dev/null || true
+    echo "[jda-trace] 2 icons re-seeded" >&2
 
     # Remove SystemTrayExtension JAR if JD's bootstrap installed it. The popup
     # 'tray isn't supported' is triggered by the extension's startup probe; if
@@ -98,7 +100,9 @@ while true; do
     # JProgressBars that colorfor* / the runtime agent cannot reach). Idempotent; no-op
     # until JD has installed flatlaf.jar, so it applies from the next start after the
     # first install / self-update.
+    echo "[jda-trace] 3 tray handled, patching flatlaf" >&2
     python3 /usr/local/bin/patch-flatlaf-dark.py || true
+    echo "[jda-trace] 4 flatlaf patch returned" >&2
 
     # FlatLaf is deliberately NOT forced onto the JVM boot classpath (a boot-classpath
     # jar has a null classloader and FlatLaf's lazy UI-delegate loading then NPEs at
