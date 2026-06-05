@@ -44,11 +44,10 @@ if [ "${LAF}" = "FLATLAF_DARK" ]; then
     python3 - "${JD_CFG}/laf/FlatDarkLaf.json" <<'PYEOF'
 import json, os, sys
 path = sys.argv[1]
-d = {}
-if os.path.exists(path):
-    try: d = json.load(open(path))
-    except Exception: pass
-d.update({
+# Write a FRESH dict (do NOT load+merge the existing file). Otherwise JD's previous
+# values for keys we no longer set linger forever (e.g. an old grey speed-meter graph).
+# Any key we omit is filled by JD's own default (e.g. the GREEN speed-meter graph).
+d = {
     "iconsetid": "flat",
     # IBM Carbon grayscale — pure monochrome dark, #161616 base, NO colour accent.
     # panels / config
@@ -103,7 +102,7 @@ d.update({
     # undecorated + maximised (kiosk). Without this, FlatLaf paints its own
     # title bar back inside the undecorated frame.
     "windowdecorationenabled":                    False,
-})
+}
 os.makedirs(os.path.dirname(path), exist_ok=True)
 json.dump(d, open(path, "w"), indent=2)
 print("[jdownloader-theme] Carbon #161616 colorfor* + iconsetid=flat -> %s" % path)
@@ -113,12 +112,8 @@ else
     python3 - "${JD_CFG}/laf/FlatLightLaf.json" <<'PYEOF'
 import json, os, sys
 path = sys.argv[1]
-d = {}
-if os.path.exists(path):
-    try: d = json.load(open(path))
-    except Exception: pass
-d["iconsetid"] = "flat"
-d["windowdecorationenabled"] = False  # no FlatLaf-drawn title bar (kiosk)
+# Fresh dict (no load+merge) — same reasoning as the dark branch.
+d = {"iconsetid": "flat", "windowdecorationenabled": False}  # no FlatLaf title bar (kiosk)
 os.makedirs(os.path.dirname(path), exist_ok=True)
 json.dump(d, open(path, "w"), indent=2)
 print("[jdownloader-theme] light: iconsetid=flat -> %s" % path)
