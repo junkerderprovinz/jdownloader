@@ -3,6 +3,8 @@ package io.github.junkerderprovinz;
 import javax.swing.AbstractButton;
 import javax.swing.JButton;
 import javax.swing.JLabel;
+import javax.swing.JProgressBar;
+import javax.swing.JTable;
 import javax.swing.LookAndFeel;
 import javax.swing.SwingUtilities;
 import javax.swing.UIDefaults;
@@ -16,7 +18,9 @@ import java.awt.Dialog;
 import java.awt.Frame;
 import java.awt.Window;
 import java.lang.instrument.Instrumentation;
+import java.lang.reflect.Field;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -48,6 +52,11 @@ public class DialogConfirmAgent {
     private static final ColorUIResource HEADER = new ColorUIResource(0x0b, 0x0b, 0x0b);
     private static final ColorUIResource SEL    = new ColorUIResource(0x52, 0x52, 0x52);
 
+    // Plain (non-UIResource) colours set directly on the table progress-bar instances so a
+    // later updateUI cannot override them. Fill must be visible on the dark track.
+    private static final Color BAR_FILL  = new Color(0x55, 0x55, 0x55);
+    private static final Color BAR_TRACK = new Color(0x26, 0x26, 0x26);
+
     // Chrome is enforced exactly ONCE per JVM, and only after JD's main window is shown
     // and stable — see enforceDarkChrome().
     private static boolean chromeDone  = false;
@@ -76,6 +85,76 @@ public class DialogConfirmAgent {
     private static void tick() {
         handleDialogs();
         enforceDarkChrome();
+        retintProgressBars();
+    }
+
+    // ------------------------------------------------------------ progress bars
+
+    /**
+     * The download-list + account-traffic progress bars are AppWork RendererProgressBars
+     * (JProgressBars). Their fill colour is FlatLaf's runtime accent (ProgressBar.foreground
+     * = @accentSliderColor), computed at runtime — it cannot be set via static FlatLaf
+     * properties, nor reached by updateComponentTreeUI (cell renderers aren't in the tree).
+     * AppWork holds the bar instances in ExtProgressColumn fields and does NOT colour them
+     * per cell, so setting the colour directly on those instances sticks. We find them by
+     * walking tables -> columns -> any JProgressBar-typed field and recolour them. Cheap and
+     * idempotent; runs every tick so tables opened later (the account manager) are caught too.
+     */
+    private static void retintProgressBars() {
+        for (Window w : Window.getWindows()) {
+            if (!w.isShowing()) continue;
+            List<JTable> tables = new ArrayList<>();
+            collectTables(w, tables);
+            for (JTable t : tables) {
+                for (Object col : extColumns(t)) {
+                    recolorBarFields(col);
+                }
+            }
+        }
+    }
+
+    private static void collectTables(Container c, List<JTable> out) {
+        for (Component child : c.getComponents()) {
+            if (child instanceof JTable) out.add((JTable) child);
+            if (child instanceof Container) collectTables((Container) child, out);
+        }
+    }
+
+    /** AppWork ExtColumn objects of a table (they hold the renderer progress bars). */
+    private static List<Object> extColumns(JTable t) {
+        List<Object> cols = new ArrayList<>();
+        try {
+            javax.swing.table.TableColumnModel cm = t.getColumnModel();
+            for (int i = 0; i < cm.getColumnCount(); i++) {
+                Object r = cm.getColumn(i).getCellRenderer();
+                if (r != null) cols.add(r);
+            }
+        } catch (Exception ignore) { }
+        try {
+            Object model = t.getModel();
+            Object list = model.getClass().getMethod("getColumns").invoke(model);
+            if (list instanceof Collection) cols.addAll((Collection<?>) list);
+        } catch (Exception ignore) { }
+        return cols;
+    }
+
+    /** Set our dark fill/track on every JProgressBar-typed field of the object. */
+    private static void recolorBarFields(Object col) {
+        if (col == null) return;
+        for (Class<?> k = col.getClass(); k != null && k != Object.class; k = k.getSuperclass()) {
+            for (Field f : k.getDeclaredFields()) {
+                if (!JProgressBar.class.isAssignableFrom(f.getType())) continue;
+                try {
+                    f.setAccessible(true);
+                    Object bar = f.get(col);
+                    if (bar instanceof JProgressBar) {
+                        JProgressBar pb = (JProgressBar) bar;
+                        if (!BAR_FILL.equals(pb.getForeground())) pb.setForeground(BAR_FILL);
+                        if (!BAR_TRACK.equals(pb.getBackground())) pb.setBackground(BAR_TRACK);
+                    }
+                } catch (Exception ignore) { }
+            }
+        }
     }
 
     // ---------------------------------------------------------------- chrome
