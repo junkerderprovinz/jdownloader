@@ -80,6 +80,11 @@ on_term() {
 }
 trap on_term TERM INT HUP QUIT
 
+# Clear a stale shutdown flag. The finish script sets it on stop; /tmp survives a
+# `docker restart`, so without this the loop below would see the old flag and exit
+# immediately, never starting JD. Only an in-progress shutdown should set it.
+rm -f /tmp/.jd-shutting-down 2>/dev/null || true
+
 echo "[jdownloader-autostart] Starting JDownloader (first start may take a few minutes)" >&2
 
 while true; do
