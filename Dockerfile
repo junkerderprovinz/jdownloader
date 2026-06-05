@@ -36,8 +36,8 @@ RUN set -eux; \
 # the io.github.* class into JD's own flatlaf.jar, where it binds to the real FlatProgressBarUI.
 # Only the io.github.* class is kept; the com.formdev.* stub is discarded.
 COPY flatlaf-patch/ /flatlaf-patch/
+WORKDIR /flatlaf-patch
 RUN set -eux; \
-    cd /flatlaf-patch; \
     mkdir -p out; \
     find src -name '*.java' > sources.txt; \
     javac -d out @sources.txt
