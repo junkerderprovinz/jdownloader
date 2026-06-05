@@ -5,6 +5,9 @@
 # "colorfor*" keys themselves — that is why the content areas go dark WITHOUT
 # the old JVM agent (same mechanism the community "Material Darker" theme uses).
 #
+# Standalone desktop port of this palette (same Carbon colours, minus the kiosk-only
+# windowdecorationenabled=false): https://github.com/junkerderprovinz/jd-plain-dark - keep in sync.
+#
 #   Dark  = JD_Plain (flat) icons + IBM Carbon #161616 monochrome "colorfor*" colours
 #   Light = JD_Plain (flat) icons + JD's default light colours
 #
