@@ -78,7 +78,7 @@ on_term() {
     fi
     exit 0
 }
-trap on_term TERM INT
+trap on_term TERM INT HUP QUIT
 
 echo "[jdownloader-autostart] Starting JDownloader (first start may take a few minutes)" >&2
 
