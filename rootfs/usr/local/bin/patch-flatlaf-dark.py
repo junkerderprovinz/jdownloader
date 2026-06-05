@@ -32,22 +32,25 @@ JAR = os.path.join(LAF, "flatlaf.jar")
 DEP = os.path.join(LAF, "flatlaf.dep.json")
 PROP = "com/formdev/flatlaf/FlatDarkLaf.properties"
 BLOCK_PREFIX = "#jdp-carbon-dark"          # any previous block starts with this
-MARKER = "#jdp-carbon-dark v3"             # bump when OVERRIDES change -> forces re-patch
+MARKER = "#jdp-carbon-dark v4"             # bump when OVERRIDES change -> forces re-patch
 
 OVERRIDES = """
 
-#jdp-carbon-dark v3 - complete #161616 monochrome dark (no blue accent).
-# Override the VARIABLES (FlatLaf resolves the component keys from them).
+#jdp-carbon-dark v4 - complete #161616 monochrome dark (no blue accent).
+# The progress-bar/slider fill is @accentSliderColor = if(@accentColor, @accentColor,
+# @accentBase2Color), and @accentBase2Color = lighten(... @accentBaseColor ...). FlatLaf
+# recomputes the accent at runtime (@accentColor = systemColor(accent)), so overriding
+# @accentColor / @accentSliderColor does NOT stick. The MASTER @accentBaseColor DOES and
+# cascades: @accentBaseColor -> @accentBase2Color -> @accentSliderColor -> ProgressBar.
 @background = #161616
 @foreground = #f4f4f4
 @componentBackground = #1e1e1e
 @disabledForeground = #6f6f6f
+@accentBaseColor = #4d4d4d
 @accentColor = #525252
-@accentSliderColor = #555555
 @selectionBackground = #525252
 @selectionForeground = #f4f4f4
 ProgressBar.background = #262626
-ProgressBar.foreground = #555555
 ProgressBar.selectionForeground = #f4f4f4
 ProgressBar.selectionBackground = #f4f4f4
 """
