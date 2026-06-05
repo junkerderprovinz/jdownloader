@@ -48,6 +48,11 @@ public class DialogConfirmAgent {
     private static final ColorUIResource HEADER = new ColorUIResource(0x0b, 0x0b, 0x0b);
     private static final ColorUIResource SEL    = new ColorUIResource(0x52, 0x52, 0x52);
 
+    // Chrome is enforced exactly ONCE per JVM, and only after JD's main window is shown
+    // and stable — see enforceDarkChrome().
+    private static boolean chromeDone  = false;
+    private static int     stableTicks = 0;
+
     public static void premain(String agentArgs, Instrumentation inst) {
         System.out.println("[jd-dialog-agent] watching for installer dialogs + enforcing dark chrome");
         Thread t = new Thread(DialogConfirmAgent::watch, "jd-dialog-agent");
@@ -76,22 +81,30 @@ public class DialogConfirmAgent {
     // ---------------------------------------------------------------- chrome
 
     /**
-     * Recolour FlatLaf's UIManager colour defaults to the #161616 greyscale, once
-     * per look-and-feel instance. Re-runs automatically if JD re-applies the LAF
-     * (a fresh UIDefaults clears our marker).
+     * Recolour FlatLaf's UIManager colour defaults to the #161616 greyscale, exactly
+     * ONCE per JVM, and only AFTER JD's main window is built, shown and stable.
+     *
+     * Re-creating UI delegates (updateComponentTreeUI) while JD is still packing its
+     * frame makes AppWork's CircleProgressBarUI NPE during addNotify and crashes the GUI
+     * into a boot loop. Waiting until a frame has been showing for a few ticks guarantees
+     * pack() is finished, so our refresh never collides with it. (A JD in-process LAF
+     * re-apply afterwards would revert the chrome, but JD only applies its LAF during
+     * early startup; a self-update restarts the JVM, which re-runs this from scratch.)
      */
     private static void enforceDarkChrome() {
+        if (chromeDone) return;
         LookAndFeel laf = UIManager.getLookAndFeel();
         if (laf == null || !laf.getClass().getName().toLowerCase().contains("flat")) return;
 
-        UIDefaults d = UIManager.getDefaults();
-        // Marker lives in the SAME defaults table as the colour overrides, so a JD
-        // self-update / in-process LAF swap (fresh UIDefaults) drops it together with the
-        // colours and we re-apply. (UIManager.put would write the developer-defaults table,
-        // which setLookAndFeel never clears — the marker would then outlive the colours and
-        // the chrome would never be re-applied.)
-        if (Boolean.TRUE.equals(d.get("jdp.darkChrome"))) return;
+        // Wait for a real, shown, packed top-level frame before touching any UI.
+        boolean ready = false;
+        for (Frame f : Frame.getFrames()) {
+            if (f.isShowing() && f.getWidth() > 0 && f.getHeight() > 0) { ready = true; break; }
+        }
+        if (!ready) { stableTicks = 0; return; }
+        if (++stableTicks < 4) return;   // ~1.6 s after the frame shows -> pack() is done
 
+        UIDefaults d = UIManager.getDefaults();
         List<Object> keys = new ArrayList<>(d.keySet()); // snapshot: we mutate while iterating
         for (Object key : keys) {
             Object val = d.get(key);
@@ -122,7 +135,7 @@ public class DialogConfirmAgent {
                 "Tree.icon.leafColor", "Tree.icon.closedColor", "Tree.icon.openColor" }) {
             d.put(k, new ColorUIResource(0xb0, 0xb0, 0xb0));
         }
-        d.put("jdp.darkChrome", Boolean.TRUE);
+        chromeDone = true;   // set before the refresh so a throw can never cause a retry storm
 
         for (Window w : Window.getWindows()) {
             try { SwingUtilities.updateComponentTreeUI(w); } catch (Exception ignore) { }
