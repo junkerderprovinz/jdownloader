@@ -96,13 +96,15 @@ public class DialogConfirmAgent {
         LookAndFeel laf = UIManager.getLookAndFeel();
         if (laf == null || !laf.getClass().getName().toLowerCase().contains("flat")) return;
 
-        // Wait for a real, shown, packed top-level frame before touching any UI.
+        // Wait for JD's MAIN window (large / maximised) to be shown and stable before
+        // touching any UI — not a small splash/progress frame, and never while JD is
+        // still packing (that is what triggered the CircleProgressBarUI crash).
         boolean ready = false;
         for (Frame f : Frame.getFrames()) {
-            if (f.isShowing() && f.getWidth() > 0 && f.getHeight() > 0) { ready = true; break; }
+            if (f.isShowing() && f.getWidth() > 600 && f.getHeight() > 400) { ready = true; break; }
         }
         if (!ready) { stableTicks = 0; return; }
-        if (++stableTicks < 4) return;   // ~1.6 s after the frame shows -> pack() is done
+        if (++stableTicks < 4) return;   // ~1.6 s after the main frame shows -> pack() done
 
         UIDefaults d = UIManager.getDefaults();
         List<Object> keys = new ArrayList<>(d.keySet()); // snapshot: we mutate while iterating
@@ -138,6 +140,7 @@ public class DialogConfirmAgent {
         chromeDone = true;   // set before the refresh so a throw can never cause a retry storm
 
         for (Window w : Window.getWindows()) {
+            if (!w.isShowing()) continue;   // never refresh a window JD is still building
             try { SwingUtilities.updateComponentTreeUI(w); } catch (Exception ignore) { }
         }
         System.out.println("[jd-dialog-agent] enforced #161616 dark chrome");
