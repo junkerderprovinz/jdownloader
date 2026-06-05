@@ -81,7 +81,10 @@ while true; do
     echo "[jda-trace] 1 loop-top" >&2
     mkdir -p "${JD_DIR}/themes"
     cp -rf /opt/JDownloader/themes-default/. "${JD_DIR}/themes/" 2>/dev/null || true
-    echo "[jda-trace] 2 icons re-seeded" >&2
+    # Re-apply JD's native colorfor* palette before each launch — JD's self-update can
+    # reset cfg/laf/FlatDarkLaf.json, and this runs only in cont-init otherwise.
+    /usr/local/bin/jdownloader-theme.sh "${JD_THEME:-Dark}" >/dev/null 2>&1 || true
+    echo "[jda-trace] 2 icons + colorfor* re-applied" >&2
 
     # Remove SystemTrayExtension JAR if JD's bootstrap installed it. The popup
     # 'tray isn't supported' is triggered by the extension's startup probe; if

@@ -20,20 +20,31 @@ log "autostart synced from /defaults/autostart"
 # openbox starts. Idempotent (and injects the rule if the base ever drops it).
 RC=/etc/xdg/openbox/rc.xml
 if [[ -f "${RC}" ]]; then
-    python3 - "${RC}" <<'PYEOF' && log "openbox rc.xml: catch-all decor=no applied" || log "openbox rc.xml patch failed (non-fatal)"
+    python3 - "${RC}" <<'PYEOF' && log "openbox rc.xml: decor=no + dialogs un-maximized" || log "openbox rc.xml patch failed (non-fatal)"
 import sys
 rc = sys.argv[1]
 s = open(rc).read()
+changed = False
+
+# 1) No window decorations on any JD window (the LSIO base catch-all already maximises
+#    every window for kiosk; we only strip the title bar).
 marker = '<application class="*">'
-if (marker + '<decor>no</decor>') in s:
-    pass  # already patched
-elif marker in s:
-    open(rc, 'w').write(s.replace(marker, marker + '<decor>no</decor>', 1))
-elif '</applications>' in s:
-    rule = '  <application class="*"><decor>no</decor></application>\n'
-    open(rc, 'w').write(s.replace('</applications>', rule + '</applications>', 1))
-else:
-    raise SystemExit('cannot patch rc.xml (no class=* rule, no </applications>)')
+if marker in s and (marker + '<decor>no</decor>') not in s:
+    s = s.replace(marker, marker + '<decor>no</decor>', 1); changed = True
+elif marker not in s and '</applications>' in s:
+    s = s.replace('</applications>',
+                  '  <application class="*"><decor>no</decor></application>\n</applications>', 1)
+    changed = True
+
+# 2) Dialog windows (e.g. "Add premium account", settings popups) must NOT be maximized —
+#    the catch-all maximises everything, but dialogs should float at their natural size.
+#    A later-listed matching rule overrides the catch-all's <maximized> for type=dialog.
+if '<application type="dialog">' not in s and '</applications>' in s:
+    rule = '  <application type="dialog"><maximized>no</maximized><decor>no</decor></application>\n'
+    s = s.replace('</applications>', rule + '</applications>', 1); changed = True
+
+if changed:
+    open(rc, 'w').write(s)
 PYEOF
 fi
 
