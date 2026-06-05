@@ -83,6 +83,11 @@ trap on_term TERM INT HUP QUIT
 echo "[jdownloader-autostart] Starting JDownloader (first start may take a few minutes)" >&2
 
 while true; do
+    # Container is shutting down (svc-de's finish sets this flag while it SIGTERMs the
+    # JVM so JD can flush its config). Do NOT relaunch JD — a relaunch would keep `java`
+    # alive, making the finish script wait out its whole timeout and delay the stop.
+    [ -f /tmp/.jd-shutting-down ] && exit 0
+
     # Re-seed the bundled flat icon set before each start. JD resets
     # /config/.../themes during its first install, which would wipe the icons
     # seeded in cont-init; re-applying here keeps iconsetid=flat resolving.
