@@ -12,12 +12,12 @@
   <Project>https://jdownloader.org</Project>
   <Overview>
     JDownloader 2 with a sleek, modern DARK MODE GUI out of the box — a complete&#xD;
-    KDE Breeze Dark interface where the download list, link grabber AND settings are&#xD;
+    monochrome IBM Carbon (#161616) dark interface where the download list, link grabber AND settings are&#xD;
     all dark (not just the menu bar), on a smooth, hardware-accelerated KasmVNC web&#xD;
     desktop. No tweaking, no add-ons — it just looks great from the first start.&#xD;
     &#xD;
     What's pre-configured:&#xD;
-    • Full Dark Mode by default — JD Plain Dark (flat icons + Breeze Dark colours),&#xD;
+    • Full Dark Mode by default — JD Plain Dark (flat icons + Carbon #161616 colours),&#xD;
       shown in a clean maximised kiosk window (no title-bar clutter).&#xD;
     • Switch to a matching Light theme any time via the Theme variable.&#xD;
     • Auto-installs and self-updates JDownloader on first start.&#xD;
@@ -71,7 +71,7 @@
        ======================================================== -->
   <Config Name="Theme (JD_THEME)" Target="JD_THEME"
           Default="Dark|Light" Mode=""
-          Description="Dark = JD Plain Dark (flat icons, Breeze Dark colours). Light = JD Plain (flat icons, light colours)."
+          Description="Dark = JD Plain Dark (flat icons, Carbon #161616 colours). Light = JD Plain (flat icons, light colours)."
           Type="Variable" Display="always" Required="false" Mask="false">Dark</Config>
 
   <!-- ========================================================

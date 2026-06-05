@@ -18,8 +18,8 @@
 
 <p align="center">
 A modern, plug-and-play Docker image for <b>JDownloader 2</b> on Unraid with a
-<b>sleek, complete Dark Mode GUI</b> out of the box — KDE Breeze Dark across the
-<i>whole</i> interface (download list, link grabber and settings, not just the menu bar),
+<b>sleek, complete Dark Mode GUI</b> out of the box — a monochrome IBM Carbon (#161616) dark
+across the <i>whole</i> interface (download list, link grabber and settings, not just the menu bar),
 in a clean maximised window. Full GUI in your browser via KasmVNC, zero first-run setup.
 </p>
 
@@ -54,7 +54,7 @@ This image packages [JDownloader 2](https://jdownloader.org) into a self-contain
 What's included beyond bare JDownloader:
 
 - **KasmVNC** instead of noVNC — hardware-accelerated rendering, real browser clipboard, native file upload and download, high-DPI ready
-- **Sleek, complete Dark Mode** pre-applied — KDE Breeze Dark across the *entire* GUI (download list, link grabber **and** settings, not just the menu bar), in a clean maximised kiosk window; switch to a matching Light theme with one variable
+- **Sleek, complete Dark Mode** pre-applied — a monochrome IBM Carbon (#161616) dark across the *entire* GUI (download list, link grabber **and** settings, not just the menu bar), in a clean maximised kiosk window; switch to a matching Light theme with one variable
 - **Java 21 JRE** — full AWT/Swing support for the JDownloader GUI, not headless
 - **Auto-install** — downloads and installs JDownloader 2 on first container start, no manual JAR setup
 - **Self-updating** — JDownloader updates itself on every start as it normally does
@@ -98,7 +98,7 @@ The defaults work out of the box, but you may want to tweak:
 
 - **Config (`/config`)** — defaults to `/mnt/user/appdata/jdownloader`
 - **Downloads (`/downloads`)** — defaults to `/mnt/user/downloads`; this is where JDownloader saves files
-- **Theme** — default `Dark` (JD Plain Dark, Breeze palette); switch to `Light` any time
+- **Theme** — default `Dark` (JD Plain Dark, Carbon #161616 palette); switch to `Light` any time
 - **KasmVNC Password** — leave empty for LAN-only, set anything for exposure beyond the LAN
 
 Click **Apply**. The first start takes **up to 5 minutes** while JDownloader downloads and installs itself.
@@ -142,7 +142,7 @@ services:
 
 | Variable | Default | Description |
 |---|---|---|
-| `JD_THEME` | `Dark` | UI theme — `Dark` = JD Plain Dark with Breeze Dark palette, `Light` = JD Plain |
+| `JD_THEME` | `Dark` | UI theme — `Dark` = JD Plain Dark with Carbon #161616 palette, `Light` = JD Plain |
 | `PUID` | `99` | User ID — Unraid's *nobody* |
 | `PGID` | `100` | Group ID — Unraid's *users* |
 | `TZ` | `Europe/Vienna` | Timezone |
