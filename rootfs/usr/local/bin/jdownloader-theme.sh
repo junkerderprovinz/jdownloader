@@ -81,23 +81,18 @@ d.update({
     "colorfortableaccounterrorrowforeground":     "#fff4f4f4",
     "colorfortableaccounttemperrorrowbackground": "#7ff1c21b",
     "colorfortableaccounttemperrorrowforeground": "#fff4f4f4",
-    # progress bar fill — CORRECT JD key is "colorforprogressbar<N>" (NOT
-    # "...foreground<N>", which JD silently ignores -> it fell back to a near-white
-    # default). Medium grey, opaque enough that the centred white % text stays readable.
-    "colorforprogressbar1":                       "#ff4d4d4d",
-    "colorforprogressbar2":                       "#ff555555",
-    "colorforprogressbar3":                       "#ff5a5a5a",
-    "colorforprogressbar4":                       "#ff555555",
-    "colorforprogressbar5":                       "#ff4d4d4d",
-    # speed meter (top-right widget) — monochrome; the speed TEXT must be light or it
-    # is invisible on the dark panel (getColorForSpeedMeterText).
+    # progress bar fill — JD's cfg key is colorforprogressbarforeground<N> (LAFOptions
+    # .getColorForProgressbar<N> reads cfg.getColorForProgressbarForeground<N>). Opaque
+    # dark grey so the bar is not washed-out and the centred white % text stays readable.
+    "colorforprogressbarforeground1":             "#ff3d3d3d",
+    "colorforprogressbarforeground2":             "#ff444444",
+    "colorforprogressbarforeground3":             "#ff4a4a4a",
+    "colorforprogressbarforeground4":             "#ff444444",
+    "colorforprogressbarforeground5":             "#ff3d3d3d",
+    # speed meter (top-right) — keep JD's GREEN graph (omit current/average/limiter keys
+    # = JD defaults); only force the TEXT light so it is readable on the dark panel.
     "colorforspeedmetertext":                     "#fff4f4f4",
     "colorforspeedmeteraveragetext":              "#ffb0b0b0",
-    "colorforspeedmeteraverage":                  "#ffb0b0b0",
-    "colorforspeedmetercurrenttop":               "#a0707070",
-    "colorforspeedmetercurrentbottom":            "#18707070",
-    "colorforspeedmeterlimitertop":               "#80525252",
-    "colorforspeedmeterlimiterbottom":            "#14525252",
     # scrollbars
     "colorforscrollbarsnormalstate":              "#ff393939",
     "colorforscrollbarsmouseoverstate":           "#ff525252",

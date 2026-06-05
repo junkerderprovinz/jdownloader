@@ -127,9 +127,9 @@ public class DialogConfirmAgent {
         }
         d.put("Component.accentColor", SEL);   // FlatLaf derives focus/selection from this
         d.put("TableHeader.background", HEADER);
-        // Expand/collapse handle: JD's ExtTable uses Swing's Tree [+]/[-] icons, drawn
-        // dark (invisible on #161616). Replace with light ones; also light the FlatLaf
-        // chevron colours in case a tree uses those instead.
+        // Standard Swing JTrees (in some JD dialogs) draw dark [+]/[-] / chevrons that
+        // vanish on #161616 — light them. (JD's download package toggle is NOT a Swing
+        // tree; it loads theme icons tree_plus/tree_minus, shipped light in the iconset.)
         d.put("Tree.collapsedIcon", boxIcon(true));    // [+]
         d.put("Tree.expandedIcon", boxIcon(false));    // [-]
         for (String k : new String[] {
@@ -137,6 +137,15 @@ public class DialogConfirmAgent {
                 "Tree.icon.leafColor", "Tree.icon.closedColor", "Tree.icon.openColor" }) {
             d.put(k, new ColorUIResource(0xb0, 0xb0, 0xb0));
         }
+        // Progress bars (download list + account traffic) are FlatLaf JProgressBars
+        // (AppWork RendererProgressBar; ExtProgressColumn sets no colours), so these
+        // UIManager keys win. The blue->grey sweep had turned the fill light; force a
+        // dark track + medium-grey fill + white % text so it is neither washed-out nor
+        // white-on-white.
+        d.put("ProgressBar.background",          new ColorUIResource(0x26, 0x26, 0x26)); // track
+        d.put("ProgressBar.foreground",          new ColorUIResource(0x4d, 0x4d, 0x4d)); // fill
+        d.put("ProgressBar.selectionForeground", new ColorUIResource(0xf4, 0xf4, 0xf4)); // % over fill
+        d.put("ProgressBar.selectionBackground", new ColorUIResource(0xf4, 0xf4, 0xf4)); // % over track
         chromeDone = true;   // set before the refresh so a throw can never cause a retry storm
 
         for (Window w : Window.getWindows()) {
