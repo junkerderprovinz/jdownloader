@@ -98,7 +98,7 @@ while true; do
     # JProgressBars that colorfor* / the runtime agent cannot reach). Idempotent; no-op
     # until JD has installed flatlaf.jar, so it applies from the next start after the
     # first install / self-update.
-    python3 /usr/local/bin/patch-flatlaf-dark.py 2>/dev/null || true
+    python3 /usr/local/bin/patch-flatlaf-dark.py || true
 
     # FlatLaf is deliberately NOT forced onto the JVM boot classpath (a boot-classpath
     # jar has a null classloader and FlatLaf's lazy UI-delegate loading then NPEs at
