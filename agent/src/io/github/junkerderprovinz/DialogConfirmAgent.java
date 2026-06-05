@@ -112,6 +112,16 @@ public class DialogConfirmAgent {
         }
         d.put("Component.accentColor", SEL);   // FlatLaf derives focus/selection from this
         d.put("TableHeader.background", HEADER);
+        // Expand/collapse handle: JD's ExtTable uses Swing's Tree [+]/[-] icons, drawn
+        // dark (invisible on #161616). Replace with light ones; also light the FlatLaf
+        // chevron colours in case a tree uses those instead.
+        d.put("Tree.collapsedIcon", boxIcon(true));    // [+]
+        d.put("Tree.expandedIcon", boxIcon(false));    // [-]
+        for (String k : new String[] {
+                "Tree.icon.expandedColor", "Tree.icon.collapsedColor",
+                "Tree.icon.leafColor", "Tree.icon.closedColor", "Tree.icon.openColor" }) {
+            d.put(k, new ColorUIResource(0xb0, 0xb0, 0xb0));
+        }
         d.put("jdp.darkChrome", Boolean.TRUE);
 
         for (Window w : Window.getWindows()) {
@@ -149,6 +159,21 @@ public class DialogConfirmAgent {
 
     private static ColorUIResource withAlpha(Color c, int a) {
         return new ColorUIResource(new Color(c.getRed(), c.getGreen(), c.getBlue(), a));
+    }
+
+    /** A light [+]/[-] expand-handle icon. Swing's Tree.expandedIcon/collapsedIcon are
+     *  drawn dark and vanish on #161616; JD's ExtTable uses those for package rows. */
+    private static javax.swing.Icon boxIcon(final boolean plus) {
+        return new javax.swing.plaf.IconUIResource(new javax.swing.Icon() {
+            public int getIconWidth()  { return 11; }
+            public int getIconHeight() { return 11; }
+            public void paintIcon(Component c, java.awt.Graphics g, int x, int y) {
+                g.setColor(new Color(0xb0, 0xb0, 0xb0));
+                g.drawRect(x, y, 10, 10);
+                g.drawLine(x + 3, y + 5, x + 7, y + 5);            // horizontal bar
+                if (plus) g.drawLine(x + 5, y + 3, x + 5, y + 7);  // vertical -> plus
+            }
+        });
     }
 
     // --------------------------------------------------------------- dialogs

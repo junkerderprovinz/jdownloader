@@ -81,12 +81,23 @@ d.update({
     "colorfortableaccounterrorrowforeground":     "#fff4f4f4",
     "colorfortableaccounttemperrorrowbackground": "#7ff1c21b",
     "colorfortableaccounttemperrorrowforeground": "#fff4f4f4",
-    # progress bar — grey (no colour)
-    "colorforprogressbarforeground1":             "#5f8d8d8d",
-    "colorforprogressbarforeground2":             "#5f8d8d8d",
-    "colorforprogressbarforeground3":             "#808d8d8d",
-    "colorforprogressbarforeground4":             "#5f8d8d8d",
-    "colorforprogressbarforeground5":             "#5f8d8d8d",
+    # progress bar fill — CORRECT JD key is "colorforprogressbar<N>" (NOT
+    # "...foreground<N>", which JD silently ignores -> it fell back to a near-white
+    # default). Medium grey, opaque enough that the centred white % text stays readable.
+    "colorforprogressbar1":                       "#ff4d4d4d",
+    "colorforprogressbar2":                       "#ff555555",
+    "colorforprogressbar3":                       "#ff5a5a5a",
+    "colorforprogressbar4":                       "#ff555555",
+    "colorforprogressbar5":                       "#ff4d4d4d",
+    # speed meter (top-right widget) — monochrome; the speed TEXT must be light or it
+    # is invisible on the dark panel (getColorForSpeedMeterText).
+    "colorforspeedmetertext":                     "#fff4f4f4",
+    "colorforspeedmeteraveragetext":              "#ffb0b0b0",
+    "colorforspeedmeteraverage":                  "#ffb0b0b0",
+    "colorforspeedmetercurrenttop":               "#a0707070",
+    "colorforspeedmetercurrentbottom":            "#18707070",
+    "colorforspeedmeterlimitertop":               "#80525252",
+    "colorforspeedmeterlimiterbottom":            "#14525252",
     # scrollbars
     "colorforscrollbarsnormalstate":              "#ff393939",
     "colorforscrollbarsmouseoverstate":           "#ff525252",
@@ -100,7 +111,7 @@ d.update({
 })
 os.makedirs(os.path.dirname(path), exist_ok=True)
 json.dump(d, open(path, "w"), indent=2)
-print("[jdownloader-theme] Breeze Dark colorfor* + iconsetid=flat -> %s" % path)
+print("[jdownloader-theme] Carbon #161616 colorfor* + iconsetid=flat -> %s" % path)
 PYEOF
 else
     # Light: JD_Plain (flat) icons, JD's default light colours.
