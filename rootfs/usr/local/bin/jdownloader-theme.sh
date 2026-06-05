@@ -62,11 +62,11 @@ d = {
     # tables (download list / link grabber)
     "colorfortablepackagerowbackground":          "#ff161616",
     "colorfortablepackagerowforeground":          "#fff4f4f4",
-    "colorfortablealternaterowbackground":        "#ff1e1e1e",
+    "colorfortablealternaterowbackground":        "#ff161616",  # = base: uniform rows, no stripes
     "colorfortablealternaterowforeground":        "#fff4f4f4",
     "colorfortableselectedrowsbackground":        "#ff525252",
     "colorfortableselectedrowsforeground":        "#fff4f4f4",
-    "colorfortablemouseoverrowbackground":        "#ff2a2a2a",
+    "colorfortablemouseoverrowbackground":        "#ff0b0b0b",  # hover = darker than the base (clean, Material-Darker style)
     "colorfortablemouseoverrowforeground":        "#fff4f4f4",
     "colorfortablerowgap":                        "#ff161616",  # = base; a lighter gap shows as a pale top-border on rows
     "colorfortablesortedcolumnview":              "#ff262626",
@@ -96,7 +96,7 @@ d = {
     "colorforscrollbarsnormalstate":              "#ff393939",
     "colorforscrollbarsmouseoverstate":           "#ff525252",
     # toggles
-    "tablealternaterowhighlightenabled":          True,
+    "tablealternaterowhighlightenabled":          False,  # uniform rows (no alternating stripes)
     "textantialiasenabled":                       True,
     # No FlatLaf-drawn window title bar: openbox already runs JD's window
     # undecorated + maximised (kiosk). Without this, FlatLaf paints its own
