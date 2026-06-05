@@ -66,6 +66,20 @@ echo "" >&2
     done
 ) &
 
+# On container stop, give JD a chance to save its settings (e.g. hidden columns, layout)
+# before it is killed. JD only persists them via its JVM shutdown hook ("Saving Storage"),
+# so forward SIGTERM to the running JVM and wait for it — otherwise a `docker restart`/stop
+# discards changes made since the last flush.
+JD_PID=""
+on_term() {
+    if [ -n "${JD_PID}" ]; then
+        kill -TERM "${JD_PID}" 2>/dev/null || true
+        wait "${JD_PID}" 2>/dev/null || true
+    fi
+    exit 0
+}
+trap on_term TERM INT
+
 echo "[jdownloader-autostart] Starting JDownloader (first start may take a few minutes)" >&2
 
 while true; do
@@ -125,8 +139,11 @@ while true; do
         -Dsun.java2d.opengl=false \
         -Dsun.awt.disablemixing=true \
         -Dsun.awt.disablegrab=true \
-        -jar "${LAUNCHER}"
+        -jar "${LAUNCHER}" &
+    JD_PID=$!
+    wait "${JD_PID}"
     EXIT=$?
+    JD_PID=""
 
     # Unlock the tray cfg files so the next iteration's disable-tray.py can update
     # them. Re-locks happen at the top of the next loop iteration.
