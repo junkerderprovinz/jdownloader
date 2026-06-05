@@ -31,17 +31,6 @@ RUN set -eux; \
     javac -d out @sources.txt; \
     jar cfm jd-dialog-agent.jar manifest.mf -C out .
 
-# Compile the custom dark progress-bar UI. It extends FlatLaf's FlatProgressBarUI via a
-# compile-only stub (no FlatLaf download needed) — at runtime patch-flatlaf-dark.py injects
-# the io.github.* class into JD's own flatlaf.jar, where it binds to the real FlatProgressBarUI.
-# Only the io.github.* class is kept; the com.formdev.* stub is discarded.
-COPY flatlaf-patch/ /flatlaf-patch/
-WORKDIR /flatlaf-patch
-RUN set -eux; \
-    mkdir -p out; \
-    find src -name '*.java' > sources.txt; \
-    javac -d out @sources.txt
-
 FROM ghcr.io/linuxserver/baseimage-kasmvnc:${BASE_TAG}
 
 LABEL maintainer="junkerderprovinz"
@@ -108,11 +97,6 @@ RUN : > /etc/s6-overlay/s6-rc.d/init-adduser/branding 2>/dev/null || \
 # Dialog-confirm agent (compiled in the builder stage); loaded via JAVA_TOOL_OPTIONS
 # in autostart so it auto-confirms JD's forced installer dialogs.
 COPY --from=agent-builder /build/jd-dialog-agent.jar /opt/JDownloader/jd-dialog-agent.jar
-
-# Custom dark progress-bar UI class (compiled above). patch-flatlaf-dark.py injects it into
-# JD's flatlaf.jar and registers it via ProgressBarUI so the download/account bars stay dark
-# on selected/hover rows. Only the io.github.* tree is copied (the compile stub is dropped).
-COPY --from=agent-builder /flatlaf-patch/out/io/ /opt/JDownloader/flatlaf-patch/io/
 
 RUN chmod +x \
     /usr/local/bin/jdownloader-language.sh \
