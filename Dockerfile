@@ -88,11 +88,18 @@ COPY rootfs/ /
 COPY .github/assets/banner-raw.txt /usr/local/share/banner-raw.txt
 RUN tr -d '\r' < /usr/local/share/banner-raw.txt > /usr/local/share/banner.txt
 
-# Suppress LSIO base-image branding: the ASCII art "linuxserver.io" block plus
-# the donate URL are printed by init-adduser via this file. Emptying it leaves
-# the rest of LSIO's GID/UID setup intact.
-RUN : > /etc/s6-overlay/s6-rc.d/init-adduser/branding 2>/dev/null || \
-    true
+# Suppress LSIO base-image branding so OUR ASCII banner (print-banner.sh) is the only
+# branding in the init log. Two sources: the "linuxserver.io" ASCII logo comes from the
+# init-adduser `branding` file (emptied), and the "To support LSIO projects visit / donate"
+# solicitation is echoed SEPARATELY inside init-adduser/run — strip those two lines from it.
+# The GID/UID block is left intact (it confirms the applied PUID/PGID); its echo stays valid
+# because the donate lines sit between the opening `echo '` and the closing quote.
+RUN set -eux; \
+    : > /etc/s6-overlay/s6-rc.d/init-adduser/branding 2>/dev/null || true; \
+    run=/etc/s6-overlay/s6-rc.d/init-adduser/run; \
+    if [ -f "$run" ]; then \
+        sed -i -e '/To support LSIO projects visit:/d' -e '\#linuxserver\.io/donate#d' "$run"; \
+    fi
 
 # Dialog-confirm agent (compiled in the builder stage); loaded via JAVA_TOOL_OPTIONS
 # in autostart so it auto-confirms JD's forced installer dialogs.
