@@ -170,9 +170,11 @@ public class DialogConfirmAgent {
         int min = Math.min(r, Math.min(g, b));
         int bright = (r + g + b) / 3;
 
-        // FlatLaf's blue accent (focus borders, selection, links) -> neutral grey.
+        // FlatLaf's blue accent (focus, selection, sliders, scrollbar thumbs, links) ->
+        // a fixed DARK grey. Mapping by brightness produced a light grey (~#737373) that
+        // showed up "light grey everywhere"; use the selection grey so accents stay dark.
         if (b > r + 24 && b > g + 12 && b > 90) {
-            return new ColorUIResource(new Color(bright, bright, bright, a));
+            return new ColorUIResource(new Color(SEL.getRed(), SEL.getGreen(), SEL.getBlue(), a));
         }
         // Background / border chrome greys -> darken onto the #161616 scale.
         if (!isText && (max - min) <= 22 && bright >= 26 && bright <= 110) {
