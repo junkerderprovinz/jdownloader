@@ -94,6 +94,12 @@ while true; do
         "${JD_DIR}/cfg/org.jdownloader.gui.jdtrayicon.TrayExtensionConfig.json" \
         2>/dev/null || true
 
+    # Patch JD's installed FlatLaf to a complete #161616 dark (chrome + the table
+    # JProgressBars that colorfor* / the runtime agent cannot reach). Idempotent; no-op
+    # until JD has installed flatlaf.jar, so it applies from the next start after the
+    # first install / self-update.
+    python3 /usr/local/bin/patch-flatlaf-dark.py 2>/dev/null || true
+
     # FlatLaf is deliberately NOT forced onto the JVM boot classpath (a boot-classpath
     # jar has a null classloader and FlatLaf's lazy UI-delegate loading then NPEs at
     # FlatLaf.java:817 and crashes JD's GUI in a loop). JD installs + loads the official
