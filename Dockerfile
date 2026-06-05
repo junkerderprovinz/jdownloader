@@ -114,7 +114,6 @@ RUN chmod +x \
     /usr/local/bin/print-banner.sh \
     /etc/cont-init.d/10-jdownloader-setup \
     /etc/s6-overlay/s6-rc.d/init-jdownloader/run \
-    /etc/s6-overlay/s6-rc.d/svc-de/finish \
     /defaults/autostart
 
 # ---------------------------------------------------------------------------
@@ -145,18 +144,6 @@ RUN set -eux; \
         n=$((n + 1)); \
     done; \
     echo "jdownloader: also overwrote $n inner KasmVNC client icon(s)"
-
-# ---------------------------------------------------------------------------
-# Graceful shutdown for JDownloader
-# ---------------------------------------------------------------------------
-# JD only flushes its settings (column layout/sort/widths, link list, ...) in its
-# JVM shutdown hook — it writes cfg/*.json on shutdown, NOT on change. The s6 default
-# kill-gracetime is 3 s, far too short for that synchronous flush, so on `docker stop`
-# JD got SIGKILLed mid-save and hidden columns reappeared after a restart. The svc-de
-# `finish` script SIGTERMs the JVM and waits; these gracetimes keep s6 from SIGKILLing
-# before the save completes.
-ENV S6_KILL_GRACETIME=30000 \
-    S6_SERVICES_GRACETIME=30000
 
 # ---------------------------------------------------------------------------
 # Standard-ENV (durch Unraid-Template überschreibbar)

@@ -66,27 +66,9 @@ echo "" >&2
     done
 ) &
 
-# IGNORE SIGHUP (and INT/QUIT). openbox-autostart sends THIS script a SIGHUP when it
-# finishes its own startup; the default action (terminate) — or a trap that exits, as a
-# previous version had — killed autostart before it ever launched java, so the WebUI stayed
-# black. Ignoring it lets the loop reach java. SIG_IGN is inherited by java too (harmless).
-# Column/layout persistence on stop is handled by the svc-de `finish` script (SIGTERM to the
-# JVM + S6_*_GRACETIME=30s), not by a trap here; TERM stays default so s6 can stop us.
-trap '' HUP INT QUIT
-
-# Clear a stale shutdown flag. The finish script sets it on stop; /tmp survives a
-# `docker restart`, so without this the loop below would see the old flag and exit
-# immediately, never starting JD. Only an in-progress shutdown should set it.
-rm -f /tmp/.jd-shutting-down 2>/dev/null || true
-
 echo "[jdownloader-autostart] Starting JDownloader (first start may take a few minutes)" >&2
 
 while true; do
-    # Container is shutting down (svc-de's finish sets this flag while it SIGTERMs the
-    # JVM so JD can flush its config). Do NOT relaunch JD — a relaunch would keep `java`
-    # alive, making the finish script wait out its whole timeout and delay the stop.
-    [ -f /tmp/.jd-shutting-down ] && exit 0
-
     # Re-seed the bundled flat icon set before each start. JD resets
     # /config/.../themes during its first install, which would wipe the icons
     # seeded in cont-init; re-applying here keeps iconsetid=flat resolving.
@@ -137,6 +119,7 @@ while true; do
     # mouse-release under KasmVNC (Swing's popup X grab). It only works with the
     # old title-bar poller gone — that poller kept stealing focus and re-closing
     # the menus, which previously masked this fix.
+    echo "[jdownloader-autostart] launching JDownloader JVM (the GUI starts here)..." >&2
     java \
         -Dawt.useSystemAAFontSettings=on \
         -Dswing.aatext=true \
