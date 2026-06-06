@@ -42,18 +42,31 @@ echo "" >&2
 # local Click'n'Load API (127.0.0.1:9666) listens once JD is running; require it
 # stable for ~20s so it does not fire during the install's restart cycle.
 (
+    JAR="${JD_DIR}/libs/laf/flatlaf.jar"
+    # READY only when JD's Click'n'Load API (127.0.0.1:9666) is up AND our dark theme is
+    # actually applied (flatlaf.jar carries the #jdp-carbon-dark marker). Gating on BOTH means
+    # the banner appears only once the WebUI is truly dark — never during the grey first-install
+    # / theme-heal window, so "JD IS READY" means ready, not "up but still grey".
+    up_and_themed() {
+        python3 - "${JAR}" <<'PY' 2>/dev/null
+import socket, sys, zipfile
+s = socket.socket(); s.settimeout(1)
+if s.connect_ex(("127.0.0.1", 9666)) != 0:
+    sys.exit(1)
+try:
+    p = zipfile.ZipFile(sys.argv[1]).read("com/formdev/flatlaf/FlatDarkLaf.properties").decode("utf-8", "replace")
+    sys.exit(0 if "#jdp-carbon-dark" in p else 1)
+except Exception:
+    sys.exit(1)
+PY
+    }
     stable=0
     waited=0
     while [ ! -f /tmp/.jd-ready ]; do
-        if python3 -c "import socket,sys; s=socket.socket(); s.settimeout(1); sys.exit(0 if s.connect_ex(('127.0.0.1',9666))==0 else 1)" 2>/dev/null; then
-            stable=$((stable + 1))
-        else
-            stable=0
-        fi
+        if up_and_themed; then stable=$((stable + 1)); else stable=0; fi
         waited=$((waited + 1))
-        # Fire when JD's port is stably up (normal case) OR after ~10 min as a fallback,
-        # in case the user disabled JD's Click'n'Load API (port 9666) — the WebUI is
-        # usable regardless, so the banner should still appear.
+        # Fire when up AND themed (~20s stable), OR after ~10 min as a fallback (9666 API
+        # disabled, or the heal exhausted its retries) — the WebUI is usable regardless.
         if [ "${stable}" -ge 4 ] || [ "${waited}" -ge 120 ]; then
             : > /tmp/.jd-ready
             echo "" >&2
@@ -69,11 +82,15 @@ echo "" >&2
 # Background theme-healer. On a CLEAN install (and on JD self-updates) JD downloads
 # flatlaf.jar AFTER our pre-launch patch already ran (nothing to patch yet), wipes the
 # seeded icons and can reset colorfor* — and the launcher loop is then parked waiting on
-# JD's self-relaunched instance, so the theme is never re-applied. Once JD is up + stable
-# (jd-ready, set by the poller above, so we never act during the install), watch for an
-# UNPATCHED flatlaf.jar; on reset, restart JD so the loop re-applies the full theme before
-# the next launch. Bounded to 3 heals so it can never become a restart loop.
+# JD's self-relaunched instance, so the theme is never re-applied. Once JD's API has been up
+# + stable (install settled), watch for an UNPATCHED flatlaf.jar; on reset, restart JD so the
+# loop re-applies the full theme before the next launch. Bounded to 3 heals so it can never
+# become a restart loop. It gates on the port directly (NOT /tmp/.jd-ready) because the READY
+# poller now waits for the theme to be applied — which this healer is what produces.
 (
+    port_up() {
+        python3 -c "import socket,sys; s=socket.socket(); s.settimeout(1); sys.exit(0 if s.connect_ex(('127.0.0.1',9666))==0 else 1)" 2>/dev/null
+    }
     is_unpatched() {
         python3 - "$1" <<'PY' 2>/dev/null
 import sys, zipfile
@@ -84,8 +101,13 @@ except Exception:
     sys.exit(1)                                       # missing/unreadable -> do not heal
 PY
     }
-    while [ ! -f /tmp/.jd-ready ]; do sleep 5; done
-    sleep 5
+    # Wait until JD's API has been up + STABLE (install settled); the stable-check avoids
+    # acting during the install's port flapping. Independent of /tmp/.jd-ready (no deadlock).
+    s=0
+    while [ "${s}" -lt 3 ]; do
+        if port_up; then s=$((s + 1)); else s=0; fi
+        sleep 5
+    done
     heals=0
     while [ "${heals}" -lt 3 ]; do
         sleep 8
