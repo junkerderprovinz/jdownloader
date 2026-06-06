@@ -83,14 +83,17 @@ d = {
     "colorfortableaccounterrorrowforeground":     "#fff4f4f4",
     "colorfortableaccounttemperrorrowbackground": "#7ff1c21b",
     "colorfortableaccounttemperrorrowforeground": "#fff4f4f4",
-    # progress bar fill — JD's cfg key is colorforprogressbarforeground<N> (LAFOptions
-    # .getColorForProgressbar<N> reads cfg.getColorForProgressbarForeground<N>). Opaque
-    # dark grey so the bar is not washed-out and the centred white % text stays readable.
-    "colorforprogressbarforeground1":             "#ff3d3d3d",
-    "colorforprogressbarforeground2":             "#ff444444",
-    "colorforprogressbarforeground3":             "#ff4a4a4a",
-    "colorforprogressbarforeground4":             "#ff444444",
-    "colorforprogressbarforeground5":             "#ff3d3d3d",
+    # Legacy progress-bar fill gradient (colorforprogressbarforeground<N>). These feed JD's
+    # OLD Synthetica-painted bars — e.g. the Account-Manager "Downloadtraffic übrig" bar,
+    # which is NOT a FlatLaf JProgressBar. Keep them LIGHT so that bar renders light in its
+    # default (non-hover) state, matching both the FlatLaf download bar and its own hover
+    # state (the FlatLaf highlighter lightened it only on mouse-over before). The FlatLaf
+    # download/progress bars ignore these keys, so they are unaffected.
+    "colorforprogressbarforeground1":             "#ffc0c0c0",
+    "colorforprogressbarforeground2":             "#ffc8c8c8",
+    "colorforprogressbarforeground3":             "#ffd0d0d0",
+    "colorforprogressbarforeground4":             "#ffc8c8c8",
+    "colorforprogressbarforeground5":             "#ffc0c0c0",
     # speed meter (top-right) — keep JD's GREEN graph (omit current/average/limiter keys
     # = JD defaults); only force the TEXT light so it is readable on the dark panel.
     "colorforspeedmetertext":                     "#fff4f4f4",
