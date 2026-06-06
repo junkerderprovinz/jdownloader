@@ -182,10 +182,13 @@ while true; do
     # Wait briefly — JD may have spawned a self-updated process (SmartRlyExitRequest)
     sleep 5
 
-    # Do not start a second bootstrap while a JD instance is already running.
-    if pgrep -f "JDownloader" > /dev/null 2>&1; then
+    # Do not start a second bootstrap while a JD instance is already running. Match the
+    # JVM precisely (JDownloader.jar) — a bare "JDownloader" also matches the python tray
+    # helpers (they take a /config/JDownloader arg) and the -javaagent:/opt/JDownloader path,
+    # which would park this wait-loop forever on a non-JD process.
+    if pgrep -f "JDownloader\.jar" > /dev/null 2>&1; then
         echo "[jdownloader-autostart] Another JD instance running — waiting for it to stop..." >&2
-        while pgrep -f "JDownloader" > /dev/null 2>&1; do
+        while pgrep -f "JDownloader\.jar" > /dev/null 2>&1; do
             sleep 10
         done
         echo "[jdownloader-autostart] JD stopped, resuming restart loop" >&2
