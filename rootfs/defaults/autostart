@@ -66,6 +66,40 @@ echo "" >&2
     done
 ) &
 
+# Background theme-healer. On a CLEAN install (and on JD self-updates) JD downloads
+# flatlaf.jar AFTER our pre-launch patch already ran (nothing to patch yet), wipes the
+# seeded icons and can reset colorfor* — and the launcher loop is then parked waiting on
+# JD's self-relaunched instance, so the theme is never re-applied. Once JD is up + stable
+# (jd-ready, set by the poller above, so we never act during the install), watch for an
+# UNPATCHED flatlaf.jar; on reset, restart JD so the loop re-applies the full theme before
+# the next launch. Bounded to 3 heals so it can never become a restart loop.
+(
+    is_unpatched() {
+        python3 - "$1" <<'PY' 2>/dev/null
+import sys, zipfile
+try:
+    s = zipfile.ZipFile(sys.argv[1]).read("com/formdev/flatlaf/FlatDarkLaf.properties").decode("utf-8", "replace")
+    sys.exit(1 if "#jdp-carbon-dark" in s else 0)   # exit 0 == unpatched (needs a heal)
+except Exception:
+    sys.exit(1)                                       # missing/unreadable -> do not heal
+PY
+    }
+    while [ ! -f /tmp/.jd-ready ]; do sleep 5; done
+    sleep 15
+    heals=0
+    while [ "${heals}" -lt 3 ]; do
+        sleep 20
+        jar="${JD_DIR}/libs/laf/flatlaf.jar"
+        [ -f "${jar}" ] || continue
+        if is_unpatched "${jar}"; then
+            heals=$((heals + 1))
+            echo "[jdownloader-autostart] theme was reset by JD install/update — restarting JD to re-apply (${heals}/3)" >&2
+            pkill -TERM -f "JDownloader\.jar" 2>/dev/null || true
+            sleep 25
+        fi
+    done
+) &
+
 echo "[jdownloader-autostart] Starting JDownloader (first start may take a few minutes)" >&2
 
 while true; do
