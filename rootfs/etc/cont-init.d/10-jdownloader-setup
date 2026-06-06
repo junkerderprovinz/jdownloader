@@ -86,6 +86,11 @@ fi
 # Theme
 /usr/local/bin/jdownloader-theme.sh "${JD_THEME:-JD_Plain_Dark}" || log "theme hook failed (non-fatal)"
 
+# Default download folder — seed /downloads (the mapped volume) so a fresh install
+# writes to the download share, not JD's built-in /config/JDownloader/downloads.
+# Only seeds when unset/JD-internal; a user's own GUI choice is preserved.
+/usr/local/bin/jdownloader-downloaddir.sh || log "download-dir hook failed (non-fatal)"
+
 # Disable system tray extension — not supported in containers, would otherwise
 # trigger an error popup on every start.
 python3 /usr/local/bin/disable-tray.py "${JD_CFG}" 2>/dev/null || \
