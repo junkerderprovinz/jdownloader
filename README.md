@@ -18,9 +18,10 @@
 
 <p align="center">
 A modern, plug-and-play Docker image for <b>JDownloader 2</b> on Unraid with a
-<b>sleek, complete Dark Mode GUI</b> out of the box — a monochrome IBM Carbon (#161616) dark
-across the <i>whole</i> interface (download list, link grabber and settings, not just the menu bar),
-in a clean maximised window. Full GUI in your browser via KasmVNC, zero first-run setup.
+<b>clean, sleek, fully dark UI</b> out of the box — a monochrome IBM&nbsp;Carbon&nbsp;<code>#161616</code>
+dark across the <i>entire</i> interface (download list, link grabber <b>and</b> settings, not just
+the menu bar), with light fills + readable text on the progress bars and a borderless,
+maximised kiosk window. Full GUI in your browser via KasmVNC, zero first-run setup.
 </p>
 
 <br>
@@ -101,7 +102,23 @@ The defaults work out of the box, but you may want to tweak:
 - **Theme** — default `Dark` (JD Plain Dark, Carbon #161616 palette); switch to `Light` any time
 - **KasmVNC Password** — leave empty for LAN-only, set anything for exposure beyond the LAN
 
-Click **Apply**. The first start takes **up to 5 minutes** while JDownloader downloads and installs itself.
+Click **Apply**.
+
+> ## ⏳ First start — wait for the READY banner
+>
+> On the **first start (and after every image update)** JDownloader installs/updates itself
+> and applies the dark theme. **The WebUI stays black for a few minutes.** Open the container
+> **log** and wait for this banner *before* you open the WebUI:
+>
+> ```text
+> ############################################################
+>  JDOWNLOADER IS READY  ->  open the WebUI now (HTTPS 3001)
+> ############################################################
+> ```
+>
+> **Do not restart the container while it installs.** The banner is shown only once the GUI is
+> up **and** the dark theme is fully applied — so when you see it, the UI is already dark and
+> ready. (It self-heals JDownloader's first-run theme reset, then prints the banner.)
 
 ### Step 3 — Open the WebUI
 
@@ -142,7 +159,7 @@ services:
 
 | Variable | Default | Description |
 |---|---|---|
-| `JD_THEME` | `Dark` | UI theme — `Dark` = JD Plain Dark, `Light` = JD Plain |
+| `JD_THEME` | `Dark` | UI theme — `Dark` = monochrome Carbon `#161616`, `Light` = JD's light theme |
 | `PUID` | `99` | User ID — Unraid's *nobody* |
 | `PGID` | `100` | Group ID — Unraid's *users* |
 | `TZ` | `Europe/Vienna` | Timezone |
@@ -164,10 +181,10 @@ On the **first start**, JDownloader installs itself into `/config/JDownloader/`.
 ```
 /config/
 └── JDownloader/
-    ├── cfg/           # all JDownloader config files (theme, accounts, …)
-    ├── libs/          # JD's libraries (FlatLaf, extensions, …)
-    ├── themes/
-    │   └── JD_Plain_Dark/   # pre-built dark theme (copied from image on every start)
+    ├── cfg/
+    │   └── laf/      # the Carbon #161616 colorfor* palette (re-applied every start)
+    ├── libs/laf/     # FlatLaf — flatlaf.jar is patched to the #161616 dark every start
+    ├── themes/flat/  # bundled flat icon set (re-seeded from the image every start)
     └── JDownloader.jar
 ```
 
@@ -236,20 +253,24 @@ The base image also supports `/config/custom-cont-init.d/` for your own init scr
 ## 7. Architecture
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│  ghcr.io/linuxserver/baseimage-kasmvnc:ubuntunoble               │
-│  ┌────────────────────────────────────────────────────────────┐  │
-│  │  s6-overlay v3 init                                        │  │
-│  │   ↓                                                        │  │
-│  │  init-jdownloader/run                                      │  │
-│  │   ↓ installs JD on first start (bootstraps JDownloader.jar)│  │
-│  │   ↓ copies JD_Plain_Dark theme from image → /config        │  │
-│  │   ↓ seeds dark-mode config                                 │  │
-│  │   ↓                                                        │  │
-│  │  KasmVNC ← /defaults/autostart                             │  │
-│  │              → JDownloader 2 (Java Swing GUI)              │  │
-│  └────────────────────────────────────────────────────────────┘  │
-└──────────────────────────────────────────────────────────────────┘
+ghcr.io/linuxserver/baseimage-kasmvnc   (s6-overlay v3 · KasmVNC · weekly LSIO updates)
+      │
+      ▼  cont-init.d/10-jdownloader-setup        (runs once, before the desktop starts)
+      │     • writes JD's native Carbon #161616 colorfor* palette   → cfg/laf
+      │     • seeds the bundled flat icon set                       → themes/flat
+      │     • patches flatlaf.jar to the #161616 dark chrome        → libs/laf
+      │     • language · tray off · openbox kiosk (no title bar, dialogs not maximised)
+      ▼
+   svc-de  →  /defaults/autostart   (the JDownloader launcher loop)
+      │     • java -jar JDownloader.jar     (installs JD 2 on first run)
+      │     • re-applies the colorfor*/icons/flatlaf theme before each launch
+      │     • theme auto-heal: restarts JD once if its self-update reset the theme
+      │     • a -javaagent auto-confirms JD's forced install dialogs
+      │     • prints "JDOWNLOADER IS READY" only when JD is up AND dark
+      ▼
+   JDownloader 2   (Java Swing GUI, streamed to your browser by KasmVNC)
+      ▲
+   svc-de/finish  →  SIGTERMs the JVM on stop so it flushes column layout / settings
 ```
 
 <br>
