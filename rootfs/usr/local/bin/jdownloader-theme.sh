@@ -83,12 +83,19 @@ d = {
     "colorfortableaccounterrorrowforeground":     "#fff4f4f4",
     "colorfortableaccounttemperrorrowbackground": "#7ff1c21b",
     "colorfortableaccounttemperrorrowforeground": "#fff4f4f4",
-    # Deliberately do NOT set colorforprogressbarforeground<N>. Setting them activates JD's
-    # OLD Synthetica progress painter for the Account-Manager "Downloadtraffic übrig" bar
-    # (dark fill + hard-coded white text → only readable while dark, and dark-by-default).
-    # With them unset, that bar falls back to the FlatLaf JProgressBar like the download bars:
-    # light fill + dark text (ProgressBar.selectionForeground) in its DEFAULT state too, not
-    # just on mouse-over. The FlatLaf download/progress bars never read these keys.
+    # Account-Manager "Downloadtraffic übrig" bar: a JD legacy (Synthetica) JProgressBar whose
+    # TEXT is hard-coded white (no theme key for it — confirmed against Material Darker, which
+    # uses a saturated fill for exactly this reason). Leaving these UNSET routed it through
+    # FlatLaf, which filled it LIGHT (@accentBaseColor) while the text stayed white → white-on-
+    # light, unreadable, and it flickered dark→light on tab open. So set the Synthetica fill to
+    # a fixed mid grey: white text stays readable AND the fill is constant (no flicker). As
+    # light as possible without the white text vanishing. The FlatLaf download/progress bars do
+    # NOT read these keys, so they keep their light fill + dark % text.
+    "colorforprogressbarforeground1":             "#ff606060",
+    "colorforprogressbarforeground2":             "#ff666666",
+    "colorforprogressbarforeground3":             "#ff6c6c6c",
+    "colorforprogressbarforeground4":             "#ff666666",
+    "colorforprogressbarforeground5":             "#ff606060",
     # speed meter (top-right) — keep JD's GREEN graph (omit current/average/limiter keys
     # = JD defaults); only force the TEXT light so it is readable on the dark panel.
     "colorforspeedmetertext":                     "#fff4f4f4",
