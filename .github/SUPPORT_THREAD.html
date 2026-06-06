@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<!--
+  Unraid Community Applications support thread for JDownloader.
+  Structure mirrors the sister-app threads (e.g. featherdrop / Krusader):
+  title -> subtitle -> banner -> buttons -> What is this? -> Highlights ->
+  Requirements -> Posting a bug report -> Credits -> disclaimer.
+  Open standalone in a browser, or paste into the Unraid forum editor's source.
+  Title: [Support] junkerderprovinz - jdownloader
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>[Support] junkerderprovinz - jdownloader</title>
+<style>
+  body { max-width: 900px; margin: 1.5rem auto; padding: 0 1rem;
+         font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+         line-height: 1.6; color: #1c1c1c; }
+  h1 { text-align: center; font-size: 1.7rem; margin-bottom: .2rem; }
+  .subtitle { text-align: center; color: #666; font-style: italic; margin-top: 0; }
+  h2 { margin-top: 1.9rem; font-size: 1.25rem; }
+  code { background: #f1f1f1; padding: .1em .35em; border-radius: 4px; font-size: .9em; }
+  a { color: #c79a1e; }
+  ul { padding-left: 1.2rem; }
+  li { margin: .25rem 0; }
+  img { border: 0; vertical-align: middle; }
+  .footnote { color: #777; font-size: .9em; font-style: italic; text-align: center; margin-top: 2rem; }
+</style>
+</head>
+<body>
+
+<h1>JDownloader – JDownloader 2 with a clean, fully dark UI for Unraid</h1>
+<p class="subtitle">The complete download manager in your browser — monochrome Carbon dark, nothing to set up.</p>
+
+<p align="center">
+  <a href="https://github.com/junkerderprovinz/jdownloader">
+    <img src="https://raw.githubusercontent.com/junkerderprovinz/jdownloader/main/.github/assets/jdownloader-banner.svg" alt="JDownloader" width="100%">
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://unraid.net/community/apps?q=jdownloader"><img src="https://raw.githubusercontent.com/junkerderprovinz/jdownloader/main/.github/assets/support-buttons/install-on-unraid.svg" alt="Install on Unraid" width="240"></a>
+  &nbsp;
+  <a href="https://github.com/junkerderprovinz/jdownloader"><img src="https://raw.githubusercontent.com/junkerderprovinz/jdownloader/main/.github/assets/support-buttons/view-on-github.svg" alt="View on GitHub" width="240"></a>
+  &nbsp;
+  <a href="https://buymeacoffee.com/junkerderprovinz"><img src="https://raw.githubusercontent.com/junkerderprovinz/jdownloader/main/.github/assets/support-buttons/buy-me-a-coffee.svg" alt="Buy me a coffee" width="240"></a>
+</p>
+
+<h2>What is this?</h2>
+<p>JDownloader 2, the full-featured download manager, running as one Unraid container and
+streamed to your browser via KasmVNC — no native install, no SSH. The entire GUI (download
+list, link grabber and the Advanced Settings table) is rendered in a clean monochrome
+<strong>IBM Carbon (#161616)</strong> dark theme, with light, readable progress bars and a
+green speed graph. It auto-installs and themes itself on first start and is configured
+entirely from the Unraid template.</p>
+
+<h2>Highlights</h2>
+<ul>
+  <li><strong>Complete dark UI</strong> — monochrome IBM Carbon <code>#161616</code> across the <em>whole</em> interface, not just the menu bar; one variable flips it to a matching light theme</li>
+  <li><strong>KasmVNC web desktop</strong> — hardware-accelerated rendering, real browser clipboard, native file upload/download, high-DPI</li>
+  <li><strong>Turnkey</strong> — auto-installs JDownloader, auto-confirms its first-run prompts, and the theme <strong>self-heals</strong> after JD's own updates</li>
+  <li><strong>Update-safe</strong> — all config, links and session state live in <code>/config</code>; even hidden columns and column layout survive a restart</li>
+  <li><strong>My.JDownloader-ready</strong> — pair it once and manage downloads remotely</li>
+  <li>Optional WebUI login (<code>CUSTOM_USER</code> / <code>PASSWORD</code>), or leave it open on your LAN</li>
+  <li><strong>One container</strong>, multi-arch (amd64 + arm64), built on LinuxServer's <code>baseimage-kasmvnc</code></li>
+  <li>Image: <code>ghcr.io/junkerderprovinz/jdownloader:latest</code></li>
+</ul>
+
+<h2>Requirements</h2>
+<ul>
+  <li>Unraid 6.10+</li>
+  <li>Open the WebUI over <strong>HTTPS</strong> (port <code>3001</code>) for the seamless browser clipboard — accept the self-signed cert once</li>
+  <li><strong>First start:</strong> JDownloader installs itself, so the WebUI stays black for a few minutes — wait for the <code>JDOWNLOADER IS READY</code> banner in the container log before opening it, and don't restart during the install</li>
+</ul>
+
+<h2>Posting a bug report</h2>
+<p>Please post:</p>
+<ul>
+  <li>Unraid version (Settings → System Information)</li>
+  <li>Image tag (<code>latest</code> or a pinned <code>vX.Y.Z</code>)</li>
+  <li>Output of <code>docker logs --tail 200 JDownloader</code></li>
+  <li>Browser + OS you're using</li>
+  <li>Whether you changed <code>JD_THEME</code>, the WebUI ports, <code>CUSTOM_USER</code>/<code>PASSWORD</code>, or the <code>/config</code> / <code>/downloads</code> mounts</li>
+</ul>
+<p>GitHub issues with the same info are also welcome:
+<a href="https://github.com/junkerderprovinz/jdownloader/issues">github.com/junkerderprovinz/jdownloader/issues</a></p>
+
+<h2>Credits</h2>
+<p>Built on LinuxServer's <a href="https://github.com/linuxserver/docker-baseimage-kasmvnc">baseimage-kasmvnc</a>
+and <a href="https://github.com/kasmtech/KasmVNC">KasmVNC</a>. JDownloader 2 is by
+<a href="https://jdownloader.org">AppWork</a>. The dark theme is our own IBM Carbon palette,
+applied through JDownloader's native colour config plus a patched FlatLaf — see the repo for
+details. If this saved you a setup evening, you can
+<a href="https://buymeacoffee.com/junkerderprovinz">buy me a coffee</a>.</p>
+
+<p class="footnote">Self-hosted, MIT-licensed — you run it, you own your data and the responsibility.</p>
+
+</body>
+</html>
