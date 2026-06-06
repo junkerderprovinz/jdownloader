@@ -8,7 +8,7 @@
   <Shell>bash</Shell>
   <Privileged>false</Privileged>
   <ReadMe>https://github.com/junkerderprovinz/jdownloader/blob/main/README.md</ReadMe>
-  <Support>https://github.com/junkerderprovinz/jdownloader/issues</Support>
+  <Support>https://forums.unraid.net/topic/199305-support-junkerderprovinz-jdownloader-2/</Support>
   <Project>https://jdownloader.org</Project>
   <Overview>
     JDownloader 2 with a clean, sleek, fully DARK UI out of the box — a complete monochrome&#xD;
