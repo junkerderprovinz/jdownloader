@@ -11,21 +11,22 @@ template's <Support> at the thread URL. Title format matches the sister apps.
 # Body
 
 **JDownloader** runs the full JDownloader 2 download manager in your browser on
-Unraid — with a clean, sleek, fully **dark** UI out of the box. The whole interface
-(download list, link grabber *and* settings) renders in a monochrome IBM Carbon
-(`#161616`) dark theme over a hardware-accelerated KasmVNC web desktop. Nothing to
-set up: it installs and themes itself on first start.
+Unraid — with a clean, **sleek**, fully **dark** UI out of the box. The whole interface
+(download list, link grabber *and* settings) renders in a sleek monochrome IBM Carbon
+(`#161616`) dark theme over a hardware-accelerated KasmVNC web desktop with **full
+two-way browser clipboard**. Nothing to set up: it installs and themes itself on first start.
 
 **Links**
 - Source: https://github.com/junkerderprovinz/jdownloader
 - Image: `ghcr.io/junkerderprovinz/jdownloader:latest` (amd64 + arm64) · also `junkerderprovinz/jdownloader` on Docker Hub
 - Changelog: https://github.com/junkerderprovinz/jdownloader/releases
 
-**Features**
-- 🌑 Complete dark UI — monochrome IBM Carbon `#161616` across the whole interface, not just the menu bar
-- 🖥️ KasmVNC web desktop — hardware-accelerated, real browser clipboard, native file upload/download
-- 🧊 Turnkey — auto-installs JDownloader, auto-confirms its install prompts, theme self-heals after JD's updates
-- 💾 Update-safe — config, links and session state live in `/config`; hidden columns and layout survive restarts
+**Features** (what sets it apart first)
+- 🌑 **Complete, sleek dark UI** — monochrome IBM Carbon `#161616` across the *whole* interface (download list, link grabber *and* settings), not just the menu bar; the sleek dark JDownloader you won't find anywhere else
+- 📋 **Full clipboard support** — over HTTPS the browser clipboard works **both ways**: copy a link on your PC and paste it straight into JDownloader, and copy text back out
+- 🧊 **Turnkey & self-healing** — auto-installs JDownloader, auto-confirms its prompts, and the theme self-heals after JD's own updates
+- 💾 **Update-safe** — config, links and session state live in `/config`; even hidden columns and layout survive restarts
+- 🖥️ KasmVNC web desktop — hardware-accelerated rendering, native file upload/download, high-DPI
 - 🔗 My.JDownloader-ready — pair it and manage downloads remotely like any JD install
 - 🧩 One container, amd64 + arm64 — built on LinuxServer's `baseimage-kasmvnc`
 
