@@ -11,28 +11,38 @@
   <Support>https://github.com/junkerderprovinz/jdownloader/issues</Support>
   <Project>https://jdownloader.org</Project>
   <Overview>
-    JDownloader 2 with a sleek, modern DARK MODE GUI out of the box — a complete&#xD;
-    monochrome IBM Carbon (#161616) dark interface where the download list, link grabber AND settings are&#xD;
-    all dark (not just the menu bar), on a smooth, hardware-accelerated KasmVNC web&#xD;
-    desktop. No tweaking, no add-ons — it just looks great from the first start.&#xD;
+    JDownloader 2 with a clean, sleek, fully DARK UI out of the box — a complete monochrome&#xD;
+    IBM Carbon (#161616) dark interface where the download list, link grabber AND settings are&#xD;
+    all dark (not just the menu bar), with light, readable progress bars, on a smooth,&#xD;
+    hardware-accelerated KasmVNC web desktop. No tweaking, no add-ons — it just looks great&#xD;
+    from the first start.&#xD;
+    &#xD;
+    ===========================================================================&#xD;
+    IMPORTANT — FIRST START, PLEASE WAIT (read this):&#xD;
+    On the first start (and after every image update) JDownloader installs/updates itself&#xD;
+    and applies the dark theme. The WebUI stays BLACK for a few minutes. Open the container&#xD;
+    LOG and wait for this banner BEFORE you open the WebUI:&#xD;
+          ##############################################&#xD;
+           JDOWNLOADER IS READY  ->  open the WebUI now&#xD;
+          ##############################################&#xD;
+    Do NOT restart the container while it installs — it self-heals the first-run theme reset&#xD;
+    and prints the banner only once the UI is up AND fully dark. So when you see it, it's&#xD;
+    already dark and ready.&#xD;
+    ===========================================================================&#xD;
     &#xD;
     What's pre-configured:&#xD;
-    • Full Dark Mode by default — JD Plain Dark (flat icons + Carbon #161616 colours),&#xD;
-      shown in a clean maximised kiosk window (no title-bar clutter).&#xD;
+    • Clean, sleek full Dark Mode by default — monochrome Carbon #161616 (flat icons),&#xD;
+      in a borderless maximised kiosk window; light, readable progress bars.&#xD;
     • Switch to a matching Light theme any time via the Theme variable.&#xD;
-    • Auto-installs and self-updates JDownloader on first start.&#xD;
-    • Persistent config and downloads in /config and /downloads.&#xD;
+    • Auto-installs and self-updates JDownloader; its install prompts are auto-confirmed&#xD;
+      for you — nothing to click.&#xD;
+    • Persistent config + downloads in /config and /downloads; even hidden columns / layout&#xD;
+      survive a restart.&#xD;
     &#xD;
     Notes:&#xD;
-    • FIRST START takes a few minutes: JDownloader installs itself + its dark&#xD;
-      theme. The WebUI stays BLACK until done — this is normal, do NOT restart.&#xD;
-      Watch the container log and wait for the "JDOWNLOADER IS READY" banner.&#xD;
-    • First start only: JDownloader may ask ONCE to install its design and a few&#xD;
-      extensions — click [OK] / [Install now]. After that it stays dark, no prompts.&#xD;
-    • The WebUI opens via HTTPS (port 3001, self-signed cert — accept the browser&#xD;
-      warning once). HTTPS enables SEAMLESS CLIPBOARD: copy on your PC and paste&#xD;
-      straight into JD. Plain HTTP (3000) is also exposed, but browsers block the&#xD;
-      clipboard over HTTP, so there you'd use KasmVNC's clipboard panel instead.&#xD;
+    • The WebUI opens via HTTPS (port 3001, self-signed cert — accept the browser warning&#xD;
+      once). HTTPS enables SEAMLESS CLIPBOARD: copy on your PC and paste straight into JD.&#xD;
+      Plain HTTP (3000) is also exposed, but browsers block the clipboard over HTTP.&#xD;
     • PUID/PGID default to 99/100 (nobody/users on Unraid).&#xD;
     • Auth: leave Username and Password EMPTY for no login.&#xD;
     &#xD;
@@ -71,7 +81,7 @@
        ======================================================== -->
   <Config Name="Theme (JD_THEME)" Target="JD_THEME"
           Default="Dark|Light" Mode=""
-          Description="Dark = JD Plain Dark, Light = JD Plain."
+          Description="Dark = monochrome Carbon #161616, Light = JD's light theme."
           Type="Variable" Display="always" Required="false" Mask="false">Dark</Config>
 
   <!-- ========================================================
