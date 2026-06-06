@@ -24,13 +24,14 @@
   ul { padding-left: 1.2rem; }
   li { margin: .25rem 0; }
   img { border: 0; vertical-align: middle; }
+  hr { border: 0; border-top: 1px solid #ddd; margin: 2rem 0; }
   .footnote { color: #777; font-size: .9em; font-style: italic; text-align: center; margin-top: 2rem; }
 </style>
 </head>
 <body>
 
-<h1>JDownloader – JDownloader 2 with a clean, fully dark UI for Unraid</h1>
-<p class="subtitle">The complete download manager in your browser — monochrome Carbon dark, nothing to set up.</p>
+<h1>JDownloader – JDownloader 2 with a clean, sleek, fully dark UI for Unraid</h1>
+<p class="subtitle">The complete download manager in your browser — sleek monochrome Carbon dark, full browser clipboard, nothing to set up.</p>
 
 <p align="center">
   <a href="https://github.com/junkerderprovinz/jdownloader">
@@ -49,17 +50,19 @@
 <h2>What is this?</h2>
 <p>JDownloader 2, the full-featured download manager, running as one Unraid container and
 streamed to your browser via KasmVNC — no native install, no SSH. The entire GUI (download
-list, link grabber and the Advanced Settings table) is rendered in a clean monochrome
-<strong>IBM Carbon (#161616)</strong> dark theme, with light, readable progress bars and a
-green speed graph. It auto-installs and themes itself on first start and is configured
-entirely from the Unraid template.</p>
+list, link grabber and the Advanced Settings table) is rendered in a clean, <strong>sleek</strong>
+monochrome <strong>IBM Carbon (#161616)</strong> dark theme, with light, readable progress bars
+and a green speed graph. Over HTTPS you also get <strong>full two-way browser clipboard</strong> —
+copy a link on your PC and paste it straight into JDownloader. It auto-installs and themes itself
+on first start and is configured entirely from the Unraid template.</p>
 
 <h2>Highlights</h2>
 <ul>
-  <li><strong>Complete dark UI</strong> — monochrome IBM Carbon <code>#161616</code> across the <em>whole</em> interface, not just the menu bar; one variable flips it to a matching light theme</li>
-  <li><strong>KasmVNC web desktop</strong> — hardware-accelerated rendering, real browser clipboard, native file upload/download, high-DPI</li>
-  <li><strong>Turnkey</strong> — auto-installs JDownloader, auto-confirms its first-run prompts, and the theme <strong>self-heals</strong> after JD's own updates</li>
+  <li><strong>Complete, sleek dark UI</strong> — monochrome IBM Carbon <code>#161616</code> across the <em>whole</em> interface (download list, link grabber and settings), not just the menu bar; the sleek dark JDownloader you won't find elsewhere (one variable flips it to a matching light theme)</li>
+  <li><strong>Full clipboard support</strong> — over HTTPS the browser clipboard works <strong>both ways</strong>: copy a link on your PC and paste straight into JDownloader, and copy text back out</li>
+  <li><strong>Turnkey &amp; self-healing</strong> — auto-installs JDownloader, auto-confirms its first-run prompts, and the theme self-heals after JD's own updates</li>
   <li><strong>Update-safe</strong> — all config, links and session state live in <code>/config</code>; even hidden columns and column layout survive a restart</li>
+  <li><strong>KasmVNC web desktop</strong> — hardware-accelerated rendering, native file upload/download, high-DPI</li>
   <li><strong>My.JDownloader-ready</strong> — pair it once and manage downloads remotely</li>
   <li>Optional WebUI login (<code>CUSTOM_USER</code> / <code>PASSWORD</code>), or leave it open on your LAN</li>
   <li><strong>One container</strong>, multi-arch (amd64 + arm64), built on LinuxServer's <code>baseimage-kasmvnc</code></li>
@@ -92,6 +95,8 @@ and <a href="https://github.com/kasmtech/KasmVNC">KasmVNC</a>. JDownloader 2 is 
 applied through JDownloader's native colour config plus a patched FlatLaf — see the repo for
 details. If this saved you a setup evening, you can
 <a href="https://buymeacoffee.com/junkerderprovinz">buy me a coffee</a>.</p>
+
+<hr>
 
 <p class="footnote">Self-hosted, MIT-licensed — you run it, you own your data and the responsibility.</p>
 
