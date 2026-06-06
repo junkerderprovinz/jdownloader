@@ -108,6 +108,7 @@ COPY --from=agent-builder /build/jd-dialog-agent.jar /opt/JDownloader/jd-dialog-
 RUN chmod +x \
     /usr/local/bin/jdownloader-language.sh \
     /usr/local/bin/jdownloader-theme.sh \
+    /usr/local/bin/jdownloader-downloaddir.sh \
     /usr/local/bin/disable-tray.py \
     /usr/local/bin/kill-tray-extension.py \
     /usr/local/bin/patch-flatlaf-dark.py \
