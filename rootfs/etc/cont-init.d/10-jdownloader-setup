@@ -101,6 +101,21 @@ if ls "${JD_CFG}"/*.json >/dev/null 2>&1; then
     log "cfg files: $(ls "${JD_CFG}"/*.json | xargs -n1 basename | tr '\n' ' ')"
 fi
 
+# Make the mapped /downloads volume writable by the JD user (PUID/PGID -> abc).
+# Docker creates a MISSING host path as root:root, which abc can't write — JD then
+# silently falls back to <config>/Downloads. chown only the TOP level (no -R) so we
+# never traverse a large share or rewrite files that already live inside it.
+if [[ -d /downloads ]]; then
+    chown abc:abc /downloads 2>/dev/null || true
+    if ! s6-setuidgid abc test -w /downloads 2>/dev/null; then
+        log "WARNING: /downloads is NOT writable by the container user (PUID/PGID)."
+        log "         JDownloader will fall back to /config. Fix the host share's owner,"
+        log "         e.g. on the Unraid console:  chown nobody:users /mnt/.../<download-share>"
+    else
+        log "/downloads is writable by the JD user"
+    fi
+fi
+
 # Fix ownership
 chown -R abc:abc /config 2>/dev/null || true
 
