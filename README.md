@@ -173,6 +173,8 @@ services:
 | `3000` | KasmVNC HTTP | | `/config` | Persistent JDownloader config, links, session |
 | `3001` | KasmVNC HTTPS *(self-signed)* | | `/downloads` | Download destination |
 
+> **Language:** the UI is **English** by default. Change it any time in JDownloader's own language menu (top toolbar → the flag icon, or *Settings → Language*) — your choice is saved and persists across restarts.
+
 <br>
 
 ## 4. Customisation & Persistence

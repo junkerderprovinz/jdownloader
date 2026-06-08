@@ -5,9 +5,9 @@
 #   - SmartRlyExitRequest (self-update): launcher exits, loop restarts it automatically.
 #   - Normal exits / crashes: loop restarts within 5 seconds.
 
-export LANG="${LANG:-de_DE.UTF-8}"
-export LANGUAGE="${LANGUAGE:-de_DE:de:en}"
-export LC_ALL="${LC_ALL:-de_DE.UTF-8}"
+export LANG="${LANG:-en_US.UTF-8}"
+export LANGUAGE="${LANGUAGE:-en_US:en}"
+export LC_ALL="${LC_ALL:-en_US.UTF-8}"
 
 # Set X11 root window (desktop background) to the theme's #161616 base so
 # the area outside JD's window is dark instead of the default grey/white.

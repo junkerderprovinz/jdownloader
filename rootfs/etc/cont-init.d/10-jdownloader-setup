@@ -69,7 +69,7 @@ fi
 # chrome is provided by the /opt boot classpath (see autostart), not libs/laf.
 
 # Language
-/usr/local/bin/jdownloader-language.sh "${JD_LANG:-de}" || log "language hook failed (non-fatal)"
+/usr/local/bin/jdownloader-language.sh "${JD_LANG:-en}" || log "language hook failed (non-fatal)"
 
 # Push locale into s6 env so all child processes inherit it
 mkdir -p /run/s6/container_environment
@@ -119,4 +119,4 @@ fi
 # Fix ownership
 chown -R abc:abc /config 2>/dev/null || true
 
-log "setup done (JD_LANG=${JD_LANG:-de}, JD_THEME=${JD_THEME:-JD_Plain_Dark})"
+log "setup done (JD_LANG=${JD_LANG:-en}, JD_THEME=${JD_THEME:-JD_Plain_Dark})"
