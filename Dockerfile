@@ -163,11 +163,11 @@ ENV S6_KILL_GRACETIME=30000 \
 # JD_LANG     – UI-Sprache: ISO-Code (de, en, fr, ...)
 # JD_THEME    – UI-Theme: Dark (Carbon #161616) | Light
 # JD_INST_DIR – Installations-Pfad (nicht ändern außer für Debugging)
-ENV JD_LANG=de \
+ENV JD_LANG=en \
     JD_THEME=Dark \
     JD_INST_DIR=/config/JDownloader \
-    LANG=de_DE.UTF-8 \
-    LANGUAGE=de_DE:de:en \
-    LC_ALL=de_DE.UTF-8
+    LANG=en_US.UTF-8 \
+    LANGUAGE=en_US:en \
+    LC_ALL=en_US.UTF-8
 
 # Ports werden vom Baseimage freigegeben (3000/HTTP, 3001/HTTPS).

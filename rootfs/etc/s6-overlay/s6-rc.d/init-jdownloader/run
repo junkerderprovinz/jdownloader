@@ -16,6 +16,6 @@ if [ -f /etc/jdownloader-build ]; then
     log "BUILD: ${BUILD_SHA:0:7}  (${BUILD_DATE})"
 fi
 
-log "JD_LANG=${JD_LANG:-de}  JD_THEME=${JD_THEME:-JD_Plain_Dark}"
+log "JD_LANG=${JD_LANG:-en}  JD_THEME=${JD_THEME:-JD_Plain_Dark}"
 log "First start may take up to 5 minutes while JDownloader installs itself."
 exit 0

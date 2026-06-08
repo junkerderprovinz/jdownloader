@@ -10,7 +10,7 @@
 # -----------------------------------------------------------------------------
 set -e
 
-CODE="${1:-de}"
+CODE="${1:-en}"
 JD_DIR="${JD_INST_DIR:-/config/JDownloader}"
 JD_CFG="${JD_DIR}/cfg"
 PROFILE_D="/config/.profile.d"
@@ -86,30 +86,17 @@ EOF
 chmod 644 "${ENV_FILE}"
 ln -sf "${ENV_FILE}" /etc/profile.d/zz-jdownloader-lang.sh 2>/dev/null || true
 
-# JDownloader Sprach-Config seeden (wird nur geschrieben, wenn JD nicht läuft)
+# Seed JD's UI language ONLY on the first run (no WTFLocale.json yet). On later starts
+# we deliberately leave it untouched, so a language the user picks in JDownloader's own
+# language menu (Settings -> the flag icon) persists across container restarts.
 LOCALE_JSON="${JD_CFG}/org.appwork.utils.locale.WTFLocale.json"
 if [[ ! -f "${LOCALE_JSON}" ]]; then
     cat > "${LOCALE_JSON}" <<EOF
 {"langCode":"${JD_CODE}","langFile":null,"dateFormat":null}
 EOF
-    log "Seeded ${LOCALE_JSON}"
+    log "Seeded UI language '${JD_CODE}' (first run) -> ${LOCALE_JSON}"
 else
-    # Nur den langCode-Wert aktualisieren (JD schreibt weitere Keys darunter)
-    if command -v python3 >/dev/null 2>&1; then
-        python3 - "${LOCALE_JSON}" "${JD_CODE}" <<'PY' 2>/dev/null || true
-import json, sys
-path, code = sys.argv[1], sys.argv[2]
-try:
-    with open(path) as f:
-        data = json.load(f)
-    data['langCode'] = code
-    with open(path, 'w') as f:
-        json.dump(data, f, indent=2)
-    print('[jdownloader-language] Updated langCode in ' + path)
-except Exception as e:
-    print('[jdownloader-language] Could not update locale JSON:', e)
-PY
-    fi
+    log "UI language already set — leaving it as-is (change it in JD's own language menu)"
 fi
 
 log "Language set – LANG=${LOCALE} LANGUAGE=${CHAIN}"
