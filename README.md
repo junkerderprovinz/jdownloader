@@ -38,15 +38,14 @@ maximised kiosk window. Full GUI in your browser via KasmVNC, zero first-run set
 ## Table of Contents
 
 1. [Overview](#1-overview)
-2. [Quick Start](#2-quick-start)
-3. [Configuration](#3-configuration)
-4. [Customisation & Persistence](#4-customisation--persistence)
-5. [Troubleshooting](#5-troubleshooting)
-6. [Screenshots](#6-screenshots)
+2. [Screenshots](#2-screenshots)
+3. [Quick Start](#3-quick-start)
+4. [Configuration](#4-configuration)
+5. [Customisation & Persistence](#5-customisation--persistence)
+6. [Troubleshooting](#6-troubleshooting)
 7. [Architecture](#7-architecture)
 8. [Contributing / License](#8-contributing--license)
 9. [Support this project](#9-support-this-project)
-
 <br>
 
 ## 1. Overview
@@ -76,7 +75,30 @@ What's included beyond bare JDownloader:
 
 <br>
 
-## 2. Quick Start
+## 2. Screenshots
+
+<p align="center">
+  <img src=".github/assets/screenshots/jdownloader-1.jpg" alt="JDownloader download list with the Carbon dark theme and right-click menu" width="90%">
+  <br><em>Download list in monochrome Carbon <code>#161616</code> — right-click menu, per-file priority, live speed/ETA.</em>
+</p>
+
+<br>
+
+<p align="center">
+  <img src=".github/assets/screenshots/jdownloader-2.jpg" alt="JDownloader downloading multiple packages with the dark theme" width="90%">
+  <br><em>Multiple packages downloading — uniform dark rows, light progress bars, green speed graph.</em>
+</p>
+
+<br>
+
+<p align="center">
+  <img src=".github/assets/screenshots/jdownloader-3.jpg" alt="JDownloader Settings — User Interface tab, fully dark" width="90%">
+  <br><em>Settings &rarr; User Interface — fully dark, the same Carbon palette across the whole app.</em>
+</p>
+
+<br>
+
+## 3. Quick Start
 
 ### Step 1 — Install the template
 
@@ -157,7 +179,7 @@ services:
 
 <br>
 
-## 3. Configuration
+## 4. Configuration
 
 | Variable | Default | Description |
 |---|---|---|
@@ -178,7 +200,7 @@ services:
 
 <br>
 
-## 4. Customisation & Persistence
+## 5. Customisation & Persistence
 
 On the **first start**, JDownloader installs itself into `/config/JDownloader/`. All settings, link lists, accounts and download history live there and survive every `docker pull` and container update.
 
@@ -198,7 +220,7 @@ The base image also supports `/config/custom-cont-init.d/` for your own init scr
 
 <br>
 
-## 5. Troubleshooting
+## 6. Troubleshooting
 
 <details>
 <summary><b>WebUI is black / desktop never appears</b></summary>
@@ -245,29 +267,6 @@ The base image also supports `/config/custom-cont-init.d/` for your own init scr
 
 - Open in a private/incognito window once — your browser may have cached old credentials
 </details>
-
-<br>
-
-## 6. Screenshots
-
-<p align="center">
-  <img src=".github/assets/screenshots/jdownloader-1.jpg" alt="JDownloader download list with the Carbon dark theme and right-click menu" width="90%">
-  <br><em>Download list in monochrome Carbon <code>#161616</code> — right-click menu, per-file priority, live speed/ETA.</em>
-</p>
-
-<br>
-
-<p align="center">
-  <img src=".github/assets/screenshots/jdownloader-2.jpg" alt="JDownloader downloading multiple packages with the dark theme" width="90%">
-  <br><em>Multiple packages downloading — uniform dark rows, light progress bars, green speed graph.</em>
-</p>
-
-<br>
-
-<p align="center">
-  <img src=".github/assets/screenshots/jdownloader-3.jpg" alt="JDownloader Settings — User Interface tab, fully dark" width="90%">
-  <br><em>Settings &rarr; User Interface — fully dark, the same Carbon palette across the whole app.</em>
-</p>
 
 <br>
 
