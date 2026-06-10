@@ -1,7 +1,7 @@
 <h1 align="center">JDownloader 2 for Unraid</h1>
 
 <a href="https://jdownloader.org">
-  <img src="https://raw.githubusercontent.com/junkerderprovinz/jdownloader/main/.github/assets/jdownloader-banner.svg" alt="JDownloader 2 for Unraid" width="100%">
+  <img src="https://raw.githubusercontent.com/junkerderprovinz/jdownloader/main/.github/assets/jdownloader-banner.png" alt="JDownloader 2 for Unraid" width="100%">
 </a>
 
 <p align="center">
