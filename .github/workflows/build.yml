@@ -127,7 +127,12 @@ jobs:
           # to launch: autostart prints this exact line right at the JVM start.
           jd_line='[jdownloader-autostart] launching JDownloader JVM (the GUI starts here)...'
           for i in $(seq 1 120); do
-            if docker logs "$name" 2>&1 | grep -qF "$jd_line"; then
+            # Capture first, then substring-match in bash: `docker logs | grep -q`
+            # under pipefail dies of SIGPIPE (status 141) once the log grows past
+            # grep's early exit — the line was "not found" although present
+            # (flaky gate). No pipeline = no SIGPIPE.
+            logs=$(docker logs "$name" 2>&1 || true)
+            if [[ "$logs" == *"$jd_line"* ]]; then
               echo "✅ JDownloader JVM launch confirmed after ${i}s"
               docker rm -f "$name" >/dev/null
               exit 0
