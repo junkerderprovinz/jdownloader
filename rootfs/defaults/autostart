@@ -37,6 +37,11 @@ echo "   Do NOT restart the container. Wait for the READY banner below." >&2
 echo "  ============================================================" >&2
 echo "" >&2
 
+# The READY marker must be cleared on EVERY boot — /tmp persists across
+# docker stop/start, and a leftover marker would make the watcher below exit
+# immediately so the READY banner would only ever fire on the first boot.
+rm -f /tmp/.jd-ready
+
 # Background: announce (loud + once) when JDownloader is actually up, so the user
 # knows the long first-start install has finished and the WebUI is usable. JD's
 # local Click'n'Load API (127.0.0.1:9666) listens once JD is running; require it

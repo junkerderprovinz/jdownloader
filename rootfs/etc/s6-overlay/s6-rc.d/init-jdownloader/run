@@ -1,4 +1,5 @@
 #!/usr/bin/with-contenv bash
+# shellcheck shell=bash
 # s6-rc oneshot — banner only.
 # Installation is handled by the autostart (runs with a live DISPLAY).
 

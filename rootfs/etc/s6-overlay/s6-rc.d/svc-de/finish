@@ -1,4 +1,5 @@
 #!/usr/bin/with-contenv bash
+# shellcheck shell=bash
 # JDownloader flushes its settings (hidden columns, sort order, widths, link list) ONLY in
 # its JVM shutdown hook — it writes cfg/*.json on shutdown, not on change. The JD java
 # process is an openbox grandchild (not s6-supervised), so on `docker stop`/`restart` it
@@ -9,6 +10,13 @@
 # NOTE: deliberately NO shutdown flag here. An earlier version had the autostart loop check
 # a flag and `exit 0`, which raced with this script and stopped JD from launching at all.
 # The finish is shutdown-only and never runs at startup, so it cannot affect JD launching.
+
+# Kill the autostart launcher loop FIRST — it is not s6-supervised, survives the JVM,
+# and its restart loop would otherwise relaunch JDownloader mid-shutdown. openbox runs
+# the loop as `sh /config/.config/openbox/autostart`, and its forked background watchers
+# share that cmdline, so matching the path takes out loop + watchers in one go.
+pkill -f 'openbox/autostart' 2>/dev/null || true
+
 pids="$(pgrep -f 'JDownloader\.jar' || true)"
 if [ -n "${pids}" ]; then
     # shellcheck disable=SC2086

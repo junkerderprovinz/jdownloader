@@ -42,14 +42,6 @@ LABEL org.opencontainers.image.vendor="junkerderprovinz"
 
 ENV TITLE="JDownloader 2"
 
-# Build provenance — passed from CI, written to image so users can verify
-# exactly which commit their running image was built from.
-# Inspect at runtime: `docker exec jdownloader cat /etc/jdownloader-build`
-ARG BUILD_SHA=dev
-ARG BUILD_DATE=unknown
-RUN echo "sha=${BUILD_SHA}"   >  /etc/jdownloader-build && \
-    echo "date=${BUILD_DATE}" >> /etc/jdownloader-build
-
 # ---------------------------------------------------------------------------
 # Java 21 + Basis-Tools
 # ---------------------------------------------------------------------------
@@ -169,5 +161,17 @@ ENV JD_LANG=en \
     LANG=en_US.UTF-8 \
     LANGUAGE=en_US:en \
     LC_ALL=en_US.UTF-8
+
+# ---------------------------------------------------------------------------
+# Build provenance — passed from CI, written to image so users can verify
+# exactly which commit their running image was built from.
+# Inspect at runtime: `docker exec jdownloader cat /etc/jdownloader-build`
+# Deliberately the LAST layer: BUILD_SHA changes on every commit, so an earlier
+# placement would bust the build cache for all layers that follow it.
+# ---------------------------------------------------------------------------
+ARG BUILD_SHA=dev
+ARG BUILD_DATE=unknown
+RUN echo "sha=${BUILD_SHA}"   >  /etc/jdownloader-build && \
+    echo "date=${BUILD_DATE}" >> /etc/jdownloader-build
 
 # Ports werden vom Baseimage freigegeben (3000/HTTP, 3001/HTTPS).

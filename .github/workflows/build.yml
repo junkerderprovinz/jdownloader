@@ -104,9 +104,31 @@ jobs:
             { [ -n "$c" ] && [ "$c" != "000" ]; } && return 0
             return 1
           }
+          webui_up=""
           for i in $(seq 1 150); do
             if up; then
               echo "✅ WebUI responded after ${i}s"
+              webui_up=1
+              break
+            fi
+            if [ -z "$(docker ps -q --filter "name=$name")" ]; then
+              echo "❌ container exited early — logs:"; docker logs "$name" || true
+              docker rm -f "$name" >/dev/null; exit 1
+            fi
+            sleep 1
+          done
+          if [ -z "$webui_up" ]; then
+            echo "❌ WebUI did not respond within 150s — logs:"
+            docker logs "$name" || true
+            docker rm -f "$name" >/dev/null
+            exit 1
+          fi
+          # The WebUI being up only proves KasmVNC — also require JDownloader itself
+          # to launch: autostart prints this exact line right at the JVM start.
+          jd_line='[jdownloader-autostart] launching JDownloader JVM (the GUI starts here)...'
+          for i in $(seq 1 120); do
+            if docker logs "$name" 2>&1 | grep -qF "$jd_line"; then
+              echo "✅ JDownloader JVM launch confirmed after ${i}s"
               docker rm -f "$name" >/dev/null
               exit 0
             fi
@@ -116,7 +138,7 @@ jobs:
             fi
             sleep 1
           done
-          echo "❌ WebUI did not respond within 150s — logs:"
+          echo "❌ JDownloader JVM launch line not seen within 120s — logs:"
           docker logs "$name" || true
           docker rm -f "$name" >/dev/null
           exit 1
