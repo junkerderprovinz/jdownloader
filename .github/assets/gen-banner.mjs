@@ -4,12 +4,12 @@
  *                                   the left, the wordmark + a cheeky claim.
  *
  * The official JDownloader wordmark (jdownloader.org header) is all-caps
- * "JDOWNLOADER" in a heavy condensed grotesque (Impact-style, glossy 2009 look).
- * We replicate it with Anton (OFL, the classic free Impact equivalent), flat in
- * Carbon #161616 - which is both the logo's own circle colour and this image's
- * dark-mode brand. The claim uses Roboto Regular. Fonts are fetched at runtime
- * via the Google-Fonts CSS API (legacy User-Agent -> static TTF URLs), cached
- * in the OS temp dir, and never committed.
+ * "JDOWNLOADER" in ARIAL BLACK - verified by matching the logo's letterforms
+ * (round O, the R leg, A apex, standard-width heavy grotesque). We use the real
+ * font, rendered from the locally installed Windows copy to PATHS only: the
+ * banner ships as geometry, exactly like any logo set in a licensed font - the
+ * font file itself is never fetched or committed. The claim uses Arial Regular
+ * (same family). Regenerating needs Arial/Arial Black installed locally.
  *
  * Text is converted to SVG paths (opentype.js) so the SVG is self-contained.
  * Glyph runs are shaped per glyph (charToGlyph + manual pair kerning) - some
@@ -38,31 +38,27 @@ const __dir = dirname(fileURLToPath(import.meta.url));
 // ---- content + styling -----------------------------------------------------
 const NAME = "JDOWNLOADER"; // all-caps, exactly like the official wordmark
 const CLAIM = "Grab it. All of it. In the dark.";
+// Official wordmark font + family for the claim (local Windows fonts).
+const NAME_FONT = "C:/Windows/Fonts/ariblk.ttf"; // Arial Black (the official face)
+const CLAIM_FONT = "C:/Windows/Fonts/arial.ttf"; // Arial Regular (same family)
 const NAME_FILL = "#161616"; // Carbon - the logo circle + our dark-mode brand
 const CLAIM_FILL = "#5a5d5e"; // house claim grey
 const W = 1600, H = 500;
-const LH = 400; // logo height (icon.svg is square, 48x48 units)
-const nameSize = 150, claimSize = 42, gap = 64, lineGap = 22;
+const LH = 360; // logo height (icon.svg is square, 48x48 units)
+let nameSize = 150; // shrunk below to fit "JDOWNLOADER" (wide in Arial Black)
+const claimSize = 42, gap = 64, lineGap = 22;
+const MAX_GROUP = W - 160; // keep ~80px breathing room each side
 // ---------------------------------------------------------------------------
 
-async function loadFont(spec, cacheName) {
-  const path = join(tmpdir(), `jdownloader-${cacheName}.ttf`);
+function loadFont(path) {
   if (!existsSync(path)) {
-    const cssRes = await fetch(`https://fonts.googleapis.com/css2?family=${spec}`, {
-      headers: { "User-Agent": "curl/8" }, // legacy UA -> static TTF, no subsets
-    });
-    if (!cssRes.ok) throw new Error(`font css ${spec}: ${cssRes.status}`);
-    const m = (await cssRes.text()).match(/url\((https:[^)]+\.ttf)\)/);
-    if (!m) throw new Error(`no ttf url in css for ${spec}`);
-    const ttf = await fetch(m[1]);
-    if (!ttf.ok) throw new Error(`font ttf ${spec}: ${ttf.status}`);
-    writeFileSync(path, Buffer.from(await ttf.arrayBuffer()));
+    throw new Error(`font not found: ${path} (install Arial / Arial Black locally to regenerate)`);
   }
   const buf = readFileSync(path);
   return opentype.parse(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
 }
-const nameFont = await loadFont("Anton", "Anton-400");
-const claimFont = await loadFont("Roboto:wght@400", "Roboto-400");
+const nameFont = loadFont(NAME_FONT);
+const claimFont = loadFont(CLAIM_FONT);
 
 // Per-glyph shaping (charToGlyph + manual pair kerning) - bypasses opentype.js's
 // crash-prone feature engine; lossless for plain Latin.
@@ -89,9 +85,13 @@ function runPathData(font, text, x, y, size) {
   return d;
 }
 
+const LW = LH; // square logo
+// Shrink the wordmark until the logo + name group fits the card with margins.
+while (nameSize > 90 && LW + gap + runWidth(nameFont, NAME, nameSize) > MAX_GROUP) {
+  nameSize -= 2;
+}
 const nameW = runWidth(nameFont, NAME, nameSize);
 const claimW = runWidth(claimFont, CLAIM, claimSize);
-const LW = LH; // square logo
 const groupW = LW + gap + Math.max(nameW, claimW);
 const startX = (W - groupW) / 2;
 const LX = startX, LY = (H - LH) / 2;
