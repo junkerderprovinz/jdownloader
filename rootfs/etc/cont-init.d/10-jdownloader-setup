@@ -98,8 +98,9 @@ python3 /usr/local/bin/disable-tray.py "${JD_CFG}" 2>/dev/null || \
     log "disable-tray failed (non-fatal)"
 
 # Log cfg files present — helps diagnose config issues
-if ls "${JD_CFG}"/*.json >/dev/null 2>&1; then
-    log "cfg files: $(ls "${JD_CFG}"/*.json | xargs -n1 basename | tr '\n' ' ')"
+cfg_files=("${JD_CFG}"/*.json)
+if [[ -e "${cfg_files[0]}" ]]; then
+    log "cfg files: ${cfg_files[*]##*/}"
 fi
 
 # Make the mapped /downloads volume writable by the JD user (PUID/PGID).
