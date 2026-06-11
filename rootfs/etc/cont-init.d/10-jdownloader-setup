@@ -1,4 +1,5 @@
 #!/usr/bin/with-contenv bash
+# shellcheck shell=bash
 # Runs synchronously before any service (incl. KasmVNC/openbox).
 
 log() { echo "[jdownloader-setup] $*"; }
@@ -101,22 +102,25 @@ if ls "${JD_CFG}"/*.json >/dev/null 2>&1; then
     log "cfg files: $(ls "${JD_CFG}"/*.json | xargs -n1 basename | tr '\n' ' ')"
 fi
 
-# Make the mapped /downloads volume writable by the JD user (PUID/PGID -> abc).
-# Docker creates a MISSING host path as root:root, which abc can't write — JD then
-# silently falls back to <config>/Downloads. chown only the TOP level (no -R) so we
-# never traverse a large share or rewrite files that already live inside it.
+# Make the mapped /downloads volume writable by the JD user (PUID/PGID).
+# Docker creates a MISSING host path as root:root, which the JD user can't write —
+# JD then silently falls back to <config>/Downloads. chown only the TOP level (no -R)
+# so we never traverse a large share or rewrite files that already live inside it.
+# NOTE: numeric PUID/PGID, NOT abc — this legacy cont-init stage runs BEFORE the
+# base image's init-adduser remaps abc to PUID/PGID, so `chown abc` would still hit
+# the build-time uid 911 and miss e.g. Unraid's PUID=99.
 if [[ -d /downloads ]]; then
-    chown abc:abc /downloads 2>/dev/null || true
-    if ! s6-setuidgid abc test -w /downloads 2>/dev/null; then
+    chown "${PUID:-911}:${PGID:-911}" /downloads 2>/dev/null || true
+    if [ "$(stat -c %u /downloads 2>/dev/null)" = "${PUID:-911}" ]; then
+        log "/downloads is owned by the JD user (uid ${PUID:-911})"
+    else
         log "WARNING: /downloads is NOT writable by the container user (PUID/PGID)."
         log "         JDownloader will fall back to /config. Fix the host share's owner,"
         log "         e.g. on the Unraid console:  chown nobody:users /mnt/.../<download-share>"
-    else
-        log "/downloads is writable by the JD user"
     fi
 fi
 
-# Fix ownership
-chown -R abc:abc /config 2>/dev/null || true
+# Fix ownership (numeric ids — see note above: abc is not yet remapped at this stage)
+chown -R "${PUID:-911}:${PGID:-911}" /config 2>/dev/null || true
 
 log "setup done (JD_LANG=${JD_LANG:-en}, JD_THEME=${JD_THEME:-JD_Plain_Dark})"
