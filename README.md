@@ -103,7 +103,7 @@ What's included beyond bare JDownloader:
 In Unraid: **Apps** → search for **JDownloader** → click **Install**.
 
 The Community Applications template is published from the
-[`unraid-docker-templates`](https://github.com/junkerderprovinz/unraid-docker-templates) feed
+[`unraid-apps`](https://github.com/junkerderprovinz/unraid-apps) feed
 (one feed for all of junkerderprovinz's apps). If the Template dropdown in **Docker → Add
 Container** no longer accepts a URL on your Unraid version, drop the XML directly into the
 templates-user folder via SSH (or WinSCP). **Important:** the filename must be
@@ -112,7 +112,7 @@ separate template and a `Force Update` will reset all customizations.
 
 ```bash
 wget -O /boot/config/plugins/dockerMan/templates-user/my-JDownloader.xml \
-    https://raw.githubusercontent.com/junkerderprovinz/unraid-docker-templates/main/jdownloader/jdownloader.xml
+    https://raw.githubusercontent.com/junkerderprovinz/unraid-apps/main/jdownloader/jdownloader.xml
 ```
 
 ### Step 2 — Adjust paths and start
