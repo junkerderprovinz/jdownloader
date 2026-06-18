@@ -86,26 +86,39 @@ function runPathData(font, text, x, y, size) {
 }
 
 const LW = LH; // square logo
+const em = (f, s) => s / f.unitsPerEm;
+
+// The official wordmark has an oversized initial "J" — render it larger than the
+// rest, on the same baseline so it rises above "DOWNLOADER".
+const J_SCALE = 1.5;
+const REST = NAME.slice(1); // "DOWNLOADER"
+const innerGapFor = (sz) => sz * 0.04;
+const nameWidthFor = (sz) =>
+  runWidth(nameFont, "J", Math.round(sz * J_SCALE)) + innerGapFor(sz) + runWidth(nameFont, REST, sz);
+
 // Shrink the wordmark until the logo + name group fits the card with margins.
-while (nameSize > 90 && LW + gap + runWidth(nameFont, NAME, nameSize) > MAX_GROUP) {
+while (nameSize > 80 && LW + gap + nameWidthFor(nameSize) > MAX_GROUP) {
   nameSize -= 2;
 }
-const nameW = runWidth(nameFont, NAME, nameSize);
+const jSize = Math.round(nameSize * J_SCALE);
+const jW = runWidth(nameFont, "J", jSize);
+const innerGap = innerGapFor(nameSize);
+const nameW = jW + innerGap + runWidth(nameFont, REST, nameSize);
 const claimW = runWidth(claimFont, CLAIM, claimSize);
 const groupW = LW + gap + Math.max(nameW, claimW);
 const startX = (W - groupW) / 2;
 const LX = startX, LY = (H - LH) / 2;
 const textX = startX + LW + gap;
 
-const em = (f, s) => s / f.unitsPerEm;
-const nameAsc = nameFont.ascender * em(nameFont, nameSize);
-const nameDesc = -nameFont.descender * em(nameFont, nameSize);
+const jAsc = nameFont.ascender * em(nameFont, jSize); // the big J defines the top
 const claimAsc = claimFont.ascender * em(claimFont, claimSize);
-const blockH = nameAsc + nameDesc + lineGap + claimAsc;
-const nameBaseline = H / 2 - blockH / 2 + nameAsc;
-const claimBaseline = nameBaseline + nameDesc + lineGap + claimAsc;
+const blockH = jAsc + lineGap + claimAsc;
+const nameBaseline = H / 2 - blockH / 2 + jAsc;
+const claimBaseline = nameBaseline + lineGap + claimAsc;
 
-const namePath = runPathData(nameFont, NAME, textX, nameBaseline, nameSize);
+const namePath =
+  runPathData(nameFont, "J", textX, nameBaseline, jSize) +
+  runPathData(nameFont, REST, textX + jW + innerGap, nameBaseline, nameSize);
 const claimPath = runPathData(claimFont, CLAIM, textX, claimBaseline, claimSize);
 
 // Embed the Carbon globe (icon.svg, 48x48) verbatim - only the root tag gets
