@@ -1,112 +1,132 @@
 /**
  * Generates the JDownloader README banner (house banner convention):
  *   jdownloader-banner.svg / .png : white 1600x500 - the Carbon globe logo on
- *                                   the left, the wordmark + a cheeky claim.
+ *                                   the left, "JDOWNLOADER" + a cheeky claim.
  *
- * The official JDownloader wordmark (jdownloader.org header) is all-caps
- * "JDOWNLOADER" in ARIAL BLACK - verified by matching the logo's letterforms
- * (round O, the R leg, A apex, standard-width heavy grotesque). We use the real
- * font, rendered from the locally installed Windows copy to PATHS only: the
- * banner ships as geometry, exactly like any logo set in a licensed font - the
- * font file itself is never fetched or committed. The claim uses Arial Regular
- * (same family). Regenerating needs Arial/Arial Black installed locally.
+ * Brand font: the wordmark is set in Bree Serif - OUR house wordmark face (same as
+ * BombVault / ShipLog) - instead of JDownloader's official Arial Black. Arial reads
+ * as "no font at all" and isn't recognisable as JD's, so the banner now carries our
+ * brand. The claim uses Lato, the shared claim font across all repos. Both are OFL,
+ * fetched at runtime to the OS temp dir (never committed) and converted to SVG paths
+ * (opentype.js) so the SVG is self-contained.
  *
- * Text is converted to SVG paths (opentype.js) so the SVG is self-contained.
- * Glyph runs are shaped per glyph (charToGlyph + manual pair kerning) - some
- * fonts' GSUB ccmp lookups crash opentype.js's feature engine, and for plain
- * Latin the per-glyph path is lossless.
- *
- * The OLD logo-only banner is preserved as jdownloader-banner-logo.png/.svg -
- * support threads use that one; do not delete it.
+ * The logo-only banner (jdownloader-banner-logo.png/.svg) is a separate asset used
+ * by the support thread; it is NOT touched here.
  *
  * Deps: `npm i -g @resvg/resvg-js opentype.js`. Run: node .github/assets/gen-banner.mjs
  */
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
 import { execSync } from "node:child_process";
 
 const require = createRequire(import.meta.url);
 const gRoot = execSync("npm root -g").toString().trim();
-const { Resvg } = require(`${gRoot}/@resvg/resvg-js`);
 const opentype = require(`${gRoot}/opentype.js`);
+// @resvg/resvg-js (native rasterizer) is required lazily below, after the text-to-
+// path work. Note: opentype's own getPath() intermittently returns NaN coords in
+// this script, so we don't use it - glyphRunPath() transforms each glyph's raw
+// outline by hand instead (see its comment). The SVG is checked for NaN before write.
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 
 // ---- content + styling -----------------------------------------------------
-const NAME = "JDOWNLOADER"; // all-caps, exactly like the official wordmark
+const NAME = "JDownloader"; // mixed-case brand wordmark (Bree Serif)
 const CLAIM = "Grab it. All of it. In the dark.";
-// Official wordmark font + family for the claim (local Windows fonts).
-const NAME_FONT = "C:/Windows/Fonts/ariblk.ttf"; // Arial Black (the official face)
-const CLAIM_FONT = "C:/Windows/Fonts/arial.ttf"; // Arial Regular (same family)
 const NAME_FILL = "#161616"; // Carbon - the logo circle + our dark-mode brand
 const CLAIM_FILL = "#5a5d5e"; // house claim grey
 const W = 1600, H = 500;
 const LH = 360; // logo height (icon.svg is square, 48x48 units)
-let nameSize = 150; // shrunk below to fit "JDOWNLOADER" (wide in Arial Black)
+const LW = LH;  // square logo
+let nameSize = 168; // shrunk below to fit "JDOWNLOADER"
 const claimSize = 42, gap = 64, lineGap = 22;
 const MAX_GROUP = W - 160; // keep ~80px breathing room each side
 // ---------------------------------------------------------------------------
 
-function loadFont(path) {
-  if (!existsSync(path)) {
-    throw new Error(`font not found: ${path} (install Arial / Arial Black locally to regenerate)`);
+// Brand fonts (OFL) fetched at runtime - never committed. Bree Serif = wordmark
+// (our brand face), Lato = claim (shared across all repos).
+const breeFile = join(tmpdir(), "JD-BreeSerif-Regular.ttf");
+const latoFile = join(tmpdir(), "JD-Lato-Regular.ttf");
+async function ensureFont(file, url) {
+  if (!existsSync(file)) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`font fetch ${res.status}: ${url}`);
+    writeFileSync(file, Buffer.from(await res.arrayBuffer()));
   }
-  const buf = readFileSync(path);
-  return opentype.parse(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
 }
-const nameFont = loadFont(NAME_FONT);
-const claimFont = loadFont(CLAIM_FONT);
+await ensureFont(breeFile, "https://github.com/google/fonts/raw/main/ofl/breeserif/BreeSerif-Regular.ttf");
+await ensureFont(latoFile, "https://github.com/google/fonts/raw/main/ofl/lato/Lato-Regular.ttf");
+const nameFont = opentype.parse(readFileSync(breeFile));
+const claimFont = opentype.parse(readFileSync(latoFile));
 
-// Per-glyph shaping (charToGlyph + manual pair kerning) - bypasses opentype.js's
-// crash-prone feature engine; lossless for plain Latin.
-function shapeRun(font, text, size) {
+// Per-glyph shaping (charToGlyph + glyph.getPath) - bypasses opentype.js's
+// feature engine, which emits NaN path coords for some Lato pairs and truncates
+// the claim after the first word. Lossless for plain Latin; the small claim line
+// needs no kerning.
+function glyphRunWidth(font, text, size) {
   const scale = size / font.unitsPerEm;
-  const run = [];
-  let x = 0;
-  let prev = null;
+  let w = 0;
+  for (const ch of text) w += font.charToGlyph(ch).advanceWidth * scale;
+  return w;
+}
+// Build the SVG path by transforming each glyph's OWN outline commands (font units)
+// ourselves - scale + baseline flip + advance - instead of opentype's getPath().
+// opentype's getPath() intermittently emits NaN coords here (a float-state quirk that
+// surfaces only in file execution, not via stdin), so we never call it; this is pure
+// finite arithmetic on the raw outline, so the output can't contain NaN.
+function glyphRunPath(font, text, x, baseline, size) {
+  const scale = size / font.unitsPerEm;
+  const n = (v) => v.toFixed(2);
+  let d = "", cx = x;
   for (const ch of text) {
     const g = font.charToGlyph(ch);
-    if (prev) x += font.getKerningValue(prev, g) * scale;
-    run.push({ g, x });
-    x += g.advanceWidth * scale;
-    prev = g;
-  }
-  return { run, width: x };
-}
-const runWidth = (font, text, size) => shapeRun(font, text, size).width;
-function runPathData(font, text, x, y, size) {
-  let d = "";
-  for (const { g, x: gx } of shapeRun(font, text, size).run) {
-    d += g.getPath(x + gx, y, size).toPathData(2);
+    for (const c of g.path.commands) {
+      if (c.type === "M") d += `M${n(cx + c.x * scale)} ${n(baseline - c.y * scale)}`;
+      else if (c.type === "L") d += `L${n(cx + c.x * scale)} ${n(baseline - c.y * scale)}`;
+      else if (c.type === "C")
+        d += `C${n(cx + c.x1 * scale)} ${n(baseline - c.y1 * scale)} ${n(cx + c.x2 * scale)} ${n(baseline - c.y2 * scale)} ${n(cx + c.x * scale)} ${n(baseline - c.y * scale)}`;
+      else if (c.type === "Q")
+        d += `Q${n(cx + c.x1 * scale)} ${n(baseline - c.y1 * scale)} ${n(cx + c.x * scale)} ${n(baseline - c.y * scale)}`;
+      else if (c.type === "Z") d += "Z";
+    }
+    cx += g.advanceWidth * scale;
   }
   return d;
 }
 
-const LW = LH; // square logo
 const em = (f, s) => s / f.unitsPerEm;
 
 // Shrink the wordmark until the logo + name group fits the card with margins.
 // The whole word is set at one uniform size (no oversized initial letter).
-while (nameSize > 80 && LW + gap + runWidth(nameFont, NAME, nameSize) > MAX_GROUP) {
+while (nameSize > 80 && LW + gap + glyphRunWidth(nameFont, NAME, nameSize) > MAX_GROUP) {
   nameSize -= 2;
 }
-const nameW = runWidth(nameFont, NAME, nameSize);
-const claimW = runWidth(claimFont, CLAIM, claimSize);
+const nameW = glyphRunWidth(nameFont, NAME, nameSize);
+const claimW = glyphRunWidth(claimFont, CLAIM, claimSize);
 const groupW = LW + gap + Math.max(nameW, claimW);
 const startX = (W - groupW) / 2;
 const LX = startX, LY = (H - LH) / 2;
 const textX = startX + LW + gap;
 
 const nameAsc = nameFont.ascender * em(nameFont, nameSize);
+const nameDesc = -nameFont.descender * em(nameFont, nameSize);
 const claimAsc = claimFont.ascender * em(claimFont, claimSize);
-const blockH = nameAsc + lineGap + claimAsc;
+const blockH = nameAsc + nameDesc + lineGap + claimAsc;
 const nameBaseline = H / 2 - blockH / 2 + nameAsc;
-const claimBaseline = nameBaseline + lineGap + claimAsc;
+const claimBaseline = nameBaseline + nameDesc + lineGap + claimAsc;
 
-const namePath = runPathData(nameFont, NAME, textX, nameBaseline, nameSize);
-const claimPath = runPathData(claimFont, CLAIM, textX, claimBaseline, claimSize);
+// Both lines per-glyph (charToGlyph + glyph.getPath). opentype.js's feature engine
+// (font.getPath / getAdvanceWidth) corrupts state across two parsed fonts here and
+// makes the Lato claim render as NaN coords; per-glyph bypasses it entirely.
+const claimPath = glyphRunPath(claimFont, CLAIM, textX, claimBaseline, claimSize);
+const namePath = glyphRunPath(nameFont, NAME, textX, nameBaseline, nameSize);
+// Never ship a NaN path (the resvg-float-state bug above would silently truncate
+// the text); fail loudly so a bad banner can't be committed.
+if (claimPath.includes("NaN") || namePath.includes("NaN")) {
+  throw new Error("text path contains NaN - aborting (load order / float-state regression)");
+}
 
 // Embed the Carbon globe (icon.svg, 48x48) verbatim - only the root tag gets
 // position/size attributes; the artwork inside is untouched.
@@ -125,6 +145,8 @@ const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" 
 `;
 writeFileSync(join(__dir, "jdownloader-banner.svg"), svg);
 
+// Load the native rasterizer now (after all opentype path work) - see note at top.
+const { Resvg } = require(`${gRoot}/@resvg/resvg-js`);
 const png = new Resvg(svg, { fitTo: { mode: "width", value: W }, background: "white" }).render().asPng();
 writeFileSync(join(__dir, "jdownloader-banner.png"), png);
-console.log(`wrote jdownloader-banner.svg + .png (name ${Math.round(nameW)}px, claim ${Math.round(claimW)}px, group ${Math.round(groupW)}px)`);
+console.log(`wrote jdownloader-banner.svg + .png (name ${Math.round(nameW)}px @ ${nameSize}, claim ${Math.round(claimW)}px, group ${Math.round(groupW)}px)`);
