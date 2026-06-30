@@ -54,6 +54,7 @@ What's included beyond bare JDownloader:
 
 - **KasmVNC** instead of noVNC — hardware-accelerated rendering, real browser clipboard, native file upload and download, high-DPI ready
 - **Sleek, complete Dark Mode** pre-applied — a monochrome IBM Carbon (#161616) dark across the *entire* GUI (download list, link grabber **and** settings, not just the menu bar), in a clean maximised kiosk window; switch to a matching Light theme with one variable
+- **Ad-free by default** — JDownloader's built-in advertisements (the *"Become premium user"* banner, the premium-alert column nags, the special-deal popups) are switched off, so the GUI stays clean and the download speed graph keeps its **full height**
 - **Java 21 JRE** — full AWT/Swing support for the JDownloader GUI, not headless
 - **Auto-install** — downloads and installs JDownloader 2 on first container start, no manual JAR setup
 - **Self-updating** — JDownloader updates itself on every start as it normally does
@@ -67,6 +68,7 @@ What's included beyond bare JDownloader:
 | Browser clipboard | ✅ | ⚠️ | ❌ |
 | File upload via WebUI | ✅ | ❌ | ❌ |
 | Full dark UI (content too) | ✅ | ❌ | ❌ |
+| Ad-free by default | ✅ | ❌ | ❌ |
 | Auto-install on first start | ✅ | ✅ | ✅ |
 | Multi-arch | ✅ amd64 + arm64 | ✅ | ✅ |
 | Base | LinuxServer/KasmVNC | jlesage/Alpine | Alpine |
