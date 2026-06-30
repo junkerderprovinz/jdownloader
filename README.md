@@ -17,10 +17,11 @@
 
 <p align="center">
 A modern, plug-and-play Docker image for <b>JDownloader 2</b> on Unraid with a
-<b>clean, sleek, fully dark UI</b> out of the box — a monochrome IBM&nbsp;Carbon&nbsp;<code>#161616</code>
+<b>clean, sleek, fully dark and ad-free UI</b> out of the box — a monochrome IBM&nbsp;Carbon&nbsp;<code>#161616</code>
 dark across the <i>entire</i> interface (download list, link grabber <b>and</b> settings, not just
 the menu bar), with light fills + readable text on the progress bars and a borderless,
-maximised kiosk window. Full GUI in your browser via KasmVNC, zero first-run setup.
+maximised kiosk window. JDownloader's built-in advertisements are switched off, so the
+download graph keeps its full height. Full GUI in your browser via KasmVNC, zero first-run setup.
 </p>
 
 <br>
@@ -48,7 +49,7 @@ maximised kiosk window. Full GUI in your browser via KasmVNC, zero first-run set
 
 ## 1. Overview
 
-This image packages [JDownloader 2](https://jdownloader.org) into a self-contained Docker container that runs in any modern web browser. It is built on top of [`linuxserver/baseimage-kasmvnc`](https://github.com/linuxserver/docker-baseimage-kasmvnc), so it benefits from LSIO's hardware-accelerated KasmVNC stack and weekly security updates, while everything JDownloader-specific (dark theme, Java runtime, auto-install) is layered on top.
+This image packages [JDownloader 2](https://jdownloader.org) into a self-contained Docker container that runs in any modern web browser. It is built on top of [`linuxserver/baseimage-kasmvnc`](https://github.com/linuxserver/docker-baseimage-kasmvnc), so it benefits from LSIO's hardware-accelerated KasmVNC stack and weekly security updates, while everything JDownloader-specific (dark theme, **ad-free defaults**, Java runtime, auto-install) is layered on top.
 
 What's included beyond bare JDownloader:
 
