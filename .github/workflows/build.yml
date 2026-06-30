@@ -184,6 +184,7 @@ jobs:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_PASSWORD }}
           repository: ${{ vars.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}
+          short-description: "JDownloader 2 in your browser for Unraid (KasmVNC), monochrome Carbon dark theme."
           enable-url-completion: true
 
       - name: Image digest
