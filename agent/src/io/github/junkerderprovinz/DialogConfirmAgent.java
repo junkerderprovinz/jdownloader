@@ -2,8 +2,11 @@ package io.github.junkerderprovinz;
 
 import javax.swing.AbstractButton;
 import javax.swing.JButton;
+import javax.swing.JComponent;
 import javax.swing.JLabel;
+import javax.swing.JPopupMenu;
 import javax.swing.JProgressBar;
+import javax.swing.JSpinner;
 import javax.swing.JTable;
 import javax.swing.LookAndFeel;
 import javax.swing.SwingUtilities;
@@ -15,10 +18,13 @@ import java.awt.Color;
 import java.awt.Component;
 import java.awt.Container;
 import java.awt.Dialog;
+import java.awt.Dimension;
 import java.awt.Frame;
+import java.awt.LayoutManager;
 import java.awt.Window;
 import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -86,6 +92,81 @@ public class DialogConfirmAgent {
         handleDialogs();
         enforceDarkChrome();
         retintProgressBars();
+        widenSpeedEditors();
+    }
+
+    // -------------------------------------------------------- speed editor width
+
+    /**
+     * JD's speed-limit menu field (jd.gui.swing.jdgui.menu.SpeedlimitEditor) is laid
+     * out with a FIXED MigLayout width: MenuEditor.getEditorWidth() hardcodes it to
+     * fit "500.00 KB/s" (+30px), so a higher limit such as "10.216,00 MiB/s" is
+     * clipped and the value can't be read. We relax the spinner's width constraint at
+     * runtime and grow the enclosing popup so the whole value shows. The editor is
+     * rebuilt every time the menu opens, so this re-applies on each open; a per-
+     * instance client-property guard keeps it from relaying an already-widened editor
+     * on every tick. All reflection so the agent still compiles against the JDK alone.
+     */
+    private static final String WIDENED = "jdp.speedWidened";
+
+    private static void widenSpeedEditors() {
+        for (Window w : Window.getWindows()) {
+            if (w.isShowing()) widenSpeedIn(w);
+        }
+    }
+
+    private static void widenSpeedIn(Container c) {
+        for (Component child : c.getComponents()) {
+            if (isSpeedEditor(child.getClass())) {
+                if (child instanceof Container) widenEditor((Container) child);
+            } else if (child instanceof Container) {
+                widenSpeedIn((Container) child);
+            }
+        }
+    }
+
+    /** True if the class IS or EXTENDS jd...menu.SpeedlimitEditor (JD adds it as an
+     *  anonymous subclass, so we must check the whole superclass chain). */
+    private static boolean isSpeedEditor(Class<?> k) {
+        for (; k != null && k != Object.class; k = k.getSuperclass()) {
+            if (k.getName().endsWith(".SpeedlimitEditor")) return true;
+        }
+        return false;
+    }
+
+    private static void widenEditor(Container editor) {
+        if (!(editor instanceof JComponent)) return;
+        JComponent jc = (JComponent) editor;
+        if (Boolean.TRUE.equals(jc.getClientProperty(WIDENED))) return;
+
+        JSpinner spinner = null;
+        for (Component ch : editor.getComponents()) {
+            if (ch instanceof JSpinner) { spinner = (JSpinner) ch; break; }
+        }
+        if (spinner == null) return;
+
+        LayoutManager lm = editor.getLayout();
+        if (lm == null || !lm.getClass().getName().contains("MigLayout")) return;
+
+        // Mirror JD's own formula (label width + 30 for the spinner arrows/insets) but
+        // with a long sample so the field fits any realistic limit incl. its unit.
+        int w = new JLabel("99999,99 MiB/s").getPreferredSize().width + 30;
+        try {
+            Method m = lm.getClass().getMethod("setComponentConstraints",
+                    Component.class, Object.class);
+            m.invoke(lm, spinner, "width " + w + "!");
+            jc.putClientProperty(WIDENED, Boolean.TRUE);
+            editor.revalidate();
+            editor.repaint();
+            // Grow the visible popup so the wider field is not clipped by popup bounds.
+            JPopupMenu pm = (JPopupMenu) SwingUtilities.getAncestorOfClass(JPopupMenu.class, editor);
+            if (pm != null) {
+                Dimension pref = pm.getPreferredSize();
+                pm.setPopupSize(pref.width, pref.height);
+            }
+        } catch (Exception ignore) {
+            // setComponentConstraints absent / layout differs -> leave the field as-is
+        }
     }
 
     // ------------------------------------------------------------ progress bars
