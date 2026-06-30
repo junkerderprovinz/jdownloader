@@ -97,6 +97,11 @@ fi
 python3 /usr/local/bin/disable-tray.py "${JD_CFG}" 2>/dev/null || \
     log "disable-tray failed (non-fatal)"
 
+# Disable JD's built-in advertisements (banner / premium alerts / special deals)
+# so the GUI stays clean and the download graph keeps its full height.
+python3 /usr/local/bin/jdownloader-noads.py "${JD_CFG}" 2>/dev/null || \
+    log "noads failed (non-fatal)"
+
 # Log cfg files present — helps diagnose config issues
 cfg_files=("${JD_CFG}"/*.json)
 if [[ -e "${cfg_files[0]}" ]]; then

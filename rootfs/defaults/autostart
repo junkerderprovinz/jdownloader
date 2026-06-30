@@ -158,6 +158,12 @@ while true; do
         "${JD_DIR}/cfg/org.jdownloader.gui.jdtrayicon.TrayExtensionConfig.json" \
         2>/dev/null || true
 
+    # Disable JD's built-in advertisements (the "Become premium user" banner,
+    # premium-alert columns, special-deal popups) so the GUI stays clean and the
+    # download graph keeps its full height. JD resets this cfg on install/update,
+    # so re-apply before each start. Ad elements only — functional settings untouched.
+    python3 /usr/local/bin/jdownloader-noads.py "${JD_DIR}/cfg" 2>/dev/null || true
+
     # Patch JD's installed FlatLaf to a complete #161616 dark (chrome + the table
     # JProgressBars that colorfor* / the runtime agent cannot reach). Idempotent; no-op
     # until JD has installed flatlaf.jar, so it applies from the next start after the
