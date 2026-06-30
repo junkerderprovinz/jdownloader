@@ -79,21 +79,21 @@ What's included beyond bare JDownloader:
 ## 2. Screenshots
 
 <p align="center">
-  <img src=".github/assets/screenshots/jdownloader-1.jpg" alt="JDownloader download list with the Carbon dark theme and right-click menu" width="90%">
+  <img src="https://raw.githubusercontent.com/junkerderprovinz/jdownloader/main/.github/assets/screenshots/jdownloader-1.jpg" alt="JDownloader download list with the Carbon dark theme and right-click menu" width="90%">
   <br><em>Download list in monochrome Carbon <code>#161616</code> — right-click menu, per-file priority, live speed/ETA.</em>
 </p>
 
 <br>
 
 <p align="center">
-  <img src=".github/assets/screenshots/jdownloader-2.jpg" alt="JDownloader downloading multiple packages with the dark theme" width="90%">
+  <img src="https://raw.githubusercontent.com/junkerderprovinz/jdownloader/main/.github/assets/screenshots/jdownloader-2.jpg" alt="JDownloader downloading multiple packages with the dark theme" width="90%">
   <br><em>Multiple packages downloading — uniform dark rows, light progress bars, green speed graph.</em>
 </p>
 
 <br>
 
 <p align="center">
-  <img src=".github/assets/screenshots/jdownloader-3.jpg" alt="JDownloader Settings — User Interface tab, fully dark" width="90%">
+  <img src="https://raw.githubusercontent.com/junkerderprovinz/jdownloader/main/.github/assets/screenshots/jdownloader-3.jpg" alt="JDownloader Settings — User Interface tab, fully dark" width="90%">
   <br><em>Settings &rarr; User Interface — fully dark, the same Carbon palette across the whole app.</em>
 </p>
 
