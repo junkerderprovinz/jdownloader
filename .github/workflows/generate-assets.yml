@@ -2,6 +2,7 @@ name: Generate Assets
 
 on:
   push:
+    branches: [main]   # never on tag refs — the commit/push step needs a branch
     paths:
       - '.github/assets/icon.svg'
   workflow_dispatch:
