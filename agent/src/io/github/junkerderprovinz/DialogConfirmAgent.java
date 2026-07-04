@@ -93,6 +93,57 @@ public class DialogConfirmAgent {
         enforceDarkChrome();
         retintProgressBars();
         widenSpeedEditors();
+        growSpeedMeter();
+    }
+
+    // -------------------------------------------------------- speed graph height
+
+    /**
+     * JD's download graph (SpeedMeterPanel) lives in the MainToolBar whose single
+     * MigLayout row is HARDCODED to 32px ("[grow,32!]") - there is no config key for
+     * it. With the premium banner disabled the corner looks half-empty and the graph
+     * cramped, so we grow the toolbar row at runtime; the speedmeter is added with
+     * "pushy,growy" and follows, the 32px tool buttons stay centered. Same reflection
+     * pattern as widenSpeedEditors(); a client-property guard keeps it one-shot per
+     * toolbar instance (the row constraint survives JD's updateToolbar() rebuilds
+     * because the LayoutManager object is kept).
+     */
+    private static final int    SPEEDMETER_ROW_PX = 64;
+    private static final String GROWN             = "jdp.speedMeterGrown";
+
+    private static void growSpeedMeter() {
+        for (Window w : Window.getWindows()) {
+            if (w.isShowing()) growSpeedMeterIn(w);
+        }
+    }
+
+    private static void growSpeedMeterIn(Container c) {
+        for (Component child : c.getComponents()) {
+            if (child.getClass().getName().endsWith(".SpeedMeterPanel")) {
+                growToolbarRow(child.getParent());
+            } else if (child instanceof Container) {
+                growSpeedMeterIn((Container) child);
+            }
+        }
+    }
+
+    private static void growToolbarRow(Container toolbar) {
+        if (!(toolbar instanceof JComponent)) return;
+        JComponent tb = (JComponent) toolbar;
+        if (Boolean.TRUE.equals(tb.getClientProperty(GROWN))) return;
+
+        LayoutManager lm = tb.getLayout();
+        if (lm == null || !lm.getClass().getName().contains("MigLayout")) return;
+        try {
+            Method m = lm.getClass().getMethod("setRowConstraints", Object.class);
+            m.invoke(lm, "[grow," + SPEEDMETER_ROW_PX + "!]");
+            tb.putClientProperty(GROWN, Boolean.TRUE);
+            tb.revalidate();
+            tb.repaint();
+            System.out.println("[jd-dialog-agent] grew the speed graph row to " + SPEEDMETER_ROW_PX + "px");
+        } catch (Exception ignore) {
+            // setRowConstraints absent / layout differs -> leave the toolbar as-is
+        }
     }
 
     // -------------------------------------------------------- speed editor width

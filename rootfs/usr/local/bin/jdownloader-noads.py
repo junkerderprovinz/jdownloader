@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Disables JDownloader's built-in advertisements so the GUI stays clean and the
-download graph keeps its FULL height — the bottom "Become premium user" banner
-otherwise sits between the speed line and the progress area and squeezes the
-graph vertically.
+Disables JDownloader's built-in advertisements so the GUI stays clean - the
+"Become premium user" banner otherwise fills the right side of the tab row,
+directly under the download graph. (The graph's own height is a separate,
+hardcoded toolbar constraint; the dialog agent grows that row at runtime.)
 
 JD recreates / resets this config on first install and on self-update, so this
 runs before EVERY JD start (like disable-tray.py), not only once at init.
