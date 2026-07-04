@@ -14,14 +14,23 @@ import javax.swing.UIDefaults;
 import javax.swing.UIManager;
 import javax.swing.plaf.ColorUIResource;
 import javax.swing.text.JTextComponent;
+import java.awt.AlphaComposite;
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Container;
 import java.awt.Dialog;
 import java.awt.Dimension;
+import java.awt.Font;
+import java.awt.GradientPaint;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
 import java.awt.Frame;
 import java.awt.LayoutManager;
+import java.awt.Polygon;
+import java.awt.RenderingHints;
 import java.awt.Window;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -94,6 +103,284 @@ public class DialogConfirmAgent {
         retintProgressBars();
         widenSpeedEditors();
         growSpeedMeter();
+        replaceSpeedGraph();
+    }
+
+    // -------------------------------------------------------- speed graph replacement
+
+    /**
+     * AppWork's Graph paints every sample as `(int)(height * value * 0.9) / max` where
+     * value is the raw download speed in BYTES/s. `height * value` is an int*int
+     * product that silently overflows above ~2.1e9 - i.e. from ~34 MiB/s at our 64px
+     * row (~67 MiB/s at the stock 32px). Overflowed samples wrap low or clip below the
+     * widget, so at gigabit speeds the graph permanently paints at a fraction of its
+     * height. Nothing configurable fixes that, so we hide the native SpeedMeterPanel
+     * and paint our own graph with long arithmetic: full height at any speed, same
+     * look (colours from LAFOptions, texts reused from the native panel, limiter band
+     * included). Mouse events are forwarded to the hidden native panel so its
+     * speed-limit menu keeps working. JD's updateToolbar() rebuilds (removeAll) are
+     * healed by the tick: when the native panel reappears without ours, we re-attach.
+     */
+    private static CarbonSpeedGraph ownGraph = null;
+
+    private static void replaceSpeedGraph() {
+        for (Window w : Window.getWindows()) {
+            if (w.isShowing()) replaceSpeedGraphIn(w);
+        }
+    }
+
+    private static void replaceSpeedGraphIn(Container c) {
+        for (Component child : c.getComponents()) {
+            if (child instanceof JComponent && child.getClass().getName().endsWith(".SpeedMeterPanel")) {
+                attachOwnGraph((JComponent) child);
+                return;
+            }
+            if (child instanceof Container) replaceSpeedGraphIn((Container) child);
+        }
+    }
+
+    private static void attachOwnGraph(JComponent nativePanel) {
+        try {
+            Container parent = nativePanel.getParent();
+            if (parent == null) return;
+
+            boolean ourPresent = false;
+            for (Component comp : parent.getComponents()) {
+                if (comp instanceof CarbonSpeedGraph) { ourPresent = true; break; }
+            }
+            if (ownGraph == null) ownGraph = new CarbonSpeedGraph();
+            ownGraph.bindNative(nativePanel);
+
+            if (nativePanel.isVisible()) {
+                // exclude the hidden native from the layout (hidemode 3), keep it alive
+                // for its fetcher thread, localized strings and the speed-limit menu.
+                LayoutManager lm = parent.getLayout();
+                if (lm != null && lm.getClass().getName().contains("MigLayout")) {
+                    try {
+                        Method m = lm.getClass().getMethod("setComponentConstraints", Component.class, Object.class);
+                        m.invoke(lm, nativePanel, "width 32:300:300,pushy,growy,hidemode 3");
+                    } catch (Exception ignore) { }
+                }
+                nativePanel.setVisible(false);
+            }
+            if (!ourPresent) {
+                parent.add(ownGraph, "width 32:300:300,pushy,growy");
+                parent.revalidate();
+                parent.repaint();
+                System.out.println("[jd-dialog-agent] replaced the speed graph (native math overflows above ~34 MiB/s)");
+            }
+        } catch (Exception ignore) { }
+    }
+
+    /**
+     * Minimal, overflow-free speed graph: ring buffer of long samples polled from
+     * DownloadWatchDog (reflection - the agent compiles against the JDK alone), the
+     * same visual language as the native one (current-speed gradient polygon,
+     * semi-transparent average overlay, limiter band, right-aligned text lines).
+     */
+    private static final class CarbonSpeedGraph extends JComponent {
+        private static final int SAMPLES = 90;
+        private final long[] samples  = new long[SAMPLES];
+        private final long[] averages = new long[SAMPLES];
+        private int  head = 0;
+        private long current = 0, average = 0, limit = 0;
+        private volatile JComponent nativePanel = null;
+
+        private Color colTop    = new Color(0x3f, 0xb9, 0x3f);
+        private Color colBottom = new Color(0x14, 0x46, 0x14);
+        private Color colAvg    = new Color(0x86, 0xd9, 0x86);
+        private Color colText   = new Color(0xf4, 0xf4, 0xf4);
+        private Color colLimit  = new Color(0xd9, 0x53, 0x53);
+
+        CarbonSpeedGraph() {
+            setOpaque(false);
+            loadLafColors();
+            new javax.swing.Timer(500, e -> sample()).start();
+            MouseAdapter fwd = new MouseAdapter() {
+                private void fw(MouseEvent e) {
+                    JComponent np = nativePanel;
+                    if (np != null) np.dispatchEvent(SwingUtilities.convertMouseEvent(CarbonSpeedGraph.this, e, np));
+                }
+                @Override public void mouseClicked(MouseEvent e)  { fw(e); }
+                @Override public void mousePressed(MouseEvent e)  { fw(e); }
+                @Override public void mouseReleased(MouseEvent e) { fw(e); }
+            };
+            addMouseListener(fwd);
+        }
+
+        void bindNative(JComponent np) { this.nativePanel = np; }
+
+        private void loadLafColors() {
+            try {
+                Class<?> laf = Class.forName("org.jdownloader.updatev2.gui.LAFOptions");
+                Object inst = laf.getMethod("getInstance").invoke(null);
+                Object top = laf.getMethod("getColorForSpeedmeterCurrentTop").invoke(inst);
+                Object bot = laf.getMethod("getColorForSpeedmeterCurrentBottom").invoke(inst);
+                Object avg = laf.getMethod("getColorForSpeedMeterAverage").invoke(inst);
+                Object txt = laf.getMethod("getColorForSpeedMeterText").invoke(inst);
+                if (top instanceof Color) colTop = (Color) top;
+                if (bot instanceof Color) colBottom = (Color) bot;
+                if (avg instanceof Color) colAvg = (Color) avg;
+                if (txt instanceof Color) colText = (Color) txt;
+            } catch (Throwable ignore) { /* fallback palette above */ }
+        }
+
+        private void sample() {
+            long v = readSpeedSafe();
+            long lim = readLimit();
+            synchronized (samples) {
+                current = v;
+                limit = lim;
+                samples[head] = v;
+                long sum = 0;
+                for (long s : samples) sum += s;
+                average = sum / SAMPLES;
+                averages[head] = average;
+                head = (head + 1) % SAMPLES;
+            }
+            repaint();
+        }
+
+        /** Primary: the native panel's own public getValue() (same number the native
+         *  graph would plot). Fallback: DownloadWatchDog reflection. */
+        private long readSpeedSafe() {
+            JComponent np = nativePanel;
+            if (np != null) {
+                try {
+                    Object v = np.getClass().getMethod("getValue").invoke(np);
+                    if (v instanceof Number) return Math.max(0L, ((Number) v).longValue());
+                } catch (Throwable ignore) { }
+            }
+            return readSpeed();
+        }
+
+        private static long readSpeed() {
+            try {
+                Class<?> wd = Class.forName("jd.controlling.downloadcontroller.DownloadWatchDog");
+                Object inst = wd.getMethod("getInstance").invoke(null);
+                Object dsm = inst.getClass().getMethod("getDownloadSpeedManager").invoke(inst);
+                Object spd = dsm.getClass().getMethod("getSpeed").invoke(dsm);
+                return spd instanceof Number ? ((Number) spd).longValue() : 0L;
+            } catch (Throwable t) { return 0L; }
+        }
+
+        private long readLimit() {
+            JComponent np = nativePanel;
+            if (np == null) return 0L;
+            try {
+                Object arr = np.getClass().getMethod("getLimiter").invoke(np);
+                if (arr instanceof Object[]) {
+                    for (Object l : (Object[]) arr) {
+                        if (l == null) continue;
+                        Object v = l.getClass().getMethod("getValue").invoke(l);
+                        long lv = v instanceof Number ? ((Number) v).longValue() : 0L;
+                        if (lv > 0) return lv;
+                    }
+                }
+            } catch (Throwable ignore) { }
+            return 0L;
+        }
+
+        private String nativeString(String method) {
+            JComponent np = nativePanel;
+            if (np == null) return null;
+            try {
+                Object s = np.getClass().getMethod(method).invoke(np);
+                return s instanceof String ? (String) s : null;
+            } catch (Throwable t) { return null; }
+        }
+
+        private static String fmt(long bytes) {
+            if (bytes >= 1048576L) return String.format("%.2f MiB/s", bytes / 1048576.0);
+            return String.format("%.0f KiB/s", bytes / 1024.0);
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            try {
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                final int w = getWidth(), h = getHeight();
+                if (w <= 2 || h <= 2) return;
+
+                final long[] snap, asnap;
+                final int hd;
+                final long lim, cur, avg;
+                synchronized (samples) {
+                    snap = samples.clone();
+                    asnap = averages.clone();
+                    hd = head;
+                    lim = limit;
+                    cur = current;
+                    avg = average;
+                }
+
+                long max = 10;
+                for (long v : snap) if (v > max) max = v;
+                for (long v : asnap) if (v > max) max = v;
+                if (lim > max) max = lim;
+
+                // polygons, oldest -> newest, LONG math: h * value never overflows
+                final Polygon poly = new Polygon();
+                final Polygon apoly = new Polygon();
+                poly.addPoint(0, h);
+                apoly.addPoint(0, h);
+                for (int x = 0; x < SAMPLES; x++) {
+                    final int idx = (hd + x) % SAMPLES;
+                    final int px = (int) ((long) x * w / (SAMPLES - 1));
+                    poly.addPoint(px, h - (int) (h * snap[idx] * 9L / (10L * max)));
+                    apoly.addPoint(px, h - (int) (h * asnap[idx] * 9L / (10L * max)));
+                }
+                poly.addPoint(w, h);
+                apoly.addPoint(w, h);
+
+                g2.setPaint(new GradientPaint(w / 2f, 0, colTop, w / 2f, h, colBottom));
+                g2.fill(poly);
+                g2.setColor(colBottom);
+                g2.draw(poly);
+
+                g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.5f));
+                g2.setColor(colAvg);
+                g2.fill(apoly);
+                g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 1.0f));
+                g2.draw(apoly);
+
+                if (lim > 0) {
+                    final int ly = h - (int) (h * lim * 9L / (10L * max));
+                    g2.setColor(new Color(colLimit.getRed(), colLimit.getGreen(), colLimit.getBlue(), 170));
+                    g2.fillRect(0, Math.max(0, ly), w, Math.max(2, h / 14));
+                }
+
+                // right-aligned texts, reusing the native panel's localized strings
+                g2.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 11));
+                final int pad = 3;
+                int ty = 12;
+                if (lim > 0) {
+                    String ls = null;
+                    try {
+                        JComponent np = nativePanel;
+                        if (np != null) {
+                            Object arr = np.getClass().getMethod("getLimiter").invoke(np);
+                            if (arr instanceof Object[] && ((Object[]) arr).length > 0 && ((Object[]) arr)[0] != null) {
+                                Object s = ((Object[]) arr)[0].getClass().getMethod("getString").invoke(((Object[]) arr)[0]);
+                                if (s instanceof String) ls = (String) s;
+                            }
+                        }
+                    } catch (Throwable ignore) { }
+                    if (ls == null) ls = "Limit: " + fmt(lim);
+                    g2.setColor(colLimit);
+                    g2.drawString(ls, w - g2.getFontMetrics().stringWidth(ls) - pad, ty);
+                    ty += 13;
+                }
+                String as = nativeString("getAverageSpeedString");
+                String cs = nativeString("getSpeedString");
+                String line = ((as != null ? as : "Ø " + fmt(avg)) + "  " + (cs != null ? cs : fmt(cur))).trim();
+                g2.setColor(colText);
+                g2.drawString(line, w - g2.getFontMetrics().stringWidth(line) - pad, ty);
+            } finally {
+                g2.dispose();
+            }
+        }
     }
 
     // -------------------------------------------------------- speed graph height
