@@ -97,48 +97,30 @@ jobs:
           echo "== flatlaf tokens in filelist.txt =="
           grep -aio "[a-z0-9_./-]*flatlaf[a-z0-9_./-]*" update/versioninfo/JD/filelist.txt 2>/dev/null | sort -u | head -30 || echo "no filelist match"
 
-      - name: "Seed the flatlaf themes extension request"
+      # Ground truth from JD source (LookAndFeelType enum: all FlatLaf themes share
+      # extension id "flatlaf-themes") + observed on-disk format (per-key storage
+      # files; the request list is update/versioninfo/JD/extensions.requestedinstalls.json,
+      # a PLAIN JSON ARRAY of ids — the same sanctioned path other JD Docker images
+      # use, e.g. seeding ["eventscripter"]).
+      - name: "Seed the flatlaf-themes extension request"
         run: |
           cd "$RUNNER_TEMP/jd"
           python3 - <<'PYEOF'
-          import json, os, glob, re
-          d = "update/versioninfo/JD"
-          os.makedirs(d, exist_ok=True)
-          extid = "flatlafthemes"
-          try:
-              fl = open(os.path.join(d, "filelist.txt"), encoding="utf-8", errors="replace").read()
-              cands = sorted(set(x.lower() for x in re.findall(r"[A-Za-z0-9_.-]*flatlaf[A-Za-z0-9_.-]*", fl)))
-              print("filelist flatlaf tokens:", cands[:20])
-              for c in cands:
-                  if "theme" in c and "." not in c:
-                      extid = c
-                      break
-          except Exception as e:
-              print("filelist read failed:", e)
-          print("using extension id:", extid)
-          existing = glob.glob(os.path.join(d, "extensions*"))
-          path = existing[0] if existing else os.path.join(d, "extensions.json")
-          data = {}
+          import json, os
+          path = "update/versioninfo/JD/extensions.requestedinstalls.json"
+          ids = []
           if os.path.exists(path):
               try:
-                  data = json.load(open(path))
+                  ids = json.load(open(path))
+                  if not isinstance(ids, list):
+                      ids = []
               except Exception:
-                  pass
-          print("existing storage:", json.dumps(data))
-          seeded = False
-          for k in list(data.keys()):
-              kl = k.lower()
-              if "request" in kl and ("install" in kl or "add" in kl) and isinstance(data[k], list):
-                  if extid not in data[k]:
-                      data[k].append(extid)
-                  seeded = True
-          if not seeded:
-              # AppWork JsonKeyValueStorage convention: getRequestedInstalls -> "requestedinstalls"
-              data.setdefault("requestedinstalls", [])
-              if extid not in data["requestedinstalls"]:
-                  data["requestedinstalls"].append(extid)
-          json.dump(data, open(path, "w"))
-          print("seeded ->", path, json.dumps(data))
+                  ids = []
+          if "flatlaf-themes" not in ids:
+              ids.append("flatlaf-themes")
+          os.makedirs(os.path.dirname(path), exist_ok=True)
+          json.dump(ids, open(path, "w"))
+          print("seeded ->", path, json.dumps(ids))
           PYEOF
 
       - name: "Boot 2: headless re-run with seeded extension request (10 min budget)"
