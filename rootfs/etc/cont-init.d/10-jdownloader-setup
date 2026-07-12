@@ -92,6 +92,18 @@ fi
 # Only seeds when unset/JD-internal; a user's own GUI choice is preserved.
 /usr/local/bin/jdownloader-downloaddir.sh || log "download-dir hook failed (non-fatal)"
 
+# First-run window state: start the main frame MAXIMIZED. Without this a fresh
+# install opens JD at its built-in 1024x728 default, leaving black desktop around
+# it (JDGui.internalInitLocationAndDimension applies the saved extendedState right
+# before setVisible; a WM-maximized frame then tracks KasmVNC's dynamic desktop
+# resize to the browser size). Seed ONLY when absent — JD persists the user's
+# real window state here on every shutdown, and that choice must be preserved.
+FRAME_STATUS="${JD_CFG}/org.jdownloader.settings.GraphicalUserInterfaceSettings.lastframestatus.json"
+if [ ! -f "${FRAME_STATUS}" ]; then
+    printf '%s' '{"extendedState":"MAXIMIZED_BOTH","visible":true,"active":true,"focus":true,"locationSet":false,"silentShutdown":false,"width":-1,"height":-1,"x":-1,"y":-1}' > "${FRAME_STATUS}"
+    log "seeded first-run window state: maximized"
+fi
+
 # Disable system tray extension — not supported in containers, would otherwise
 # trigger an error popup on every start.
 python3 /usr/local/bin/disable-tray.py "${JD_CFG}" 2>/dev/null || \
