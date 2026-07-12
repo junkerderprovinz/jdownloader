@@ -1,0 +1,12 @@
+# Scripts and configs that are COPYed into the image and read by /bin/sh, Java or
+# Python MUST be LF: CRLF breaks shebang scripts and can confuse parsers. Scoped
+# narrowly on purpose — do NOT blanket-normalise the JD icon SVGs under
+# rootfs/opt/JDownloader/themes-default (hundreds of vendored files, leave as-is).
+rootfs/defaults/autostart                      text eol=lf
+rootfs/usr/local/bin/*.sh                       text eol=lf
+rootfs/usr/local/bin/*.py                       text eol=lf
+rootfs/opt/JDownloader/flatlaf-defaults/*.properties text eol=lf
+rootfs/etc/**                                   text eol=lf
+agent/**/*.java                                 text eol=lf
+agent/*.mf                                       text eol=lf
+.github/workflows/*.yml                          text eol=lf
