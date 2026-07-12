@@ -1,0 +1,97 @@
+name: Experiment — headless first boot
+
+# -----------------------------------------------------------------------------
+# v3 Architecture-A experiment (manual only, NOT part of any release path).
+# Question: can JD's FIRST boot run with -Djava.awt.headless=true so the
+# updater installs silently with NO GUI (=> no forced dialog cascade), before
+# the real GUI start? Open points this run answers empirically:
+#   1. Does the headless updater complete the core install at all?
+#   2. Does it install the FlatLaf themes extension (libs/laf/flatlaf.jar)?
+#      (Its install trigger normally hangs off LookAndFeelController.setUIManager,
+#      which early-returns headless — the pessimistic case is "no jar".)
+#   3. Does JD park on an interactive MyJDownloader stdin prompt (container
+#      stdin is not a TTY — here stdin is /dev/null, worst case)?
+#   4. Does a SECOND headless boot come up clean/settled?
+# Read the artifact + job log; nothing is published.
+# -----------------------------------------------------------------------------
+
+on:
+  workflow_dispatch:
+
+jobs:
+  headless-first-boot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Install Java 21 (full JRE, like the image)
+        run: |
+          sudo apt-get update -q
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends openjdk-21-jre
+
+      - name: Prepare JD dir + pre-seed theme config (mirrors jdownloader-theme.sh)
+        run: |
+          mkdir -p "$RUNNER_TEMP/jd/cfg"
+          cat > "$RUNNER_TEMP/jd/cfg/org.jdownloader.settings.GraphicalUserInterfaceSettings.json" <<'EOF'
+          {"lookandfeeltheme":"FLATLAF_DARK"}
+          EOF
+
+      - name: Download JDownloader.jar
+        run: |
+          wget -q -O "$RUNNER_TEMP/jd/JDownloader.jar" "https://installer.jdownloader.org/JDownloader.jar"
+          python3 -c "import sys,zipfile; zipfile.ZipFile(sys.argv[1]).namelist()" "$RUNNER_TEMP/jd/JDownloader.jar"
+
+      - name: "Boot 1: headless first run (10 min budget, stdin=/dev/null)"
+        run: |
+          cd "$RUNNER_TEMP/jd"
+          set +e
+          timeout --signal=TERM --kill-after=30 600 \
+            java -Djava.awt.headless=true -jar JDownloader.jar < /dev/null > boot1.log 2>&1
+          echo "boot1_exit=$?" | tee boot1.exit
+          set -e
+          echo "── last 120 log lines ──"
+          tail -120 boot1.log || true
+
+      - name: "Observations after boot 1"
+        run: |
+          cd "$RUNNER_TEMP/jd"
+          echo "== exit code (124 = still running at 10 min = daemonised) =="
+          cat boot1.exit
+          echo "== core installed? =="
+          ls -la . || true
+          echo "== libs present? =="
+          ls -la libs 2>/dev/null || echo "NO libs dir"
+          echo "== THE key question: flatlaf.jar? =="
+          ls -la libs/laf 2>/dev/null || echo "NO libs/laf — themes extension NOT installed headless"
+          echo "== cfg after first boot =="
+          ls -la cfg 2>/dev/null || true
+          echo "== build.json (revision canary source)? =="
+          cat build.json 2>/dev/null || echo "NO build.json"
+          echo "== stdin/MyJD prompt indicators in the log =="
+          grep -inE "myjdownloader|e-?mail|password|console|stdin|input" boot1.log | head -30 || echo "none found"
+          echo "== updater activity =="
+          grep -inE "update|install|download" boot1.log | tail -30 || true
+
+      - name: "Boot 2: settled headless re-run (3 min budget)"
+        run: |
+          cd "$RUNNER_TEMP/jd"
+          set +e
+          timeout --signal=TERM --kill-after=30 180 \
+            java -Djava.awt.headless=true -jar JDownloader.jar < /dev/null > boot2.log 2>&1
+          echo "boot2_exit=$?" | tee boot2.exit
+          set -e
+          echo "── last 80 log lines ──"
+          tail -80 boot2.log || true
+          echo "== libs/laf after boot 2 =="
+          ls -la libs/laf 2>/dev/null || echo "still NO libs/laf"
+
+      - name: Upload logs + tree
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: headless-experiment
+          path: |
+            ${{ runner.temp }}/jd/boot1.log
+            ${{ runner.temp }}/jd/boot2.log
+            ${{ runner.temp }}/jd/boot1.exit
+            ${{ runner.temp }}/jd/boot2.exit
+          if-no-files-found: warn
