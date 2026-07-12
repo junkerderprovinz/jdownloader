@@ -104,7 +104,6 @@ RUN chmod +x \
     /usr/local/bin/disable-tray.py \
     /usr/local/bin/jdownloader-noads.py \
     /usr/local/bin/kill-tray-extension.py \
-    /usr/local/bin/patch-flatlaf-dark.py \
     /usr/local/bin/print-banner.sh \
     /etc/cont-init.d/10-jdownloader-setup \
     /etc/s6-overlay/s6-rc.d/init-jdownloader/run \
@@ -153,11 +152,15 @@ ENV S6_KILL_GRACETIME=30000 \
 # ---------------------------------------------------------------------------
 # Standard-ENV (durch Unraid-Template überschreibbar)
 # ---------------------------------------------------------------------------
-# JD_LANG     – UI-Sprache: ISO-Code (de, en, fr, ...)
-# JD_THEME    – UI-Theme: Dark (Carbon #161616) | Light
-# JD_INST_DIR – Installations-Pfad (nicht ändern außer für Debugging)
+# JD_LANG       – UI-Sprache: ISO-Code (de, en, fr, ...)
+# JD_THEME      – UI-Theme: Dark (Carbon #161616) | Light
+# JD_SELFUPDATE – true (Default) | false = JDs Self-Update-Checks deaktivieren
+#                 (opt-in "frozen appliance"; Achtung: derselbe Kanal liefert die
+#                 Hoster-Plugins — die veralten in Wochen)
+# JD_INST_DIR   – Installations-Pfad (nicht ändern außer für Debugging)
 ENV JD_LANG=en \
     JD_THEME=Dark \
+    JD_SELFUPDATE=true \
     JD_INST_DIR=/config/JDownloader \
     LANG=en_US.UTF-8 \
     LANGUAGE=en_US:en \

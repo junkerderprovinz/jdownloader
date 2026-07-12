@@ -77,6 +77,23 @@ public class DialogConfirmAgent {
     private static boolean chromeDone  = false;
     private static int     stableTicks = 0;
 
+    // --- v3 theming: FlatLaf custom-defaults source instead of patching JD's jar ----
+    // Our colour overrides live in /opt/JDownloader/flatlaf-defaults/ and are hooked in
+    // via FlatLaf's OFFICIAL API (registerCustomDefaultsSource). JD's flatlaf.jar stays
+    // stock, so its integrity check never complains and a self-update cannot reset the
+    // chrome theme. If registration wins the race against JD's setLookAndFeel, the first
+    // frame is already themed; otherwise applyCustomDefaults() does exactly ONE polite
+    // LAF re-apply once the main window is stable (the same once-after-stable pattern
+    // enforceDarkChrome() has used safely for months). The legacy UIManager remap in
+    // enforceDarkChrome() still runs afterwards as polish + fallback.
+    private static final java.io.File DEFAULTS_DIR = new java.io.File("/opt/JDownloader/flatlaf-defaults");
+    private static Instrumentation INSTRUMENTATION;
+    private static boolean defaultsRegistered = false;
+    private static boolean lafRefreshDone     = false;
+    private static int     lafStableTicks     = 0;
+    private static int     registrationWait   = 0;
+    private static int     classScanTicks     = 0;
+
     // --- Ground-truth markers for the container (autostart READY gate) -----------
     // The launcher used to infer "themed" from a patched flatlaf.jar on disk — which
     // says nothing about whether the LAF was actually APPLIED (a pending "restart to
@@ -99,6 +116,7 @@ public class DialogConfirmAgent {
 
     public static void premain(String agentArgs, Instrumentation inst) {
         System.out.println("[jd-dialog-agent] watching for installer dialogs + enforcing dark chrome");
+        INSTRUMENTATION = inst;
         writeFile(PID_FILE, Long.toString(ProcessHandle.current().pid()));
         Thread t = new Thread(DialogConfirmAgent::watch, "jd-dialog-agent");
         t.setDaemon(true);
@@ -140,6 +158,8 @@ public class DialogConfirmAgent {
 
     private static void tick() {
         handleDialogs();
+        registerDefaultsSource();
+        applyCustomDefaults();
         enforceDarkChrome();
         retintProgressBars();
         widenSpeedEditors();
@@ -149,6 +169,105 @@ public class DialogConfirmAgent {
             lafTick = 0;
             writeLafMarker();
         }
+    }
+
+    // ------------------------------------------------ v3 custom defaults source
+
+    /** True once JD's MAIN window (not a splash) is showing. */
+    private static boolean mainWindowShowing() {
+        for (Frame f : Frame.getFrames()) {
+            if (f.isShowing() && f.getWidth() > 600 && f.getHeight() > 400) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Register /opt/JDownloader/flatlaf-defaults as a FlatLaf custom-defaults source —
+     * through the classloader that actually loaded FlatLaf (JD's, not ours). Tried as
+     * soon as the FlatLaf class exists in the JVM: if that beats JD's setLookAndFeel,
+     * the very first frame renders with our colours and no re-apply is needed.
+     */
+    private static void registerDefaultsSource() {
+        if (defaultsRegistered || !DEFAULTS_DIR.isDirectory()) return;
+        Class<?> flatLaf = null;
+        // Shortcut: an active FlatLaf LAF hands us the right classloader directly.
+        LookAndFeel laf = UIManager.getLookAndFeel();
+        if (laf != null && laf.getClass().getName().toLowerCase().contains("flat")) {
+            try {
+                flatLaf = laf.getClass().getClassLoader().loadClass("com.formdev.flatlaf.FlatLaf");
+            } catch (Throwable ignore) { }
+        }
+        // Pre-LAF: scan loaded classes (every 4th tick, first ~5 min only — FlatLaf
+        // loads within seconds of JD's GUI bootstrap when it is installed; the throttle
+        // caps the EDT cost of getAllLoadedClasses() in the no-FlatLaf degenerate case).
+        if (flatLaf == null && INSTRUMENTATION != null && classScanTicks < 750) {
+            if ((++classScanTicks % 4) != 0) return;
+            for (Class<?> c : INSTRUMENTATION.getAllLoadedClasses()) {
+                if ("com.formdev.flatlaf.FlatLaf".equals(c.getName())) { flatLaf = c; break; }
+            }
+        }
+        if (flatLaf == null) return;
+        try {
+            flatLaf.getMethod("registerCustomDefaultsSource", java.io.File.class)
+                   .invoke(null, DEFAULTS_DIR);
+            defaultsRegistered = true;
+            String ver = flatLaf.getPackage() != null
+                    ? flatLaf.getPackage().getImplementationVersion() : null;
+            System.out.println("[jd-dialog-agent] registered custom defaults source "
+                    + DEFAULTS_DIR + " (FlatLaf " + (ver != null ? ver : "?") + ")");
+        } catch (Throwable e) {
+            // API missing (ancient/renamed FlatLaf)? Give up cleanly — the legacy
+            // UIManager remap in enforceDarkChrome() still delivers a dark chrome.
+            defaultsRegistered = true;
+            lafRefreshDone     = true;
+            System.out.println("[jd-dialog-agent] registerCustomDefaultsSource unavailable ("
+                    + e.getClass().getSimpleName() + ") — legacy chrome remap only");
+        }
+    }
+
+    /**
+     * Make the registered defaults take effect exactly once. If registration won the
+     * race against JD's setLookAndFeel, the sentinel (Panel.background == #161616)
+     * already matches and nothing needs to happen. Otherwise re-apply the CURRENT LAF
+     * once (fresh instance -> getDefaults() re-reads the custom source) and refresh all
+     * windows — only after the main window is stable, the exact gate that has kept
+     * enforceDarkChrome() clear of the CircleProgressBarUI boot-loop for months.
+     */
+    private static void applyCustomDefaults() {
+        if (lafRefreshDone) return;
+        LookAndFeel laf = UIManager.getLookAndFeel();
+        if (laf == null || !laf.getClass().getName().toLowerCase().contains("flat")) return;
+        if (!mainWindowShowing()) { lafStableTicks = 0; return; }
+        if (++lafStableTicks < 4) return;   // ~1.6 s after the main frame shows
+
+        if (!defaultsRegistered) {
+            // Registration hasn't happened yet (class scan still looking) — wait up to
+            // ~30 s of stable GUI, then fall back to the legacy remap alone.
+            if (++registrationWait < 75) return;
+            lafRefreshDone = true;
+            System.out.println("[jd-dialog-agent] defaults source never registered — legacy chrome remap only");
+            return;
+        }
+
+        Color bg = UIManager.getColor("Panel.background");
+        if (bg != null && (bg.getRGB() & 0xFFFFFF) == 0x161616) {
+            // Registration beat JD's LAF apply — defaults are already live.
+            lafRefreshDone = true;
+            System.out.println("[jd-dialog-agent] custom defaults active from first paint (no re-apply needed)");
+            return;
+        }
+
+        try {
+            UIManager.setLookAndFeel((LookAndFeel) laf.getClass().getDeclaredConstructor().newInstance());
+            Class<?> flatLaf = laf.getClass().getClassLoader().loadClass("com.formdev.flatlaf.FlatLaf");
+            flatLaf.getMethod("updateUI").invoke(null);
+            System.out.println("[jd-dialog-agent] re-applied " + laf.getClass().getSimpleName()
+                    + " with custom defaults (one-shot)");
+        } catch (Throwable e) {
+            System.out.println("[jd-dialog-agent] LAF re-apply failed ("
+                    + e.getClass().getSimpleName() + ") — legacy chrome remap only");
+        }
+        lafRefreshDone = true;   // one attempt, never a loop — remap polish runs next
     }
 
     // -------------------------------------------------------- speed graph replacement
@@ -636,6 +755,8 @@ public class DialogConfirmAgent {
      */
     private static void enforceDarkChrome() {
         if (chromeDone) return;
+        if (!lafRefreshDone) return;   // ORDER: run only after the one-shot LAF re-apply
+                                        // (a later setLookAndFeel would wipe this remap)
         LookAndFeel laf = UIManager.getLookAndFeel();
         if (laf == null || !laf.getClass().getName().toLowerCase().contains("flat")) return;
 
