@@ -82,30 +82,89 @@ jobs:
           echo "== updater activity =="
           grep -inE "update|install|download" boot1.log | tail -30 || true
 
-      - name: "Boot 2: settled headless re-run (5 min budget)"
+      # Box test learned: the headless install completes with NOTHING pending, so the
+      # GUI first start shows NO design-install dialog and the FlatLaf themes extension
+      # never installs -> JD falls back to light Synthetica. Hypothesis: pre-seeding the
+      # extension REQUEST into JD's update registry makes the headless chain install it.
+      - name: "Discover extension registry schema + flatlaf extension id"
+        run: |
+          cd "$RUNNER_TEMP/jd"
+          echo "== extension storage files =="
+          ls -la update/versioninfo/JD/ 2>/dev/null || echo "no versioninfo dir"
+          for f in update/versioninfo/JD/extensions*; do
+            [ -f "$f" ] && { echo "--- $f ---"; cat "$f"; echo; }
+          done
+          echo "== flatlaf tokens in filelist.txt =="
+          grep -aio "[a-z0-9_./-]*flatlaf[a-z0-9_./-]*" update/versioninfo/JD/filelist.txt 2>/dev/null | sort -u | head -30 || echo "no filelist match"
+
+      - name: "Seed the flatlaf themes extension request"
+        run: |
+          cd "$RUNNER_TEMP/jd"
+          python3 - <<'PYEOF'
+          import json, os, glob, re
+          d = "update/versioninfo/JD"
+          os.makedirs(d, exist_ok=True)
+          extid = "flatlafthemes"
+          try:
+              fl = open(os.path.join(d, "filelist.txt"), encoding="utf-8", errors="replace").read()
+              cands = sorted(set(x.lower() for x in re.findall(r"[A-Za-z0-9_.-]*flatlaf[A-Za-z0-9_.-]*", fl)))
+              print("filelist flatlaf tokens:", cands[:20])
+              for c in cands:
+                  if "theme" in c and "." not in c:
+                      extid = c
+                      break
+          except Exception as e:
+              print("filelist read failed:", e)
+          print("using extension id:", extid)
+          existing = glob.glob(os.path.join(d, "extensions*"))
+          path = existing[0] if existing else os.path.join(d, "extensions.json")
+          data = {}
+          if os.path.exists(path):
+              try:
+                  data = json.load(open(path))
+              except Exception:
+                  pass
+          print("existing storage:", json.dumps(data))
+          seeded = False
+          for k in list(data.keys()):
+              kl = k.lower()
+              if "request" in kl and ("install" in kl or "add" in kl) and isinstance(data[k], list):
+                  if extid not in data[k]:
+                      data[k].append(extid)
+                  seeded = True
+          if not seeded:
+              # AppWork JsonKeyValueStorage convention: getRequestedInstalls -> "requestedinstalls"
+              data.setdefault("requestedinstalls", [])
+              if extid not in data["requestedinstalls"]:
+                  data["requestedinstalls"].append(extid)
+          json.dump(data, open(path, "w"))
+          print("seeded ->", path, json.dumps(data))
+          PYEOF
+
+      - name: "Boot 2: headless re-run with seeded extension request (10 min budget)"
         run: |
           cd "$RUNNER_TEMP/jd"
           set +e
-          timeout --signal=TERM --kill-after=30 300 \
+          timeout --signal=TERM --kill-after=30 600 \
             java -Djava.awt.headless=true -jar JDownloader.jar < /dev/null > boot2.log 2>&1
           echo "boot2_exit=$?" | tee boot2.exit
-          # Same detached-chain wait as boot 1 (a settled boot may still relaunch once).
           waited=0
-          while pgrep -f 'java.*jar' > /dev/null 2>&1 && [ "$waited" -lt 300 ]; do
+          while pgrep -f 'java.*jar' > /dev/null 2>&1 && [ "$waited" -lt 600 ]; do
             sleep 15
             waited=$((waited + 15))
             echo "...chain still running after boot 2 (${waited}s)"
           done
           set -e
-          echo "── last 80 log lines ──"
-          tail -80 boot2.log || true
-          echo "== libs/laf after boot 2 =="
+          echo "== did the updater see the request? =="
+          grep -a "Requested Extension Installations" boot2.log | head -5 || true
+          echo "== THE verdict: flatlaf.jar after seeded headless run =="
           ls -la libs/laf 2>/dev/null || echo "still NO libs/laf"
-          echo "== MyJD/console prompt indicators in boot 2 =="
-          grep -inE "myjdownloader|e-?mail|password|console|setup" boot2.log | head -20 || echo "none found"
-          echo "== did Core actually run headless? =="
-          ls -la logs 2>/dev/null | tail -5 || true
-          cat build.json 2>/dev/null || echo "NO build.json"
+          echo "== extension registry after boot 2 =="
+          for f in update/versioninfo/JD/extensions*; do
+            [ -f "$f" ] && { echo "--- $f ---"; cat "$f"; echo; }
+          done
+          echo "── last 40 log lines ──"
+          tail -40 boot2.log || true
 
       - name: Upload logs + tree
         if: always()
