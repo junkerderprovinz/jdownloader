@@ -2,16 +2,16 @@ name: Experiment — headless first boot
 
 # -----------------------------------------------------------------------------
 # v3 Architecture-A experiment (manual only, NOT part of any release path).
-# Question: can JD's FIRST boot run with -Djava.awt.headless=true so the
-# updater installs silently with NO GUI (=> no forced dialog cascade), before
-# the real GUI start? Open points this run answers empirically:
-#   1. Does the headless updater complete the core install at all?
-#   2. Does it install the FlatLaf themes extension (libs/laf/flatlaf.jar)?
-#      (Its install trigger normally hangs off LookAndFeelController.setUIManager,
-#      which early-returns headless — the pessimistic case is "no jar".)
-#   3. Does JD park on an interactive MyJDownloader stdin prompt (container
-#      stdin is not a TTY — here stdin is /dev/null, worst case)?
-#   4. Does a SECOND headless boot come up clean/settled?
+# Mirrors the container's A-lite flow EXACTLY, in the same order:
+#   seed flatlaf-themes request -> headless boot -> wait for the detached
+#   chain -> TERM/KILL the chain (run 4 learned: the extension registry is
+#   read ONLY at JVM init, and the boot-1 daemon holds the JD2 single-instance
+#   lock — a later boot dies on the lock and never consumes the request).
+# Verdicts this run delivers:
+#   1. FRESH-INSTALL path: does the PRE-seeded request make the headless chain
+#      install libs/laf/flatlaf.jar together with the core?
+#   2. HEAL path (existing install missing the extension): after killing the
+#      chain, does a NEW headless JVM consume a seeded request and install it?
 # Read the artifact + job log; nothing is published.
 # -----------------------------------------------------------------------------
 
@@ -28,81 +28,70 @@ jobs:
           sudo apt-get update -q
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends openjdk-21-jre
 
-      - name: Prepare JD dir + pre-seed theme config (mirrors jdownloader-theme.sh)
+      - name: Prepare JD dir + theme config + PRE-seed flatlaf-themes request (mirrors autostart)
         run: |
-          mkdir -p "$RUNNER_TEMP/jd/cfg"
+          mkdir -p "$RUNNER_TEMP/jd/cfg" "$RUNNER_TEMP/jd/update/versioninfo/JD"
           cat > "$RUNNER_TEMP/jd/cfg/org.jdownloader.settings.GraphicalUserInterfaceSettings.json" <<'EOF'
           {"lookandfeeltheme":"FLATLAF_DARK"}
           EOF
+          # Ground truth from JD source: every FlatLaf theme maps to updater extension
+          # id "flatlaf-themes" (LookAndFeelType enum); the request list is a PLAIN
+          # JSON ARRAY — the sanctioned path other JD Docker images seed too.
+          echo '["flatlaf-themes"]' > "$RUNNER_TEMP/jd/update/versioninfo/JD/extensions.requestedinstalls.json"
+          echo "pre-seeded:"
+          cat "$RUNNER_TEMP/jd/update/versioninfo/JD/extensions.requestedinstalls.json"
 
       - name: Download JDownloader.jar
         run: |
           wget -q -O "$RUNNER_TEMP/jd/JDownloader.jar" "https://installer.jdownloader.org/JDownloader.jar"
           python3 -c "import sys,zipfile; zipfile.ZipFile(sys.argv[1]).namelist()" "$RUNNER_TEMP/jd/JDownloader.jar"
 
-      - name: "Boot 1: headless first run (10 min budget, stdin=/dev/null)"
+      - name: "Boot 1: headless first run with pre-seeded request (container fresh-install semantics)"
         run: |
           cd "$RUNNER_TEMP/jd"
           set +e
           timeout --signal=TERM --kill-after=30 600 \
             java -Djava.awt.headless=true -jar JDownloader.jar < /dev/null > boot1.log 2>&1
           echo "boot1_exit=$?" | tee boot1.exit
-          # Run 1 learned: the bootstrap spawns a DETACHED process chain
-          # (SecondLevelLauncher -> rescue updater -> core install) that keeps
-          # working after the first JVM exits — wait for the WHOLE chain before
-          # observing, exactly like the container's launcher loop does.
+          # The bootstrap spawns a DETACHED chain (SecondLevelLauncher -> rescue
+          # updater -> core install) that ends in a RUNNING headless daemon — wait,
+          # then stop it exactly like the container's A-lite does.
           waited=0
           while pgrep -f 'java.*jar' > /dev/null 2>&1 && [ "$waited" -lt 900 ]; do
             sleep 15
             waited=$((waited + 15))
             echo "...detached updater chain still running (${waited}s)"
           done
-          echo "chain_done_after=${waited}s" | tee chain.wait
+          echo "chain_done_after=${waited}s"
+          pkill -TERM -f 'java.*jar' 2>/dev/null || true
+          w=0
+          while pgrep -f 'java.*jar' > /dev/null 2>&1 && [ "$w" -lt 12 ]; do
+            sleep 5; w=$((w + 1))
+          done
+          pkill -KILL -f 'java.*jar' 2>/dev/null || true
           set -e
-          echo "── last 120 log lines ──"
-          tail -120 boot1.log || true
+          echo "── last 60 log lines ──"
+          tail -60 boot1.log || true
 
-      - name: "Observations after boot 1"
+      - name: "VERDICT 1 (fresh install): flatlaf.jar after pre-seeded headless run?"
         run: |
           cd "$RUNNER_TEMP/jd"
-          echo "== exit code (124 = still running at 10 min = daemonised) =="
-          cat boot1.exit
-          echo "== core installed? =="
-          ls -la . || true
-          echo "== libs present? =="
-          ls -la libs 2>/dev/null || echo "NO libs dir"
-          echo "== THE key question: flatlaf.jar? =="
-          ls -la libs/laf 2>/dev/null || echo "NO libs/laf — themes extension NOT installed headless"
-          echo "== cfg after first boot =="
-          ls -la cfg 2>/dev/null || true
-          echo "== build.json (revision canary source)? =="
-          cat build.json 2>/dev/null || echo "NO build.json"
-          echo "== stdin/MyJD prompt indicators in the log =="
-          grep -inE "myjdownloader|e-?mail|password|console|stdin|input" boot1.log | head -30 || echo "none found"
-          echo "== updater activity =="
-          grep -inE "update|install|download" boot1.log | tail -30 || true
-
-      # Box test learned: the headless install completes with NOTHING pending, so the
-      # GUI first start shows NO design-install dialog and the FlatLaf themes extension
-      # never installs -> JD falls back to light Synthetica. Hypothesis: pre-seeding the
-      # extension REQUEST into JD's update registry makes the headless chain install it.
-      - name: "Discover extension registry schema + flatlaf extension id"
-        run: |
-          cd "$RUNNER_TEMP/jd"
-          echo "== extension storage files =="
-          ls -la update/versioninfo/JD/ 2>/dev/null || echo "no versioninfo dir"
+          echo "== did the updater see the request? =="
+          grep -a "Requested Extension Installations" boot1.log | head -5 || echo "(no ExtensionManager init line in boot1.log)"
+          echo "== THE verdict: libs/laf =="
+          ls -la libs/laf 2>/dev/null || echo "NO libs/laf"
+          echo "== extension registry after boot 1 =="
           for f in update/versioninfo/JD/extensions*; do
             [ -f "$f" ] && { echo "--- $f ---"; cat "$f"; echo; }
           done
-          echo "== flatlaf tokens in filelist.txt =="
-          grep -aio "[a-z0-9_./-]*flatlaf[a-z0-9_./-]*" update/versioninfo/JD/filelist.txt 2>/dev/null | sort -u | head -30 || echo "no filelist match"
+          echo "== core sanity =="
+          ls Core.jar build.json 2>/dev/null || echo "core incomplete"
 
-      # Ground truth from JD source (LookAndFeelType enum: all FlatLaf themes share
-      # extension id "flatlaf-themes") + observed on-disk format (per-key storage
-      # files; the request list is update/versioninfo/JD/extensions.requestedinstalls.json,
-      # a PLAIN JSON ARRAY of ids — the same sanctioned path other JD Docker images
-      # use, e.g. seeding ["eventscripter"]).
-      - name: "Seed the flatlaf-themes extension request"
+      # HEAL scenario: an existing install that is missing the extension (e.g. a box
+      # that ran the first :v3-preview). Re-seed if consumed, then a FRESH JVM (the
+      # chain from boot 1 is dead, so no lock collision) must read the request at
+      # init and install the extension.
+      - name: "Boot 2 (heal path): fresh JVM with seeded request on an existing install"
         run: |
           cd "$RUNNER_TEMP/jd"
           python3 - <<'PYEOF'
@@ -120,26 +109,25 @@ jobs:
               ids.append("flatlaf-themes")
           os.makedirs(os.path.dirname(path), exist_ok=True)
           json.dump(ids, open(path, "w"))
-          print("seeded ->", path, json.dumps(ids))
+          print("seed state ->", path, json.dumps(ids))
           PYEOF
-
-      - name: "Boot 2: headless re-run with seeded extension request (10 min budget)"
-        run: |
-          cd "$RUNNER_TEMP/jd"
           set +e
-          timeout --signal=TERM --kill-after=30 600 \
+          timeout --signal=TERM --kill-after=30 480 \
             java -Djava.awt.headless=true -jar JDownloader.jar < /dev/null > boot2.log 2>&1
           echo "boot2_exit=$?" | tee boot2.exit
           waited=0
-          while pgrep -f 'java.*jar' > /dev/null 2>&1 && [ "$waited" -lt 600 ]; do
+          while pgrep -f 'java.*jar' > /dev/null 2>&1 && [ "$waited" -lt 480 ]; do
             sleep 15
             waited=$((waited + 15))
             echo "...chain still running after boot 2 (${waited}s)"
           done
+          pkill -TERM -f 'java.*jar' 2>/dev/null || true
+          sleep 10
+          pkill -KILL -f 'java.*jar' 2>/dev/null || true
           set -e
           echo "== did the updater see the request? =="
-          grep -a "Requested Extension Installations" boot2.log | head -5 || true
-          echo "== THE verdict: flatlaf.jar after seeded headless run =="
+          grep -a "Requested Extension Installations" boot2.log | head -5 || echo "(no ExtensionManager init line in boot2.log)"
+          echo "== VERDICT 2 (heal): libs/laf =="
           ls -la libs/laf 2>/dev/null || echo "still NO libs/laf"
           echo "== extension registry after boot 2 =="
           for f in update/versioninfo/JD/extensions*; do
@@ -148,7 +136,7 @@ jobs:
           echo "── last 40 log lines ──"
           tail -40 boot2.log || true
 
-      - name: Upload logs + tree
+      - name: Upload logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
