@@ -49,11 +49,63 @@ if [ ! -f "${LAUNCHER}" ]; then
     fi
 fi
 
+# ---------------------------------------------------------------------------
+# v3 Architecture A ("headless pre-install"). On a FRESH install, run JD's whole
+# updater chain ONCE without a GUI first: where no GUI exists, no forced dialog
+# can appear, so the core install (launcher -> rescue updater -> Core.jar + libs)
+# happens silently and the later GUI first start comes up in seconds instead of
+# minutes of black WebUI with a hidden dialog cascade. Verified empirically
+# (CI experiment, actions run 29204384382): the headless chain completes the
+# core install (~4 min), never prompts on stdin, does NOT install the FlatLaf
+# themes extension (its trigger needs the GUI — the design-install dialog on
+# the first GUI start remains, auto-confirmed by the agent), and ends in a
+# RUNNING headless daemon that must be stopped before the GUI phase can take
+# the JD2 single-instance lock. JAVA_TOOL_OPTIONS is not exported yet, so this
+# JVM runs without the agent — nothing to click headless anyway.
+if [ ! -f "${JD_DIR}/Core.jar" ]; then
+    echo "[jdownloader-autostart] fresh install: silent headless pre-install (no GUI = no dialogs; ~3-5 min)..." >&2
+    rm -f /tmp/.jd-agent.pid /tmp/.jd-laf-applied /tmp/.jd-laf-restart-request
+    java -Djava.awt.headless=true -jar "${LAUNCHER}" < /dev/null >> /config/jd-headless-install.log 2>&1 &
+    # Settle = Core.jar + build.json present on 3 consecutive checks (~30s quiet);
+    # cap 15 min. On cap without a settled install we fall through to the GUI
+    # path, which installs with visible dialogs exactly as before (the agent
+    # confirms them) — fail-safe, and JD's updater self-repairs partial installs.
+    tries=0
+    settle=0
+    while [ "${tries}" -lt 90 ]; do
+        sleep 10
+        tries=$((tries + 1))
+        if [ -f "${JD_DIR}/Core.jar" ] && [ -f "${JD_DIR}/build.json" ]; then
+            settle=$((settle + 1))
+        else
+            settle=0
+        fi
+        [ "${settle}" -ge 3 ] && break
+    done
+    if [ "${settle}" -ge 3 ]; then
+        echo "[jdownloader-autostart] headless pre-install complete — stopping the headless daemon, starting the GUI" >&2
+    else
+        echo "[jdownloader-autostart] headless pre-install did not settle within 15 min — falling back to the GUI installer" >&2
+    fi
+    # Stop the whole detached chain politely (TERM -> wait -> KILL leftovers).
+    # "JDownloader\.jar" matches every stage (launcher, JDU relaunch, Core run)
+    # but not the python helpers / -javaagent path (they lack the .jar suffix).
+    pkill -TERM -f "JDownloader\.jar" 2>/dev/null || true
+    w=0
+    while pgrep -f "JDownloader\.jar" > /dev/null 2>&1 && [ "${w}" -lt 12 ]; do
+        sleep 5
+        w=$((w + 1))
+    done
+    pkill -KILL -f "JDownloader\.jar" 2>/dev/null || true
+    rm -f /tmp/.jd-agent.pid /tmp/.jd-laf-applied /tmp/.jd-laf-restart-request
+fi
+
 echo "" >&2
 echo "  ============================================================" >&2
 echo "   JDownloader is starting." >&2
 echo "   The FIRST start installs JDownloader + its dark theme and" >&2
-echo "   can take a few minutes — the WebUI stays BLACK until done." >&2
+echo "   can take a few minutes — most of it as a silent headless" >&2
+echo "   pre-install while the WebUI shows an empty dark desktop." >&2
 echo "   Do NOT restart the container. Wait for the READY banner below." >&2
 echo "  ============================================================" >&2
 echo "" >&2
@@ -251,8 +303,13 @@ while true; do
     # Optional frozen-appliance mode: JD_SELFUPDATE=false disables JD's periodic
     # self-update checks. OPT-IN only — the same updater channel also delivers the
     # HOSTER PLUGINS, which go stale within weeks (downloads start failing), and the
-    # first install NEEDS the updater, hence the libs/ gate.
-    if [ "${JD_SELFUPDATE:-true}" = "false" ] && [ -d "${JD_DIR}/libs" ]; then
+    # first install NEEDS the updater, hence the gates: libs/ must exist (core
+    # installed) AND, when a FlatLaf theme is expected, flatlaf.jar must already be
+    # in place — after the headless pre-install libs/ exists but the themes
+    # extension does not yet (it installs on the first GUI start THROUGH the
+    # updater; freezing before that would leave the theme permanently missing).
+    if [ "${JD_SELFUPDATE:-true}" = "false" ] && [ -d "${JD_DIR}/libs" ] \
+       && { [ -z "${EXPECT_LAF}" ] || [ -f "${JD_DIR}/libs/laf/flatlaf.jar" ]; }; then
         python3 - "${JD_DIR}/cfg/org.jdownloader.updatev2.UpdateSettings.json" <<'PYEOF' >&2 || true
 import json, os, sys
 path = sys.argv[1]

@@ -283,7 +283,9 @@ ghcr.io/linuxserver/baseimage-kasmvnc   (s6-overlay v3 · KasmVNC · weekly LSIO
       │     • language · tray off · openbox kiosk (no title bar, dialogs not maximised)
       ▼
    svc-de  →  /defaults/autostart   (the JDownloader launcher loop)
-      │     • java -jar JDownloader.jar     (installs JD 2 on first run)
+      │     • FIRST install: silent HEADLESS pre-install (no GUI = no forced
+      │       dialogs), then the GUI starts with the core already in place
+      │     • java -jar JDownloader.jar     (the regular GUI launch)
       │     • re-applies the colorfor*/icons theme config before each launch
       │     • a -javaagent auto-confirms JD's forced install dialogs AND registers
       │       /opt/JDownloader/flatlaf-defaults as a FlatLaf custom-defaults source
