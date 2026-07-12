@@ -47,6 +47,17 @@ jobs:
           timeout --signal=TERM --kill-after=30 600 \
             java -Djava.awt.headless=true -jar JDownloader.jar < /dev/null > boot1.log 2>&1
           echo "boot1_exit=$?" | tee boot1.exit
+          # Run 1 learned: the bootstrap spawns a DETACHED process chain
+          # (SecondLevelLauncher -> rescue updater -> core install) that keeps
+          # working after the first JVM exits — wait for the WHOLE chain before
+          # observing, exactly like the container's launcher loop does.
+          waited=0
+          while pgrep -f 'java.*jar' > /dev/null 2>&1 && [ "$waited" -lt 900 ]; do
+            sleep 15
+            waited=$((waited + 15))
+            echo "...detached updater chain still running (${waited}s)"
+          done
+          echo "chain_done_after=${waited}s" | tee chain.wait
           set -e
           echo "── last 120 log lines ──"
           tail -120 boot1.log || true
@@ -71,18 +82,30 @@ jobs:
           echo "== updater activity =="
           grep -inE "update|install|download" boot1.log | tail -30 || true
 
-      - name: "Boot 2: settled headless re-run (3 min budget)"
+      - name: "Boot 2: settled headless re-run (5 min budget)"
         run: |
           cd "$RUNNER_TEMP/jd"
           set +e
-          timeout --signal=TERM --kill-after=30 180 \
+          timeout --signal=TERM --kill-after=30 300 \
             java -Djava.awt.headless=true -jar JDownloader.jar < /dev/null > boot2.log 2>&1
           echo "boot2_exit=$?" | tee boot2.exit
+          # Same detached-chain wait as boot 1 (a settled boot may still relaunch once).
+          waited=0
+          while pgrep -f 'java.*jar' > /dev/null 2>&1 && [ "$waited" -lt 300 ]; do
+            sleep 15
+            waited=$((waited + 15))
+            echo "...chain still running after boot 2 (${waited}s)"
+          done
           set -e
           echo "── last 80 log lines ──"
           tail -80 boot2.log || true
           echo "== libs/laf after boot 2 =="
           ls -la libs/laf 2>/dev/null || echo "still NO libs/laf"
+          echo "== MyJD/console prompt indicators in boot 2 =="
+          grep -inE "myjdownloader|e-?mail|password|console|setup" boot2.log | head -20 || echo "none found"
+          echo "== did Core actually run headless? =="
+          ls -la logs 2>/dev/null | tail -5 || true
+          cat build.json 2>/dev/null || echo "NO build.json"
 
       - name: Upload logs + tree
         if: always()
