@@ -197,10 +197,11 @@ public class DialogConfirmAgent {
                 flatLaf = laf.getClass().getClassLoader().loadClass("com.formdev.flatlaf.FlatLaf");
             } catch (Throwable ignore) { }
         }
-        // Pre-LAF: scan loaded classes (every other tick, first ~5 min only — FlatLaf
-        // loads within seconds of JD's GUI bootstrap when it is installed).
+        // Pre-LAF: scan loaded classes (every 4th tick, first ~5 min only — FlatLaf
+        // loads within seconds of JD's GUI bootstrap when it is installed; the throttle
+        // caps the EDT cost of getAllLoadedClasses() in the no-FlatLaf degenerate case).
         if (flatLaf == null && INSTRUMENTATION != null && classScanTicks < 750) {
-            if ((++classScanTicks % 2) != 0) return;
+            if ((++classScanTicks % 4) != 0) return;
             for (Class<?> c : INSTRUMENTATION.getAllLoadedClasses()) {
                 if ("com.formdev.flatlaf.FlatLaf".equals(c.getName())) { flatLaf = c; break; }
             }

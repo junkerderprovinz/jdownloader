@@ -133,6 +133,11 @@ heal_restart() {
             echo "   JDOWNLOADER IS UP (theme NOT verified)  ->  WebUI on HTTPS 3001" >&2
             echo "   If the UI looks wrong, check the log above for" >&2
             echo "   [jd-dialog-agent] lines and restart the container once." >&2
+            if [ -n "${EXPECT_LAF}" ] && [ ! -f "${JD_DIR}/libs/laf/flatlaf.jar" ]; then
+                echo "   NOTE: the FlatLaf theme was requested but JD never installed" >&2
+                echo "   it — the design download may have failed (blocked/slow" >&2
+                echo "   network). Check connectivity, then restart the container." >&2
+            fi
             echo "  ############################################################" >&2
             echo "" >&2
         fi
@@ -179,9 +184,13 @@ heal_restart() {
             continue
         fi
         # LAF mismatch: agent reports a different LAF than expected while FlatLaf IS
-        # installed (jar present). Requires ~4 consecutive hits (~30s) so a normal
-        # startup transition never triggers it.
-        if agent_alive && [ -f "${JD_DIR}/libs/laf/flatlaf.jar" ] && ! laf_matches; then
+        # installed (jar present). Gated on the READY marker: the STARTUP window is
+        # owned by the READY poller (patient, up to 10 min) and the dialog agent —
+        # before READY the marker legitimately carries the JVM-default Metal LAF for
+        # a while, and healing on that would TERM a healthy JD that is merely still
+        # bringing up its GUI (slow/CPU-limited starts). Post-READY, 4 consecutive
+        # hits (~30s) mean real drift (e.g. a self-update reset) — heal that.
+        if [ -f /tmp/.jd-ready ] && agent_alive && [ -f "${JD_DIR}/libs/laf/flatlaf.jar" ] && ! laf_matches; then
             mismatch=$((mismatch + 1))
         else
             mismatch=0
