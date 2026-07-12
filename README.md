@@ -185,6 +185,7 @@ services:
 | Variable | Default | Description |
 |---|---|---|
 | `JD_THEME` | `Dark` | UI theme — `Dark` = monochrome Carbon `#161616`, `Light` = JD's light theme |
+| `JD_SELFUPDATE` | `true` | `false` disables JD's periodic self-update checks (opt-in "frozen appliance"). **Note:** the same update channel delivers the hoster plugins, which go stale within weeks — downloads may start failing. First install always uses the updater. |
 | `PUID` | `99` | User ID — Unraid's *nobody* |
 | `PGID` | `100` | Group ID — Unraid's *users* |
 | `TZ` | `Europe/Vienna` | Timezone |
@@ -210,7 +211,7 @@ On the **first start**, JDownloader installs itself into `/config/JDownloader/`.
 └── JDownloader/
     ├── cfg/
     │   └── laf/      # the Carbon #161616 colorfor* palette (re-applied every start)
-    ├── libs/laf/     # FlatLaf — flatlaf.jar is patched to the #161616 dark every start
+    ├── libs/laf/     # JD's own STOCK FlatLaf (unpatched) — the dark chrome comes from the image, not from here
     ├── themes/flat/  # bundled flat icon set (re-seeded from the image every start)
     └── JDownloader.jar
 ```
@@ -279,15 +280,17 @@ ghcr.io/linuxserver/baseimage-kasmvnc   (s6-overlay v3 · KasmVNC · weekly LSIO
       ▼  cont-init.d/10-jdownloader-setup        (runs once, before the desktop starts)
       │     • writes JD's native Carbon #161616 colorfor* palette   → cfg/laf
       │     • seeds the bundled flat icon set                       → themes/flat
-      │     • patches flatlaf.jar to the #161616 dark chrome        → libs/laf
       │     • language · tray off · openbox kiosk (no title bar, dialogs not maximised)
       ▼
    svc-de  →  /defaults/autostart   (the JDownloader launcher loop)
       │     • java -jar JDownloader.jar     (installs JD 2 on first run)
-      │     • re-applies the colorfor*/icons/flatlaf theme before each launch
-      │     • theme auto-heal: restarts JD once if its self-update reset the theme
-      │     • a -javaagent auto-confirms JD's forced install dialogs
-      │     • prints "JDOWNLOADER IS READY" only when JD is up AND dark
+      │     • re-applies the colorfor*/icons theme config before each launch
+      │     • a -javaagent auto-confirms JD's forced install dialogs AND registers
+      │       /opt/JDownloader/flatlaf-defaults as a FlatLaf custom-defaults source
+      │       (official API) — the #161616 chrome; flatlaf.jar stays STOCK
+      │     • theme auto-heal: restarts JD once if a self-update reset the theme
+      │       (ground truth: the LAF actually applied inside the JVM, max 3/hour)
+      │     • prints "JDOWNLOADER IS READY" only when the JVM confirms the dark LAF
       ▼
    JDownloader 2   (Java Swing GUI, streamed to your browser by KasmVNC)
       ▲
