@@ -209,6 +209,12 @@ heal_restart() {
         if [ "${stable}" -ge 4 ]; then
             # VERIFIED: the expected look-and-feel is genuinely applied.
             : > /tmp/.jd-ready
+            # House ASCII banner right before the READY box (same art + title
+            # block as the init banner; stdout redirected into the service log).
+            /usr/local/bin/print-banner.sh \
+                "JDownloader for Unraid" \
+                "Modern dark UI · KasmVNC · Java 21" \
+                >&2 2>/dev/null || true
             echo "" >&2
             echo "  ############################################################" >&2
             echo "   JDOWNLOADER IS READY  ->  open the WebUI now (HTTPS 3001)" >&2
