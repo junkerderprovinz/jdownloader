@@ -77,11 +77,52 @@ public class DialogConfirmAgent {
     private static boolean chromeDone  = false;
     private static int     stableTicks = 0;
 
+    // --- Ground-truth markers for the container (autostart READY gate) -----------
+    // The launcher used to infer "themed" from a patched flatlaf.jar on disk — which
+    // says nothing about whether the LAF was actually APPLIED (a pending "restart to
+    // apply" dialog left the GUI white while the banner fired). These markers are the
+    // in-JVM truth: the agent's PID, and the class name of the ACTIVE look-and-feel.
+    private static final java.io.File PID_FILE        = new java.io.File("/tmp/.jd-agent.pid");
+    private static final java.io.File LAF_FILE        = new java.io.File("/tmp/.jd-laf-applied");
+    private static final java.io.File RESTART_REQUEST = new java.io.File("/tmp/.jd-laf-restart-request");
+    private static String lastLafWritten = null;
+    private static int    lafTick        = 0;
+
+    // Per-window guards: don't re-click a button more than once per 5s (a swallowed
+    // click may still need a retry), and log each unmatched dialog only once.
+    private static final java.util.Map<Window, Long> CLICKED_AT =
+            new java.util.WeakHashMap<Window, Long>();
+    private static final java.util.Set<Window> LOGGED =
+            java.util.Collections.newSetFromMap(new java.util.WeakHashMap<Window, Boolean>());
+    private static final java.util.Set<Window> RESTART_REQUESTED =
+            java.util.Collections.newSetFromMap(new java.util.WeakHashMap<Window, Boolean>());
+
     public static void premain(String agentArgs, Instrumentation inst) {
         System.out.println("[jd-dialog-agent] watching for installer dialogs + enforcing dark chrome");
+        writeFile(PID_FILE, Long.toString(ProcessHandle.current().pid()));
         Thread t = new Thread(DialogConfirmAgent::watch, "jd-dialog-agent");
         t.setDaemon(true);
         t.start();
+    }
+
+    private static void writeFile(java.io.File f, String content) {
+        try {
+            java.nio.file.Files.write(f.toPath(),
+                    content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        } catch (Exception e) {
+            // /tmp unwritable — markers are best-effort, the launcher has fallbacks
+        }
+    }
+
+    /** Record the ACTIVE look-and-feel class every few seconds (ground truth for READY). */
+    private static void writeLafMarker() {
+        LookAndFeel laf = UIManager.getLookAndFeel();
+        if (laf == null) return;
+        String cn = laf.getClass().getName();
+        if (!cn.equals(lastLafWritten) || !LAF_FILE.exists()) {
+            writeFile(LAF_FILE, cn);
+            lastLafWritten = cn;
+        }
     }
 
     private static void watch() {
@@ -104,6 +145,10 @@ public class DialogConfirmAgent {
         widenSpeedEditors();
         growSpeedMeter();
         replaceSpeedGraph();
+        if (++lafTick >= 12) {   // every ~5s (ticks run every 400ms)
+            lafTick = 0;
+            writeLafMarker();
+        }
     }
 
     // -------------------------------------------------------- speed graph replacement
@@ -703,6 +748,30 @@ public class DialogConfirmAgent {
 
     // --------------------------------------------------------------- dialogs
 
+    private static boolean clickAllowed(Window w) {
+        Long t = CLICKED_AT.get(w);
+        return t == null || System.currentTimeMillis() - t > 5000L;
+    }
+
+    private static void markClicked(Window w) {
+        CLICKED_AT.put(w, Long.valueOf(System.currentTimeMillis()));
+    }
+
+    /** First button matching any of the labels, in order of preference. */
+    private static JButton findButtonByLabels(Container c, String... labels) {
+        for (String label : labels) {
+            JButton b = findButtonByLabel(c, label);
+            if (b != null) return b;
+        }
+        return null;
+    }
+
+    /** Condense a dialog's text to a single loggable line (whitespace-squashed, capped). */
+    private static String condense(String s) {
+        String t = s.replaceAll("\\s+", " ").trim();
+        return t.length() > 400 ? t.substring(0, 400) + "…" : t;
+    }
+
     private static void handleDialogs() {
         for (Window w : Window.getWindows()) {
             if (!w.isShowing()) continue;
@@ -729,10 +798,10 @@ public class DialogConfirmAgent {
 
             // FLATLAF_DARK design install prompt -> OK (installs + registers the design).
             if (title.contains("Design-Update") || title.contains("Design Update")) {
-                JButton ok = findButtonByLabel(w, "OK");
-                if (ok == null) ok = findButtonByLabel(w, "Ok");
-                if (ok != null) {
+                JButton ok = findButtonByLabels(w, "OK", "Ok");
+                if (ok != null && clickAllowed(w)) {
                     ok.doClick();
+                    markClicked(w);
                     System.out.println("[jd-dialog-agent] accepted design-update");
                     continue;
                 }
@@ -740,12 +809,54 @@ public class DialogConfirmAgent {
 
             // "Manage extensions" install prompt -> install now.
             if (title.contains("Erweiterungen verwalten") || title.contains("Manage Extensions")) {
-                JButton install = findButtonByLabel(w, "Jetzt installieren");
-                if (install == null) install = findButtonByLabel(w, "Install now");
-                if (install == null) install = findButtonByLabel(w, "Install");
-                if (install != null) {
+                JButton install = findButtonByLabels(w, "Jetzt installieren", "Install now", "Install");
+                if (install != null && clickAllowed(w)) {
                     install.doClick();
+                    markClicked(w);
                     System.out.println("[jd-dialog-agent] accepted extension install");
+                    continue;
+                }
+            }
+
+            // Look-and-feel changed -> "restart to apply" prompt ("You have changed the
+            // look and feel to FlatLaf Dark ..."). Left unanswered it blocks the first
+            // start with a WHITE GUI (the LAF is registered but never applied). Matched
+            // on the BODY text (locale-tolerant), answered with the restart-AFFIRMING
+            // button — plain "OK" often just dismisses without restarting. Deliberate
+            // side effect: a user changing the LAF manually also gets the JD restart
+            // (which is what "apply" needs anyway).
+            if (w instanceof Dialog) {
+                String body = collectText(w).toLowerCase();
+                if (body.contains("look and feel") || body.contains("look-and-feel")
+                        || body.contains("flatlaf")) {
+                    JButton confirm = findButtonByLabels(w,
+                            "Yes", "Ja", "Restart", "Neustart", "Restart now",
+                            "Jetzt neu starten", "OK", "Ok");
+                    if (confirm != null && clickAllowed(w)) {
+                        confirm.doClick();
+                        markClicked(w);
+                        System.out.println("[jd-dialog-agent] confirmed look-and-feel restart dialog"
+                                + " (title=\"" + title + "\", button=\"" + confirm.getText() + "\")");
+                        continue;
+                    }
+                    if (confirm == null && RESTART_REQUESTED.add(w)) {
+                        // No recognisable button — ask the launcher for a polite restart
+                        // (the LAF is already recorded in JD's config, a restart applies it).
+                        writeFile(RESTART_REQUEST, "laf-dialog-without-known-button");
+                        System.out.println("[jd-dialog-agent] LAF dialog has no known button — "
+                                + "requested a container-side JD restart. title=\"" + title
+                                + "\" text=\"" + condense(collectText(w)) + "\"");
+                        continue;
+                    }
+                    continue;
+                }
+
+                // Unmatched dialog: log it ONCE with its verbatim title + text, so the
+                // next "new forced dialog" bug report carries the exact strings we need
+                // to match it — instead of guessing from a user's paraphrase.
+                if (LOGGED.add(w)) {
+                    System.out.println("[jd-dialog-agent] unmatched dialog: title=\"" + title
+                            + "\" text=\"" + condense(collectText(w)) + "\"");
                 }
             }
         }
