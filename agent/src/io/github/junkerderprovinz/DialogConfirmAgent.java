@@ -237,6 +237,41 @@ public class DialogConfirmAgent {
         if (lafRefreshDone) return;
         LookAndFeel laf = UIManager.getLookAndFeel();
         if (laf == null || !laf.getClass().getName().toLowerCase().contains("flat")) return;
+
+        if (defaultsRegistered) {
+            Color bg = UIManager.getColor("Panel.background");
+            if (bg != null && (bg.getRGB() & 0xFFFFFF) == 0x161616) {
+                // Registration beat JD's LAF apply — defaults are already live.
+                lafRefreshDone = true;
+                System.out.println("[jd-dialog-agent] custom defaults active from first paint (no re-apply needed)");
+                return;
+            }
+
+            // PREFERRED path: JD applies its LAF seconds BEFORE it builds the GUI.
+            // While no frame exists yet, re-applying the LAF is a pure defaults swap —
+            // there is no live component tree to update (updateUI deliberately NOT
+            // called), so nothing can be corrupted, and every component JD builds
+            // next is created with our colours from the start. Hot-swapping the LAF
+            // on the LIVE frame instead (the old one-shot) broke JD's repaint: JD
+            // itself never swaps a LAF at runtime — it always restarts — because its
+            // AppWork components don't survive updateUI cleanly (ghosted/overlapping
+            // panels when switching tabs).
+            if (Frame.getFrames().length == 0) {
+                try {
+                    UIManager.setLookAndFeel((LookAndFeel) laf.getClass().getDeclaredConstructor().newInstance());
+                    System.out.println("[jd-dialog-agent] re-applied " + laf.getClass().getSimpleName()
+                            + " with custom defaults (pre-GUI, no components yet)");
+                } catch (Throwable e) {
+                    System.out.println("[jd-dialog-agent] pre-GUI LAF re-apply failed ("
+                            + e.getClass().getSimpleName() + ") — legacy chrome remap only");
+                }
+                lafRefreshDone = true;
+                return;
+            }
+        }
+
+        // Frames already exist (or registration is still pending) — gate everything
+        // below on the main window being shown and stable.
         if (!mainWindowShowing()) { lafStableTicks = 0; return; }
         if (++lafStableTicks < 4) return;   // ~1.6 s after the main frame shows
 
@@ -249,20 +284,15 @@ public class DialogConfirmAgent {
             return;
         }
 
-        Color bg = UIManager.getColor("Panel.background");
-        if (bg != null && (bg.getRGB() & 0xFFFFFF) == 0x161616) {
-            // Registration beat JD's LAF apply — defaults are already live.
-            lafRefreshDone = true;
-            System.out.println("[jd-dialog-agent] custom defaults active from first paint (no re-apply needed)");
-            return;
-        }
-
+        // RARE fallback: the pre-GUI window was missed. A live re-apply must refresh
+        // the existing tree (updateUI) and can leave repaint artifacts in JD's custom
+        // components — logged loudly so field reports identify this path.
         try {
             UIManager.setLookAndFeel((LookAndFeel) laf.getClass().getDeclaredConstructor().newInstance());
             Class<?> flatLaf = laf.getClass().getClassLoader().loadClass("com.formdev.flatlaf.FlatLaf");
             flatLaf.getMethod("updateUI").invoke(null);
             System.out.println("[jd-dialog-agent] re-applied " + laf.getClass().getSimpleName()
-                    + " with custom defaults (one-shot)");
+                    + " with custom defaults (LIVE one-shot — missed the pre-GUI window)");
         } catch (Throwable e) {
             System.out.println("[jd-dialog-agent] LAF re-apply failed ("
                     + e.getClass().getSimpleName() + ") — legacy chrome remap only");
