@@ -187,10 +187,11 @@ heal_restart() {
     fi
 }
 
-# Background: announce (loud + once) when JDownloader is actually up, so the user
-# knows the long first-start install has finished and the WebUI is usable. JD's
-# local Click'n'Load API (127.0.0.1:9666) listens once JD is running; require it
-# stable for ~20s so it does not fire during the install's restart cycle.
+# Background: announce (loud) when JDownloader is actually up. Permanent watcher:
+# after EVERY JD restart (self-update relaunch, heal, crash-restart) it re-verifies
+# the new JVM and prints a fresh banner — a field report showed that a single
+# once-per-boot banner made a healthy restarted JD look "stuck since 20 minutes"
+# because the user had no signal that the restart came up fine again.
 (
     # READY gates on GROUND TRUTH from the in-JVM agent: /tmp/.jd-laf-applied carries
     # the class name of the look-and-feel that is ACTUALLY applied. (The pre-v3 check —
@@ -203,12 +204,16 @@ heal_restart() {
     }
     stable=0
     waited=0
-    while [ ! -f /tmp/.jd-ready ]; do
+    last_banner_pid=""
+    while true; do
         if up_and_themed; then stable=$((stable + 1)); else stable=0; fi
         waited=$((waited + 1))
-        if [ "${stable}" -ge 4 ]; then
-            # VERIFIED: the expected look-and-feel is genuinely applied.
+        cur_pid=$(cat /tmp/.jd-agent.pid 2>/dev/null)
+        if [ "${stable}" -ge 4 ] && [ -n "${cur_pid}" ] && [ "${cur_pid}" != "${last_banner_pid}" ]; then
+            # VERIFIED: the expected look-and-feel is genuinely applied in THIS JVM.
             : > /tmp/.jd-ready
+            last_banner_pid="${cur_pid}"
+            waited=0
             # House ASCII banner right before the READY box (same art + title
             # block as the init banner; stdout redirected into the service log).
             /usr/local/bin/print-banner.sh \
@@ -220,9 +225,10 @@ heal_restart() {
             echo "   JDOWNLOADER IS READY  ->  open the WebUI now (HTTPS 3001)" >&2
             echo "  ############################################################" >&2
             echo "" >&2
-        elif [ "${waited}" -ge 120 ]; then
-            # UNVERIFIED fallback after ~10 min: usable, but say so honestly instead of
-            # printing the same READY banner (which hid the white-GUI bug from the log).
+        elif [ ! -f /tmp/.jd-ready ] && [ "${waited}" -ge 120 ]; then
+            # UNVERIFIED fallback after ~10 min (first boot only): usable, but say so
+            # honestly instead of printing the READY banner (which hid the white-GUI
+            # bug from the log).
             : > /tmp/.jd-ready
             echo "" >&2
             echo "  ############################################################" >&2
@@ -262,12 +268,29 @@ heal_restart() {
     window_start=$(date +%s)
     heals=0
     mismatch=0
+    last_pid=""
+    pid_age=0
     while true; do
         sleep 8
         now=$(date +%s)
         if [ $((now - window_start)) -ge 3600 ]; then
             window_start=${now}
             heals=0
+        fi
+        # Per-JVM grace: /tmp/.jd-ready persists for the whole container lifetime, so
+        # gating on it protects only the FIRST start. Every LATER start (self-update
+        # relaunch, heal, crash-restart) begins with the marker legitimately carrying
+        # the JVM-default Metal LAF — on a slow box that startup window exceeded the
+        # mismatch threshold and the healer TERMed a healthy starting JD, burning its
+        # whole budget (field report: "repeats itself like 3 times"). Track the agent
+        # pid and give every NEW JVM ~2 minutes before mismatch counting may begin.
+        cur_pid=$(cat /tmp/.jd-agent.pid 2>/dev/null)
+        if [ "${cur_pid}" != "${last_pid}" ]; then
+            last_pid="${cur_pid}"
+            pid_age=0
+            mismatch=0
+        else
+            pid_age=$((pid_age + 1))
         fi
         [ "${heals}" -ge 3 ] && continue
         # Explicit restart request from the dialog agent (LAF dialog, unknown buttons).
@@ -280,13 +303,10 @@ heal_restart() {
             continue
         fi
         # LAF mismatch: agent reports a different LAF than expected while FlatLaf IS
-        # installed (jar present). Gated on the READY marker: the STARTUP window is
-        # owned by the READY poller (patient, up to 10 min) and the dialog agent —
-        # before READY the marker legitimately carries the JVM-default Metal LAF for
-        # a while, and healing on that would TERM a healthy JD that is merely still
-        # bringing up its GUI (slow/CPU-limited starts). Post-READY, 4 consecutive
-        # hits (~30s) mean real drift (e.g. a self-update reset) — heal that.
-        if [ -f /tmp/.jd-ready ] && agent_alive && [ -f "${JD_DIR}/libs/laf/flatlaf.jar" ] && ! laf_matches; then
+        # installed (jar present), the first boot has settled (READY marker) AND this
+        # JVM is past its startup grace. 4 consecutive hits (~30s) on a warmed-up JVM
+        # mean real drift (e.g. a self-update reset the config) — heal that.
+        if [ "${pid_age}" -ge 15 ] && [ -f /tmp/.jd-ready ] && agent_alive && [ -f "${JD_DIR}/libs/laf/flatlaf.jar" ] && ! laf_matches; then
             mismatch=$((mismatch + 1))
         else
             mismatch=0
