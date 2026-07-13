@@ -1,0 +1,62 @@
+name: Geometry Probe
+
+# Diagnostic-only: boots the current :v3-preview image, waits for the JD GUI,
+# collects the agent's GEO log lines and a PNG screenshot of the live desktop
+# as artifacts. Manual trigger; no image is built or pushed here.
+
+on:
+  workflow_dispatch:
+    inputs:
+      image:
+        description: 'Image to probe'
+        required: false
+        default: 'ghcr.io/junkerderprovinz/jdownloader:v3-preview'
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Boot the container
+        run: |
+          docker run -d --name jd -p 3000:3000 -p 3001:3001 \
+            "${{ github.event.inputs.image || 'ghcr.io/junkerderprovinz/jdownloader:v3-preview' }}"
+
+      - name: Wait for the JD GUI (READY banner, up to 15 min)
+        run: |
+          set -uo pipefail
+          ready=""
+          for i in $(seq 1 90); do
+            if docker logs jd 2>&1 | grep -q "IS READY"; then
+              echo "READY after ~$((i*10))s"; ready=1; break
+            fi
+            if [ -z "$(docker ps -q --filter name=jd)" ]; then
+              echo "container exited early — logs:"; docker logs jd || true; exit 1
+            fi
+            sleep 10
+          done
+          [ -n "$ready" ] || { echo "no READY banner within 15 min — continuing anyway (GEO lines may still exist)"; }
+
+      - name: Let the GUI settle, then collect the agent log
+        run: |
+          sleep 45
+          mkdir -p out
+          docker logs jd > out/full.log 2>&1 || true
+          grep "jd-dialog-agent" out/full.log | tail -120 > out/agent-tail.log || true
+          echo "=== last GEO lines ==="
+          grep "GEO" out/agent-tail.log | tail -10 || echo "(no GEO lines found)"
+
+      - name: Screenshot the live desktop
+        run: |
+          docker exec -u root jd bash -c 'apt-get update -qq >/dev/null 2>&1; apt-get install -y -qq x11-apps imagemagick >/dev/null 2>&1' || true
+          DISP=$(docker exec jd sh -c 'ls /tmp/.X11-unix 2>/dev/null | head -1 | sed "s/^X/:/"')
+          echo "X display: ${DISP:-unknown}"
+          docker exec -u root jd sh -c "xwd -root -display ${DISP:-:1} -silent | convert xwd:- png:-" > out/desktop.png || echo "screenshot failed"
+          ls -la out/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: geometry-probe
+          path: out/
+          if-no-files-found: warn
