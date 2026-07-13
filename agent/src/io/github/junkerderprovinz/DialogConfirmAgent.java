@@ -589,10 +589,16 @@ public class DialogConfirmAgent {
      * toolbar instance (the row constraint survives JD's updateToolbar() rebuilds
      * because the LayoutManager object is kept).
      */
-    private static final int    SPEEDMETER_ROW_PX = 64;
-    private static final String GROWN             = "jdp.speedMeterGrown";
+    private static final int SPEEDMETER_ROW_PX = 64;
 
     private static void growSpeedMeter() {
+        // JD hardcodes the toolbar row that holds the graph to 32px ("[grow,32!]"),
+        // and every updateToolbar() rebuild resets it, so our own graph (pushy,growy)
+        // snaps back to half height. Re-grow whenever it has reverted, detected by our
+        // graph's own height. This is a no-op once the row is at 64px, so it settles
+        // instead of getting stuck at 32px the way the old one-shot guard did after a
+        // rebuild. Runs only after replaceSpeedGraph() has attached ownGraph.
+        if (ownGraph == null || ownGraph.getHeight() >= SPEEDMETER_ROW_PX - 4) return;
         for (Window w : Window.getWindows()) {
             if (w.isShowing()) growSpeedMeterIn(w);
         }
@@ -611,17 +617,14 @@ public class DialogConfirmAgent {
     private static void growToolbarRow(Container toolbar) {
         if (!(toolbar instanceof JComponent)) return;
         JComponent tb = (JComponent) toolbar;
-        if (Boolean.TRUE.equals(tb.getClientProperty(GROWN))) return;
-
         LayoutManager lm = tb.getLayout();
         if (lm == null || !lm.getClass().getName().contains("MigLayout")) return;
         try {
             Method m = lm.getClass().getMethod("setRowConstraints", Object.class);
             m.invoke(lm, "[grow," + SPEEDMETER_ROW_PX + "!]");
-            tb.putClientProperty(GROWN, Boolean.TRUE);
             tb.revalidate();
             tb.repaint();
-            System.out.println("[jd-dialog-agent] grew the speed graph row to " + SPEEDMETER_ROW_PX + "px");
+            System.out.println("[jd-dialog-agent] (re)grew the speed graph row to " + SPEEDMETER_ROW_PX + "px");
         } catch (Exception ignore) {
             // setRowConstraints absent / layout differs -> leave the toolbar as-is
         }
