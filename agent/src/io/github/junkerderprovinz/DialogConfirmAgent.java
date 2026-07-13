@@ -171,7 +171,85 @@ public class DialogConfirmAgent {
         if (++lafTick >= 12) {   // every ~5s (ticks run every 400ms)
             lafTick = 0;
             writeLafMarker();
+            dumpGeometry();
         }
+    }
+
+    // ---------------------------------------------------------- geometry probe
+
+    /**
+     * Diagnostic ground truth for the persistent half-height-graph reports: every
+     * ~5s dump the real pixel geometry around the speed graph to stdout, so
+     * `docker logs` shows what the layout ACTUALLY did instead of what we assume.
+     * One compact line per window that contains a SpeedMeterPanel.
+     */
+    private static void dumpGeometry() {
+        try {
+            for (Window w : Window.getWindows()) {
+                if (!w.isShowing()) continue;
+                JComponent nat = findSpeedMeter(w);
+                if (nat == null) continue;
+                StringBuilder sb = new StringBuilder("[jd-dialog-agent] GEO win=");
+                sb.append(w.getClass().getSimpleName()).append(b(w));
+                java.awt.Insets in = w.getInsets();
+                sb.append(" insets=").append(in.top).append('/').append(in.left)
+                  .append('/').append(in.bottom).append('/').append(in.right);
+                if (w instanceof Frame) sb.append(" undec=").append(((Frame) w).isUndecorated());
+                try {
+                    Object mb = w.getClass().getMethod("getJMenuBar").invoke(w);
+                    if (mb instanceof Component) sb.append(" menubar=").append(b((Component) mb));
+                } catch (Exception ignore) { }
+                Container tb = nat.getParent();
+                List<String> chain = new ArrayList<>();
+                for (Container p = tb; p != null && p != w; p = p.getParent()) {
+                    chain.add(p.getClass().getSimpleName() + b(p));
+                }
+                Collections.reverse(chain);
+                sb.append(" chain=").append(String.join(">", chain));
+                LayoutManager lm = (tb == null) ? null : tb.getLayout();
+                if (lm != null && lm.getClass().getName().contains("MigLayout")) {
+                    sb.append(" lm@").append(Integer.toHexString(System.identityHashCode(lm)))
+                      .append(" grown=").append(GROWN_LAYOUTS.contains(lm));
+                    try {
+                        sb.append(" rows=").append(lm.getClass().getMethod("getRowConstraints").invoke(lm));
+                    } catch (Exception e) { sb.append(" rows=?"); }
+                } else if (lm != null) {
+                    sb.append(" lm=").append(lm.getClass().getSimpleName());
+                }
+                if (tb instanceof JComponent) {
+                    Dimension p = tb.getPreferredSize();
+                    sb.append(" tbPref=").append(p.width).append('x').append(p.height);
+                }
+                sb.append(" native[vis=").append(nat.isVisible()).append(' ').append(b(nat)).append(']');
+                if (ownGraph == null) {
+                    sb.append(" own=null");
+                } else {
+                    sb.append(" own[parent=").append(ownGraph.getParent() == tb ? "toolbar"
+                              : String.valueOf(ownGraph.getParent()))
+                      .append(" showing=").append(ownGraph.isShowing())
+                      .append(' ').append(b(ownGraph)).append(']');
+                }
+                System.out.println(sb);
+            }
+        } catch (Exception ignore) { }
+    }
+
+    private static String b(Component c) {
+        java.awt.Rectangle r = c.getBounds();
+        return "(" + r.x + "," + r.y + " " + r.width + "x" + r.height + ")";
+    }
+
+    private static JComponent findSpeedMeter(Container c) {
+        for (Component ch : c.getComponents()) {
+            if (ch instanceof JComponent && ch.getClass().getName().endsWith(".SpeedMeterPanel")) {
+                return (JComponent) ch;
+            }
+            if (ch instanceof Container) {
+                JComponent r = findSpeedMeter((Container) ch);
+                if (r != null) return r;
+            }
+        }
+        return null;
     }
 
     // ------------------------------------------------ v3 custom defaults source
