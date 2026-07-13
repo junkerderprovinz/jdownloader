@@ -36,7 +36,10 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
+import java.util.Set;
+import java.util.WeakHashMap;
 
 /**
  * Minimal JVM agent for the JDownloader container. Two jobs, both in-process on
@@ -346,23 +349,34 @@ public class DialogConfirmAgent {
             ownGraph.bindNative(nativePanel);
 
             if (nativePanel.isVisible()) {
-                // exclude the hidden native from the layout (hidemode 3), keep it alive
-                // for its fetcher thread, localized strings and the speed-limit menu.
-                LayoutManager lm = parent.getLayout();
-                if (lm != null && lm.getClass().getName().contains("MigLayout")) {
-                    try {
-                        Method m = lm.getClass().getMethod("setComponentConstraints", Component.class, Object.class);
-                        m.invoke(lm, nativePanel, "width 32:300:300,pushy,growy,hidemode 3");
-                    } catch (Exception ignore) { }
-                }
+                hideNativeInLayout(parent, nativePanel);
                 nativePanel.setVisible(false);
             }
             if (!ourPresent) {
+                // a JD updateToolbar() rebuild re-added the (still hidden) native panel
+                // WITHOUT hidemode 3: at default hidemode 0 an invisible component still
+                // reserves its up-to-300px cell and squeezes our graph aside. ourPresent
+                // is false exactly once per rebuild (removeAll dropped us), so re-apply
+                // the exclusion here before adding our graph back.
+                hideNativeInLayout(parent, nativePanel);
                 parent.add(ownGraph, "width 32:300:300,pushy,growy");
                 parent.revalidate();
                 parent.repaint();
                 System.out.println("[jd-dialog-agent] replaced the speed graph (native math overflows above ~34 MiB/s)");
             }
+        } catch (Exception ignore) { }
+    }
+
+    /**
+     * Exclude the hidden native panel from the layout (hidemode 3) while keeping it
+     * alive for its fetcher thread, localized strings and the speed-limit menu.
+     */
+    private static void hideNativeInLayout(Container parent, JComponent nativePanel) {
+        LayoutManager lm = parent.getLayout();
+        if (lm == null || !lm.getClass().getName().contains("MigLayout")) return;
+        try {
+            Method m = lm.getClass().getMethod("setComponentConstraints", Component.class, Object.class);
+            m.invoke(lm, nativePanel, "width 32:300:300,pushy,growy,hidemode 3");
         } catch (Exception ignore) { }
     }
 
@@ -584,21 +598,21 @@ public class DialogConfirmAgent {
      * MigLayout row is HARDCODED to 32px ("[grow,32!]") - there is no config key for
      * it. With the premium banner disabled the corner looks half-empty and the graph
      * cramped, so we grow the toolbar row at runtime; the speedmeter is added with
-     * "pushy,growy" and follows, the 32px tool buttons stay centered. Same reflection
-     * pattern as widenSpeedEditors(); a client-property guard keeps it one-shot per
-     * toolbar instance (the row constraint survives JD's updateToolbar() rebuilds
-     * because the LayoutManager object is kept).
+     * "pushy,growy" and follows, the 32px tool buttons stay centered (the toolbar is
+     * docked NORTH, so the frame grants it its preferred height - no clipping).
+     *
+     * Guard granularity matters: JD's updateToolbar() rebuild does removeAll() and
+     * installs a brand-NEW MigLayout instance hardcoded back to "[grow,32!]", so a
+     * per-component guard (client property) blocks forever after the first rebuild,
+     * while re-applying on a height heuristic fights JD's layout every tick. Grow
+     * exactly ONCE PER LayoutManager INSTANCE instead: each rebuild's fresh MigLayout
+     * gets grown once, an already-grown instance is left alone.
      */
     private static final int SPEEDMETER_ROW_PX = 64;
+    private static final Set<LayoutManager> GROWN_LAYOUTS =
+            Collections.newSetFromMap(new WeakHashMap<LayoutManager, Boolean>());
 
     private static void growSpeedMeter() {
-        // JD hardcodes the toolbar row that holds the graph to 32px ("[grow,32!]"),
-        // and every updateToolbar() rebuild resets it, so our own graph (pushy,growy)
-        // snaps back to half height. Re-grow whenever it has reverted, detected by our
-        // graph's own height. This is a no-op once the row is at 64px, so it settles
-        // instead of getting stuck at 32px the way the old one-shot guard did after a
-        // rebuild. Runs only after replaceSpeedGraph() has attached ownGraph.
-        if (ownGraph == null || ownGraph.getHeight() >= SPEEDMETER_ROW_PX - 4) return;
         for (Window w : Window.getWindows()) {
             if (w.isShowing()) growSpeedMeterIn(w);
         }
@@ -619,14 +633,16 @@ public class DialogConfirmAgent {
         JComponent tb = (JComponent) toolbar;
         LayoutManager lm = tb.getLayout();
         if (lm == null || !lm.getClass().getName().contains("MigLayout")) return;
+        if (!GROWN_LAYOUTS.add(lm)) return;   // this instance is already grown
         try {
             Method m = lm.getClass().getMethod("setRowConstraints", Object.class);
             m.invoke(lm, "[grow," + SPEEDMETER_ROW_PX + "!]");
             tb.revalidate();
             tb.repaint();
-            System.out.println("[jd-dialog-agent] (re)grew the speed graph row to " + SPEEDMETER_ROW_PX + "px");
+            System.out.println("[jd-dialog-agent] grew the speed graph row to " + SPEEDMETER_ROW_PX + "px");
         } catch (Exception ignore) {
-            // setRowConstraints absent / layout differs -> leave the toolbar as-is
+            // setRowConstraints absent -> leave the toolbar as-is; the marker stays
+            // so the same broken instance isn't retried every 400ms tick
         }
     }
 
