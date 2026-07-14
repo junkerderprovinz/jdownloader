@@ -202,9 +202,15 @@ public class DialogConfirmAgent {
         if (++lafTick >= 12) {   // every ~5s (ticks run every 400ms)
             lafTick = 0;
             writeLafMarker();
-            dumpGeometry();
+            if (GEO_DEBUG) dumpGeometry();
         }
     }
+
+    // Opt-in geometry logging (JD_DEBUG_GEO=1). Off by default so a box test / the
+    // forum reporter get clean logs; flip it on to re-diagnose layout regressions.
+    private static final boolean GEO_DEBUG =
+            "1".equals(System.getenv("JD_DEBUG_GEO"))
+            || "true".equalsIgnoreCase(System.getenv("JD_DEBUG_GEO"));
 
     // ---------------------------------------------------------- geometry probe
 
