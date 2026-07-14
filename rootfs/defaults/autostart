@@ -262,16 +262,15 @@ heal_restart() {
             : > /tmp/.jd-ready
             last_banner_pid="${cur_pid}"
             waited=0
-            # House ASCII banner right before the READY box (same art + title
-            # block as the init banner; stdout redirected into the service log).
+            # House ASCII banner right above the READY status (brand + ready as
+            # the log's final block; stdout redirected into the service log).
             /usr/local/bin/print-banner.sh \
                 "JDownloader for Unraid" \
-                "Modern dark UI · KasmVNC · Java 21" \
+                "Modern dark UI · Selkies · Java 21" \
                 >&2 2>/dev/null || true
-            echo "" >&2
-            echo "  ############################################################" >&2
-            echo "   JDOWNLOADER IS READY  ->  open the WebUI now (HTTPS 3001)" >&2
-            echo "  ############################################################" >&2
+            # Clean two-line status (house look: no rule/box walls).
+            echo "  ✓ JDOWNLOADER IS READY" >&2
+            echo "    Open the WebUI via HTTPS on port 3001" >&2
             echo "" >&2
         elif [ ! -f /tmp/.jd-ready ] && [ "${waited}" -ge 120 ]; then
             # UNVERIFIED fallback after ~10 min (first boot only): usable, but say so
@@ -279,16 +278,15 @@ heal_restart() {
             # bug from the log).
             : > /tmp/.jd-ready
             echo "" >&2
-            echo "  ############################################################" >&2
-            echo "   JDOWNLOADER IS UP (theme NOT verified)  ->  WebUI on HTTPS 3001" >&2
-            echo "   If the UI looks wrong, check the log above for" >&2
-            echo "   [jd-dialog-agent] lines and restart the container once." >&2
+            echo "  ! JDOWNLOADER IS UP (theme NOT verified)" >&2
+            echo "    Open the WebUI via HTTPS on port 3001. If the UI looks wrong," >&2
+            echo "    check the log above for [jd-dialog-agent] lines and restart" >&2
+            echo "    the container once." >&2
             if [ -n "${EXPECT_LAF}" ] && [ ! -f "${JD_DIR}/libs/laf/flatlaf.jar" ]; then
-                echo "   NOTE: the FlatLaf theme was requested but JD never installed" >&2
-                echo "   it — the design download may have failed (blocked/slow" >&2
-                echo "   network). Check connectivity, then restart the container." >&2
+                echo "    NOTE: the FlatLaf theme was requested but JD never installed" >&2
+                echo "    it — the design download may have failed (blocked/slow" >&2
+                echo "    network). Check connectivity, then restart the container." >&2
             fi
-            echo "  ############################################################" >&2
             echo "" >&2
         fi
         sleep 5
@@ -471,7 +469,8 @@ PYEOF
     # runtime _MOTIF_WM_HINTS change via xprop did not work.
     #
     # -Dsun.awt.disablegrab=true fixes the File/Settings/Extras menus closing on
-    # mouse-release under KasmVNC (Swing's popup X grab). It only works with the
+    # mouse-release under the streamed X desktop (Swing's popup X grab; seen on
+    # KasmVNC, same mechanism under Selkies/Xvfb). It only works with the
     # old title-bar poller gone — that poller kept stealing focus and re-closing
     # the menus, which previously masked this fix.
     # Fresh ground-truth markers for THIS launch — a crash-looping JD must not

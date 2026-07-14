@@ -8,7 +8,7 @@
   <a href="https://hub.docker.com/r/junkerderprovinz/jdownloader"><img src="https://img.shields.io/docker/pulls/junkerderprovinz/jdownloader?style=for-the-badge&logo=docker&logoColor=white&label=Pulls&color=1d99f3" alt="Docker Pulls" height="36"></a>&nbsp;
   <a href="https://hub.docker.com/r/junkerderprovinz/jdownloader"><img src="https://img.shields.io/docker/image-size/junkerderprovinz/jdownloader/latest?style=for-the-badge&logo=docker&logoColor=white&label=Size&color=1d99f3" alt="Image Size" height="36"></a>&nbsp;
   <a href="https://github.com/junkerderprovinz/jdownloader/pkgs/container/jdownloader"><img src="https://img.shields.io/badge/Arch-amd64%20%7C%20arm64-success?style=for-the-badge&logo=linux&logoColor=white" alt="Arch" height="36"></a>&nbsp;
-  <a href="https://github.com/kasmtech/KasmVNC"><img src="https://img.shields.io/badge/Web-KasmVNC-3daee9?style=for-the-badge&logo=kde&logoColor=white" alt="KasmVNC" height="36"></a>&nbsp;
+  <a href="https://github.com/selkies-project/selkies"><img src="https://img.shields.io/badge/Web-Selkies-3daee9?style=for-the-badge&logo=kde&logoColor=white" alt="Selkies" height="36"></a>&nbsp;
   <a href="https://unraid.net"><img src="https://img.shields.io/badge/Unraid-Template-f15a2c?style=for-the-badge&logo=unraid&logoColor=white" alt="Unraid" height="36"></a>&nbsp;
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge&logo=opensourceinitiative&logoColor=white" alt="License" height="36"></a>
 </p>
@@ -21,7 +21,7 @@ A modern, plug-and-play Docker image for <b>JDownloader 2</b> on Unraid with a
 dark across the <i>entire</i> interface (download list, link grabber <b>and</b> settings, not just
 the menu bar), with light fills + readable text on the progress bars and a borderless,
 maximised kiosk window. JDownloader's built-in advertisements are switched off, so the
-download graph keeps its full height. Full GUI in your browser via KasmVNC, zero first-run setup.
+download graph keeps its full height. Full GUI in your browser via Selkies, zero first-run setup.
 </p>
 
 <br>
@@ -49,11 +49,11 @@ download graph keeps its full height. Full GUI in your browser via KasmVNC, zero
 
 ## 1. Overview
 
-This image packages [JDownloader 2](https://jdownloader.org) into a self-contained Docker container that runs in any modern web browser. It is built on top of [`linuxserver/baseimage-kasmvnc`](https://github.com/linuxserver/docker-baseimage-kasmvnc), so it benefits from LSIO's hardware-accelerated KasmVNC stack and weekly security updates, while everything JDownloader-specific (dark theme, **ad-free defaults**, Java runtime, auto-install) is layered on top.
+This image packages [JDownloader 2](https://jdownloader.org) into a self-contained Docker container that runs in any modern web browser. It is built on top of [`linuxserver/baseimage-selkies`](https://github.com/linuxserver/docker-baseimage-selkies), so it benefits from LSIO's actively-maintained Selkies desktop-streaming stack (a hybrid VNC/H.264 pipeline) and weekly security updates, while everything JDownloader-specific (dark theme, **ad-free defaults**, Java runtime, auto-install) is layered on top.
 
 What's included beyond bare JDownloader:
 
-- **KasmVNC** instead of noVNC — hardware-accelerated rendering, real browser clipboard, native file upload and download, high-DPI ready
+- **Selkies** instead of noVNC — a hybrid VNC/H.264 pipeline for a smooth 60fps web desktop, real bidirectional browser clipboard, native file upload and download, high-DPI ready
 - **Sleek, complete Dark Mode** pre-applied — a monochrome IBM Carbon (#161616) dark across the *entire* GUI (download list, link grabber **and** settings, not just the menu bar), in a clean maximised kiosk window; switch to a matching Light theme with one variable
 - **Ad-free by default** — JDownloader's built-in advertisements (the *"Become premium user"* banner, the premium-alert column nags, the special-deal popups) are switched off, so the GUI stays clean and the download speed graph keeps its **full height**
 - **Java 21 JRE** — full AWT/Swing support for the JDownloader GUI, not headless
@@ -64,7 +64,7 @@ What's included beyond bare JDownloader:
 
 | | **This image** | jlesage | jaymoulin |
 |---|:---:|:---:|:---:|
-| Web stack | **KasmVNC** | noVNC | — (headless) |
+| Web stack | **Selkies** | noVNC | — (headless) |
 | HW-accelerated rendering | ✅ | ❌ | ❌ |
 | Browser clipboard | ✅ | ⚠️ | ❌ |
 | File upload via WebUI | ✅ | ❌ | ❌ |
@@ -72,7 +72,7 @@ What's included beyond bare JDownloader:
 | Ad-free by default | ✅ | ❌ | ❌ |
 | Auto-install on first start | ✅ | ✅ | ✅ |
 | Multi-arch | ✅ amd64 + arm64 | ✅ | ✅ |
-| Base | LinuxServer/KasmVNC | jlesage/Alpine | Alpine |
+| Base | LinuxServer/Selkies | jlesage/Alpine | Alpine |
 
 <br>
 
@@ -125,7 +125,7 @@ The defaults work out of the box, but you may want to tweak:
 - **Config (`/config`)** — defaults to `/mnt/user/appdata/jdownloader`
 - **Downloads (`/downloads`)** — defaults to `/mnt/user/downloads`; this is where JDownloader saves files
 - **Theme** — default `Dark` (JD Plain Dark, Carbon #161616 palette); switch to `Light` any time
-- **KasmVNC Password** — leave empty for LAN-only, set anything for exposure beyond the LAN
+- **WebUI Password** — leave empty for LAN-only, set anything for exposure beyond the LAN
 
 Click **Apply**.
 
@@ -147,7 +147,7 @@ Click **Apply**.
 
 ### Step 3 — Open the WebUI
 
-Use **`https://<unraid-ip>:3001/`** (this is what the template's WebUI button opens). HTTPS is needed for **seamless clipboard** — copy on your PC and paste straight into JD; accept the self-signed cert warning once. Plain `http://<unraid-ip>:3000/` also works, but browsers block its clipboard (you'd use KasmVNC's clipboard panel).
+Use **`https://<unraid-ip>:3001/`** (this is what the template's WebUI button opens). HTTPS is needed for **seamless clipboard** — copy on your PC and paste straight into JD; accept the self-signed cert warning once. Plain `http://<unraid-ip>:3000/` also works as a fallback, but without clipboard support (browsers block the clipboard API over plain HTTP).
 
 The JDownloader GUI appears automatically once the install completes.
 
@@ -174,7 +174,7 @@ services:
     shm_size: 1gb
 ```
 
-**`shm_size: 1gb`** is required for smooth KasmVNC rendering.
+**`shm_size: 1gb`** is required for smooth Selkies rendering.
 
 </details>
 
@@ -189,14 +189,14 @@ services:
 | `PUID` | `99` | User ID — Unraid's *nobody* |
 | `PGID` | `100` | Group ID — Unraid's *users* |
 | `TZ` | `Europe/Vienna` | Timezone |
-| `CUSTOM_USER` | _(empty)_ | KasmVNC username — leave empty for no auth |
-| `PASSWORD` | _(empty)_ | KasmVNC password — **set this if exposed beyond LAN** |
+| `CUSTOM_USER` | _(empty)_ | WebUI login username — leave empty with `PASSWORD` for no login |
+| `PASSWORD` | _(empty)_ | WebUI password — **set this if exposed beyond LAN** |
 | `UMASK` | `022` | File-creation mask |
 
 | Port | Purpose | | Volume | Purpose |
 |---|---|---|---|---|
-| `3000` | KasmVNC HTTP | | `/config` | Persistent JDownloader config, links, session |
-| `3001` | KasmVNC HTTPS *(self-signed)* | | `/downloads` | Download destination |
+| `3000` | Selkies HTTP *(fallback)* | | `/config` | Persistent JDownloader config, links, session |
+| `3001` | Selkies HTTPS *(self-signed)* | | `/downloads` | Download destination |
 
 > **Language:** the UI is **English** by default. Change it any time in JDownloader's own language menu (top toolbar → the flag icon, or *Settings → Language*) — your choice is saved and persists across restarts.
 
@@ -228,16 +228,16 @@ The base image also supports `/config/custom-cont-init.d/` for your own init scr
 <summary><b>WebUI is black / desktop never appears</b></summary>
 
 - Make sure `shm_size` is at least `512mb` (Unraid template sets `1gb`)
-- Check the container log for KasmVNC startup errors
+- Check the container log for Selkies startup errors
 - Try `https://<ip>:3001/` — sometimes browsers block WebSockets over plain HTTP
 - **First start takes a few minutes** — JDownloader installs itself + its dark theme; the screen stays black until done. Watch the container log for the **`JDOWNLOADER IS READY`** banner, then refresh. Don't restart the container.
 - **First start only:** JDownloader may ask once to install its design + a few extensions — click **OK** / **Install now**. Afterwards it stays dark with no prompts.
 </details>
 
 <details>
-<summary><b>Can't paste into JD / clipboard only works via the KasmVNC panel</b></summary>
+<summary><b>Can't paste into JD / seamless clipboard doesn't work</b></summary>
 
-- Open the WebUI over **HTTPS** (`https://<ip>:3001/` — the template's WebUI button). Browsers only allow the seamless clipboard API in a **secure context**; over plain HTTP it's blocked, so you'd have to use KasmVNC's clipboard panel.
+- Open the WebUI over **HTTPS** (`https://<ip>:3001/` — the template's WebUI button). Browsers only allow the seamless clipboard API in a **secure context**; over plain HTTP it's blocked.
 - If prompted, allow the browser's clipboard permission (lock icon → site settings).
 </details>
 
@@ -265,7 +265,7 @@ The base image also supports `/config/custom-cont-init.d/` for your own init scr
 </details>
 
 <details>
-<summary><b>KasmVNC password not accepted</b></summary>
+<summary><b>WebUI password not accepted</b></summary>
 
 - Open in a private/incognito window once — your browser may have cached old credentials
 </details>
@@ -275,7 +275,7 @@ The base image also supports `/config/custom-cont-init.d/` for your own init scr
 ## 7. Architecture
 
 ```
-ghcr.io/linuxserver/baseimage-kasmvnc   (s6-overlay v3 · KasmVNC · weekly LSIO updates)
+ghcr.io/linuxserver/baseimage-selkies:ubunturesolute   (s6-overlay v3 · Selkies · weekly LSIO updates)
       │
       ▼  cont-init.d/10-jdownloader-setup        (runs once, before the desktop starts)
       │     • writes JD's native Carbon #161616 colorfor* palette   → cfg/laf
@@ -294,7 +294,7 @@ ghcr.io/linuxserver/baseimage-kasmvnc   (s6-overlay v3 · KasmVNC · weekly LSIO
       │       (ground truth: the LAF actually applied inside the JVM, max 3/hour)
       │     • prints "JDOWNLOADER IS READY" only when the JVM confirms the dark LAF
       ▼
-   JDownloader 2   (Java Swing GUI, streamed to your browser by KasmVNC)
+   JDownloader 2   (Java Swing GUI, streamed to your browser by Selkies)
       ▲
    svc-de/finish  →  SIGTERMs the JVM on stop so it flushes column layout / settings
 ```
@@ -320,8 +320,8 @@ find . -name '*.xml' | xargs xmllint --noout
 ### Credits
 
 - [**JDownloader 2**](https://jdownloader.org) — AppWork GmbH & the JDownloader team
-- [**LinuxServer.io**](https://www.linuxserver.io) — for the excellent [`baseimage-kasmvnc`](https://github.com/linuxserver/docker-baseimage-kasmvnc)
-- [**KasmVNC**](https://github.com/kasmtech/KasmVNC) — for remote desktop in a browser that actually works
+- [**LinuxServer.io**](https://www.linuxserver.io) — for the excellent [`baseimage-selkies`](https://github.com/linuxserver/docker-baseimage-selkies)
+- [**Selkies**](https://github.com/selkies-project/selkies) — for a modern, actively-developed browser desktop stack
 - [**Icons8**](https://icons8.com) — the bundled "JD Plain" flat icon set uses JDownloader's Icons8 icons, redistributed verbatim under [CC BY-ND 3.0](https://icons8.com/license)
 - Inspiration: jlesage and jaymoulin JDownloader containers — they paved the way
 
