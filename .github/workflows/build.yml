@@ -10,7 +10,9 @@ name: Build & Push
 
 on:
   push:
-    branches: [ main ]
+    # feat/selkies feeds the :selkies-preview box-test channel for the v4
+    # Selkies migration; :latest stays main-only.
+    branches: [ main, feat/selkies ]
     tags: [ 'v*.*.*' ]
   schedule:
     - cron: '0 4 * * 0'
@@ -67,13 +69,14 @@ jobs:
             type=semver,pattern={{major}}
             type=schedule,pattern=weekly
             type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=selkies-preview,enable=${{ github.ref == 'refs/heads/feat/selkies' }}
             type=sha,format=short
 
-      # Smoke-test gate (amd64): build the image, boot it, and require the KasmVNC
+      # Smoke-test gate (amd64): build the image, boot it, and require the Selkies
       # WebUI to respond before anything is pushed. A green Docker build only proves
       # the image *builds* — this proves the container actually *starts* and serves
-      # the WebUI (catches an s6 / KasmVNC / JDownloader boot crash before :latest).
-      # amd64-only on purpose: the heavy KasmVNC + Java GUI is too slow to boot
+      # the WebUI (catches an s6 / Selkies / JDownloader boot crash before :latest).
+      # amd64-only on purpose: the heavy Selkies + Java GUI is too slow to boot
       # reliably under arm64 QEMU emulation for a CI gate.
       - name: Build amd64 image for smoke test
         uses: docker/build-push-action@v7
@@ -95,7 +98,7 @@ jobs:
           name=jd-smoke
           docker run -d --name "$name" --platform linux/amd64 -p 3000:3000 -p 3001:3001 jdownloader:smoke-amd64
           up() {
-            # KasmVNC serves HTTPS on 3001 (self-signed) and HTTP on 3000; any HTTP
+            # Selkies serves HTTPS on 3001 (self-signed) and HTTP on 3000; any HTTP
             # status (even 401) means the WebUI server is up. 000 = not listening.
             local c
             c=$(curl -k -o /dev/null -s -w '%{http_code}' --max-time 5 https://localhost:3001/ || true)
@@ -123,7 +126,7 @@ jobs:
             docker rm -f "$name" >/dev/null
             exit 1
           fi
-          # The WebUI being up only proves KasmVNC — also require JDownloader itself
+          # The WebUI being up only proves Selkies — also require JDownloader itself
           # to launch: autostart prints this exact line right at the JVM start.
           jd_line='[jdownloader-autostart] launching JDownloader JVM (the GUI starts here)...'
           for i in $(seq 1 120); do
@@ -184,7 +187,7 @@ jobs:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_PASSWORD }}
           repository: ${{ vars.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}
-          short-description: "JDownloader 2 in your browser for Unraid (KasmVNC), monochrome Carbon dark theme."
+          short-description: "JDownloader 2 in your browser for Unraid (Selkies), monochrome Carbon dark theme."
           enable-url-completion: true
 
       - name: Image digest
