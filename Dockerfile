@@ -128,7 +128,8 @@ RUN chmod +x \
     /etc/s6-overlay/s6-rc.d/init-jdownloader/run \
     /etc/s6-overlay/s6-rc.d/init-nologin/run \
     /etc/s6-overlay/s6-rc.d/svc-de/finish \
-    /defaults/autostart
+    /defaults/autostart \
+    /defaults/startwm.sh
 
 # ---------------------------------------------------------------------------
 # Browser-tab favicon / branding

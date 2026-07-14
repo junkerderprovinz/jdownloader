@@ -49,7 +49,7 @@
 
 <h2>What is this?</h2>
 <p>JDownloader 2, the full-featured download manager, running as one Unraid container and
-streamed to your browser via KasmVNC — no native install, no SSH. The entire GUI (download
+streamed to your browser via Selkies — no native install, no SSH. The entire GUI (download
 list, link grabber and the Advanced Settings table) is rendered in a clean, <strong>sleek</strong>
 monochrome <strong>IBM Carbon (#161616)</strong> dark theme, with light, readable progress bars
 and a green speed graph. Over HTTPS you also get <strong>full two-way browser clipboard</strong> —
@@ -62,10 +62,10 @@ on first start and is configured entirely from the Unraid template.</p>
   <li><strong>Full clipboard support</strong> — over HTTPS the browser clipboard works <strong>both ways</strong>: copy a link on your PC and paste straight into JDownloader, and copy text back out</li>
   <li><strong>Turnkey &amp; self-healing</strong> — auto-installs JDownloader, auto-confirms its first-run prompts, and the theme self-heals after JD's own updates</li>
   <li><strong>Update-safe</strong> — all config, links and session state live in <code>/config</code>; even hidden columns and column layout survive a restart</li>
-  <li><strong>KasmVNC web desktop</strong> — hardware-accelerated rendering, native file upload/download, high-DPI</li>
+  <li><strong>Selkies web desktop</strong> — hardware-accelerated rendering, native file upload/download, high-DPI</li>
   <li><strong>My.JDownloader-ready</strong> — pair it once and manage downloads remotely</li>
   <li>Optional WebUI login (<code>CUSTOM_USER</code> / <code>PASSWORD</code>), or leave it open on your LAN</li>
-  <li><strong>One container</strong>, multi-arch (amd64 + arm64), built on LinuxServer's <code>baseimage-kasmvnc</code></li>
+  <li><strong>One container</strong>, multi-arch (amd64 + arm64), built on LinuxServer's <code>baseimage-selkies</code></li>
   <li>Image: <code>ghcr.io/junkerderprovinz/jdownloader:latest</code></li>
 </ul>
 
@@ -89,8 +89,8 @@ on first start and is configured entirely from the Unraid template.</p>
 <a href="https://github.com/junkerderprovinz/jdownloader/issues">github.com/junkerderprovinz/jdownloader/issues</a></p>
 
 <h2>Credits</h2>
-<p>Built on LinuxServer's <a href="https://github.com/linuxserver/docker-baseimage-kasmvnc">baseimage-kasmvnc</a>
-and <a href="https://github.com/kasmtech/KasmVNC">KasmVNC</a>. JDownloader 2 is by
+<p>Built on LinuxServer's <a href="https://github.com/linuxserver/docker-baseimage-selkies">baseimage-selkies</a>
+and <a href="https://github.com/selkies-project/selkies">Selkies</a>. JDownloader 2 is by
 <a href="https://jdownloader.org">AppWork</a>. The dark theme is our own IBM Carbon palette,
 applied through JDownloader's native colour config plus a patched FlatLaf — see the repo for
 details. If this saved you a setup evening, you can
