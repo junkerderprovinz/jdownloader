@@ -10,7 +10,7 @@ name: Build & Push
 
 on:
   push:
-    branches: [ main, 'feat/v3' ]   # feat/v3 -> :v3-preview (box-testing the v3 redesign)
+    branches: [ main ]
     tags: [ 'v*.*.*' ]
   schedule:
     - cron: '0 4 * * 0'
@@ -67,7 +67,6 @@ jobs:
             type=semver,pattern={{major}}
             type=schedule,pattern=weekly
             type=raw,value=latest,enable={{is_default_branch}}
-            type=raw,value=v3-preview,enable=${{ github.ref == 'refs/heads/feat/v3' }}
             type=sha,format=short
 
       # Smoke-test gate (amd64): build the image, boot it, and require the KasmVNC
