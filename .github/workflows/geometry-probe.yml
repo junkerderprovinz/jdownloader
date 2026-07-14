@@ -46,6 +46,20 @@ jobs:
           echo "=== last GEO lines ==="
           grep "GEO" out/agent-tail.log | tail -10 || echo "(no GEO lines found)"
 
+      - name: FlatLaf install forensics
+        run: |
+          echo "=== libs/laf ==="
+          docker exec jd sh -c 'ls -la /config/JDownloader/libs/laf/ 2>/dev/null' || echo "(no libs/laf)"
+          echo "=== flatlaf.jar zip validity + FlatDarkLaf class ==="
+          docker exec jd python3 -c "import zipfile; z=zipfile.ZipFile('/config/JDownloader/libs/laf/flatlaf.jar'); z.getinfo('com/formdev/flatlaf/FlatDarkLaf.class'); print('VALID zip, FlatDarkLaf.class present, testzip:', z.testzip())" \
+            || echo "INVALID or missing flatlaf.jar"
+          echo "=== extension registries ==="
+          docker exec jd sh -c 'for f in /config/JDownloader/update/versioninfo/JD/extensions.*.json; do echo "--- $f"; cat "$f" 2>/dev/null; echo; done' || true
+          echo "=== LAF classnotfound occurrences ==="
+          grep -c "ClassNotFoundException: com.formdev.flatlaf" out/full.log || echo 0
+          echo "=== heal lines ==="
+          grep -E "INVALID flatlaf|deregistered|requested flatlaf" out/full.log || echo "(none)"
+
       - name: Screenshot the live desktop
         run: |
           docker exec -u root jd bash -c 'apt-get update -qq >/dev/null 2>&1; apt-get install -y -qq x11-apps imagemagick >/dev/null 2>&1' || true

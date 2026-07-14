@@ -220,6 +220,18 @@ public class DialogConfirmAgent {
                     Dimension p = tb.getPreferredSize();
                     sb.append(" tbPref=").append(p.width).append('x').append(p.height);
                 }
+                Container cp = (tb == null) ? null : tb.getParent();
+                LayoutManager plm = (cp == null) ? null : cp.getLayout();
+                if (plm != null && plm.getClass().getName().contains("MigLayout")) {
+                    try {
+                        Object cc = plm.getClass()
+                                .getMethod("getComponentConstraints", Component.class)
+                                .invoke(plm, tb);
+                        sb.append(" tbCC=\"").append(cc).append('"');
+                    } catch (Exception e) { sb.append(" tbCC=?"); }
+                } else if (plm != null) {
+                    sb.append(" cpLm=").append(plm.getClass().getSimpleName());
+                }
                 sb.append(" native[vis=").append(nat.isVisible()).append(' ').append(b(nat)).append(']');
                 if (ownGraph == null) {
                     sb.append(" own=null");
@@ -711,16 +723,50 @@ public class DialogConfirmAgent {
         JComponent tb = (JComponent) toolbar;
         LayoutManager lm = tb.getLayout();
         if (lm == null || !lm.getClass().getName().contains("MigLayout")) return;
-        if (!GROWN_LAYOUTS.add(lm)) return;   // this instance is already grown
+        if (GROWN_LAYOUTS.add(lm)) {
+            try {
+                Method m = lm.getClass().getMethod("setRowConstraints", Object.class);
+                m.invoke(lm, "[grow," + SPEEDMETER_ROW_PX + "!]");
+                tb.revalidate();
+                tb.repaint();
+                System.out.println("[jd-dialog-agent] grew the speed graph row to " + SPEEDMETER_ROW_PX + "px");
+            } catch (Exception ignore) {
+                // setRowConstraints absent -> leave the toolbar as-is; the marker stays
+                // so the same broken instance isn't retried every 400ms tick
+            }
+        }
+        pinToolbarHeight(tb);
+    }
+
+    /**
+     * Growing the toolbar's OWN row is not enough: the CI geometry probe showed the
+     * content pane keeps granting the toolbar its pre-grow strip (row=[grow,64!],
+     * tbPref=68, but MainToolBar bounds stuck at 36px -> the graph's bottom half is
+     * clipped). JD adds the toolbar to the frame with "dock NORTH" (a MigLayout dock
+     * whose measurement does not follow the child's later growth), so pin the height
+     * explicitly in the PARENT's component constraint for the toolbar. Idempotent:
+     * skipped once the current constraint already carries our height pin.
+     */
+    private static void pinToolbarHeight(JComponent tb) {
+        Container cp = tb.getParent();
+        LayoutManager plm = (cp == null) ? null : cp.getLayout();
+        if (plm == null || !plm.getClass().getName().contains("MigLayout")) return;
         try {
-            Method m = lm.getClass().getMethod("setRowConstraints", Object.class);
-            m.invoke(lm, "[grow," + SPEEDMETER_ROW_PX + "!]");
-            tb.revalidate();
-            tb.repaint();
-            System.out.println("[jd-dialog-agent] grew the speed graph row to " + SPEEDMETER_ROW_PX + "px");
+            Method gc = plm.getClass().getMethod("getComponentConstraints", Component.class);
+            Object cur = gc.invoke(plm, tb);
+            String cc = (cur == null) ? "" : cur.toString();
+            if (cc.contains("height ")) return;   // already pinned
+            int ph = tb.getPreferredSize().height; // toolbar's own grown row + gaps
+            if (ph < SPEEDMETER_ROW_PX) ph = SPEEDMETER_ROW_PX;
+            String pinned = (cc.isEmpty() ? "" : cc + ",") + "height " + ph + "!";
+            Method sc = plm.getClass().getMethod("setComponentConstraints", Component.class, Object.class);
+            sc.invoke(plm, tb, pinned);
+            Window win = SwingUtilities.getWindowAncestor(tb);
+            if (win != null) { win.invalidate(); win.validate(); win.repaint(); }
+            System.out.println("[jd-dialog-agent] pinned the toolbar strip to " + ph
+                    + "px in the content pane (was: \"" + cc + "\")");
         } catch (Exception ignore) {
-            // setRowConstraints absent -> leave the toolbar as-is; the marker stays
-            // so the same broken instance isn't retried every 400ms tick
+            // parent constraint not reachable -> the row grow alone has to do
         }
     }
 
