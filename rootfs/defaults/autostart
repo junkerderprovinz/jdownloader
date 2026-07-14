@@ -61,6 +61,48 @@ if "flatlaf-themes" not in ids:
 PYEOF
 }
 
+# True when flatlaf.jar is a readable zip that actually CONTAINS the FlatLaf
+# classes. Existence is not enough: a truncated write (e.g. the pre-install kill
+# chain stopping the updater mid-download) leaves a jar that every boot fails
+# with ClassNotFoundException: com.formdev.flatlaf.FlatDarkLaf -> light GUI.
+flatlaf_jar_valid() {
+    python3 - "$1" <<'PYEOF'
+import sys, zipfile
+try:
+    z = zipfile.ZipFile(sys.argv[1])
+    z.getinfo("com/formdev/flatlaf/FlatDarkLaf.class")
+    sys.exit(1 if z.testzip() is not None else 0)
+except Exception:
+    sys.exit(1)
+PYEOF
+}
+
+# Remove a corrupt flatlaf.jar and deregister the extension so seeding re-arms
+# and the updater fetches a fresh copy. Without this the broken jar satisfies
+# every "is it installed?" check forever and the GUI stays permanently light
+# (CI probe ground truth + matching forum field report).
+heal_invalid_flatlaf() {
+    [ -z "${EXPECT_LAF}" ] && return 0
+    jar="${JD_DIR}/libs/laf/flatlaf.jar"
+    [ -f "${jar}" ] || return 0
+    flatlaf_jar_valid "${jar}" && return 0
+    echo "[jdownloader-autostart] INVALID flatlaf.jar detected (truncated install?) — removing it and re-requesting the theme extension" >&2
+    rm -f "${jar}"
+    python3 - "${JD_DIR}/update/versioninfo/JD/extensions.installed.json" <<'PYEOF' >&2 || true
+import json, os, sys
+path = sys.argv[1]
+if os.path.exists(path):
+    try:
+        ids = json.load(open(path))
+        if isinstance(ids, list) and "flatlaf-themes" in ids:
+            ids.remove("flatlaf-themes")
+            json.dump(ids, open(path, "w"))
+            print("[jdownloader-autostart] deregistered the broken flatlaf-themes install")
+    except Exception:
+        pass
+PYEOF
+}
+
 # Download bootstrap JAR if not yet present in config volume. Retried + zip-validated
 # (a captive portal / DNS hijack yields an HTML page, not a jar); on final failure keep
 # a LOUD persistent error in the log instead of exiting silently (exit 1 left an empty
@@ -113,16 +155,22 @@ if [ ! -f "${JD_DIR}/Core.jar" ]; then
     # falls back to its light Synthetica default.
     seed_flatlaf_request
     java -Djava.awt.headless=true -jar "${LAUNCHER}" < /dev/null >> /config/jd-headless-install.log 2>&1 &
-    # Settle = Core.jar + build.json present on 3 consecutive checks (~30s quiet);
-    # cap 15 min. On cap without a settled install we fall through to the GUI
-    # path, which installs with visible dialogs exactly as before (the agent
-    # confirms them) — fail-safe, and JD's updater self-repairs partial installs.
+    # Settle = Core.jar + build.json present AND (when a FlatLaf theme is
+    # expected) a zip-VALID flatlaf.jar, on 3 consecutive checks (~30s quiet);
+    # cap 15 min. The jar validation is load-bearing: killing the chain while
+    # the updater still writes flatlaf.jar leaves a truncated jar that
+    # permanently breaks the theme (ClassNotFoundException on every boot — CI
+    # probe 29294283271 + forum field report). On cap without a settled install
+    # we fall through to the GUI path, which installs with visible dialogs
+    # exactly as before (the agent confirms them) — fail-safe, and the boot
+    # heal removes any partial flatlaf.jar the cap may have left behind.
     tries=0
     settle=0
     while [ "${tries}" -lt 90 ]; do
         sleep 10
         tries=$((tries + 1))
-        if [ -f "${JD_DIR}/Core.jar" ] && [ -f "${JD_DIR}/build.json" ]; then
+        if [ -f "${JD_DIR}/Core.jar" ] && [ -f "${JD_DIR}/build.json" ] \
+           && { [ -z "${EXPECT_LAF}" ] || flatlaf_jar_valid "${JD_DIR}/libs/laf/flatlaf.jar"; }; then
             settle=$((settle + 1))
         else
             settle=0
@@ -364,10 +412,13 @@ while true; do
     # rewriting — so JD's integrity check is always satisfied and a self-update cannot
     # reset the chrome theme (our colour source is our own file, not JD's artifact).
 
-    # Heal an install that is missing the FlatLaf themes extension (e.g. a box that
-    # ran the first :v3-preview, where the headless pre-install completed without
-    # it): re-request it each launch until flatlaf.jar exists — JD's updater then
-    # fetches it on its next check and the healer applies it. No-op otherwise.
+    # Heal a corrupt flatlaf.jar FIRST (truncated install -> permanent light GUI;
+    # the seed below would stay a no-op because the broken file exists), then
+    # heal an install that is missing the FlatLaf themes extension (e.g. a box
+    # that ran the first :v3-preview, where the headless pre-install completed
+    # without it): re-request it each launch until a VALID flatlaf.jar exists —
+    # JD's updater then fetches it on its next check and the healer applies it.
+    heal_invalid_flatlaf
     seed_flatlaf_request
 
     # Optional frozen-appliance mode: JD_SELFUPDATE=false disables JD's periodic
@@ -379,7 +430,7 @@ while true; do
     # extension does not yet (it installs on the first GUI start THROUGH the
     # updater; freezing before that would leave the theme permanently missing).
     if [ "${JD_SELFUPDATE:-true}" = "false" ] && [ -d "${JD_DIR}/libs" ] \
-       && { [ -z "${EXPECT_LAF}" ] || [ -f "${JD_DIR}/libs/laf/flatlaf.jar" ]; }; then
+       && { [ -z "${EXPECT_LAF}" ] || flatlaf_jar_valid "${JD_DIR}/libs/laf/flatlaf.jar"; }; then
         python3 - "${JD_DIR}/cfg/org.jdownloader.updatev2.UpdateSettings.json" <<'PYEOF' >&2 || true
 import json, os, sys
 path = sys.argv[1]
