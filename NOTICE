@@ -1,0 +1,33 @@
+NOTICE — Bundled Software in the JDownloader Unraid Container Image
+====================================================================
+
+The MIT License (see LICENSE) covers ONLY the wrapper assets in this
+repository:
+  * Dockerfile and rootfs/ overlay
+  * Helper scripts under rootfs/usr/local/bin/ and the dialog agent (agent/)
+  * README, banner and icon artwork
+  * Unraid container template (maintained in the junkerderprovinz/unraid-apps repo)
+
+It does NOT relicense any software shipped inside the resulting
+container image. Each bundled component retains its upstream license:
+
+  * JDownloader 2                proprietary freeware, AppWork GmbH —
+                                 downloaded/installed at first start into
+                                 /config; NOT distributed in this image
+                                 https://jdownloader.org
+  * LinuxServer.io baseimage-selkies
+                                 GPL-3.0
+                                 https://github.com/linuxserver/docker-baseimage-selkies
+  * OpenJDK 21 (Ubuntu openjdk-21-jre)
+                                 GPL-2.0 with Classpath Exception
+  * FlatLaf (installed by JDownloader itself)
+                                 Apache-2.0
+                                 https://github.com/JFormDesigner/FlatLaf
+  * Icons8 "flat" icon set       CC BY-ND 3.0 (bundled verbatim, see
+                                 rootfs/opt/JDownloader/themes-default/.../icons8.license)
+  * Fonts (Noto, DejaVu, Liberation, Hack)
+                                 OFL-1.1 / dejavu license / OFL-1.1 / MIT+Bitstream
+
+When you run, redistribute or rebuild the resulting container image, you
+must comply with the licenses of all bundled components in addition to
+the MIT license that covers this repository.
