@@ -120,10 +120,40 @@ public class DialogConfirmAgent {
     public static void premain(String agentArgs, Instrumentation inst) {
         System.out.println("[jd-dialog-agent] watching for installer dialogs + enforcing dark chrome");
         INSTRUMENTATION = inst;
+        exposeFlatlafToSystemLoader();
         writeFile(PID_FILE, Long.toString(ProcessHandle.current().pid()));
         Thread t = new Thread(DialogConfirmAgent::watch, "jd-dialog-agent");
         t.setDaemon(true);
         t.start();
+    }
+
+    // --------------------------------------------- flatlaf on the system classpath
+
+    /**
+     * JD's launcher hosts JD in-process and wires libs/laf/flatlaf.jar only into its
+     * own JDLauncherClassLoader (addURL). But UIManager.setLookAndFeel(String) loads
+     * the LAF class via SwingUtilities.loadSystemClass, which resolved against the
+     * APP classloader here (CI probe 29295757806 stack trace) -> permanent
+     * ClassNotFoundException: com.formdev.flatlaf.FlatDarkLaf -> light GUI, even
+     * with a perfectly valid, launcher-wired jar. Fix at the sanctioned agent API:
+     * append the jar to the SYSTEM classloader search so the by-name load succeeds
+     * no matter which context classloader the EDT carries. The launcher loader is
+     * parent-first, so JD code resolves the same single copy - no split classes.
+     * Retried each tick until the jar exists (fresh installs write it later).
+     */
+    private static final java.io.File FLATLAF_JAR =
+            new java.io.File("/config/JDownloader/libs/laf/flatlaf.jar");
+    private static boolean flatlafExposed = false;
+
+    private static void exposeFlatlafToSystemLoader() {
+        if (flatlafExposed || INSTRUMENTATION == null || !FLATLAF_JAR.isFile()) return;
+        try {
+            // the JarFile constructor validates the zip; a truncated install throws
+            // and we simply retry on a later tick (the container boot heal replaces it)
+            INSTRUMENTATION.appendToSystemClassLoaderSearch(new java.util.jar.JarFile(FLATLAF_JAR));
+            flatlafExposed = true;
+            System.out.println("[jd-dialog-agent] appended flatlaf.jar to the system classloader (LAF-by-name can resolve now)");
+        } catch (Throwable ignore) { }
     }
 
     private static void writeFile(java.io.File f, String content) {
@@ -160,6 +190,7 @@ public class DialogConfirmAgent {
     }
 
     private static void tick() {
+        exposeFlatlafToSystemLoader();
         handleDialogs();
         registerDefaultsSource();
         applyCustomDefaults();
