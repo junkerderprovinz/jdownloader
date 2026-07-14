@@ -19,7 +19,7 @@ jobs:
     steps:
       - name: Boot the container
         run: |
-          docker run -d --name jd -p 3000:3000 -p 3001:3001 \
+          docker run -d --name jd -e JD_DEBUG_GEO=1 -p 3000:3000 -p 3001:3001 \
             "${{ github.event.inputs.image || 'ghcr.io/junkerderprovinz/jdownloader:v3-preview' }}"
 
       - name: Wait for the JD GUI (READY banner, up to 15 min)
