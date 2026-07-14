@@ -1,9 +1,9 @@
 # syntax=docker/dockerfile:1.24
 #
-# JDownloader 2 for Unraid – community edition (KasmVNC)
+# JDownloader 2 for Unraid – community edition (Selkies)
 # -------------------------------------------------------
-# Built on the LinuxServer KasmVNC base image for a smooth,
-# hardware-accelerated, web-native Linux desktop.
+# Built on the LinuxServer Selkies base image (successor of their EOL KasmVNC
+# packaging) for a smooth, hardware-accelerated, web-native Linux desktop.
 #
 # Features:
 #   * JDownloader 2 (self-updating Java download manager)
@@ -14,7 +14,9 @@
 # Repository:  https://github.com/junkerderprovinz/jdownloader
 # License:     MIT (this wrapper) – JDownloader 2 has its own license
 #
-ARG BASE_TAG=ubuntunoble
+# Flavor-PINNED on purpose: the Selkies base makes deliberate breaking changes
+# between flavors; ubunturesolute = Ubuntu 25.10, same flavor as krusader.
+ARG BASE_TAG=ubunturesolute
 
 # ---------------------------------------------------------------------------
 # Builder stage — compiles the tiny dialog-confirm agent. JD FORCES its first-run /
@@ -31,16 +33,35 @@ RUN set -eux; \
     javac -d out @sources.txt; \
     jar cfm jd-dialog-agent.jar manifest.mf -C out .
 
-FROM ghcr.io/linuxserver/baseimage-kasmvnc:${BASE_TAG}
+FROM ghcr.io/linuxserver/baseimage-selkies:${BASE_TAG}
 
 LABEL maintainer="junkerderprovinz"
 LABEL org.opencontainers.image.title="jdownloader"
-LABEL org.opencontainers.image.description="JDownloader 2 für Unraid — schlanke, moderne Dark-Mode-GUI (komplettes monochromes Carbon #161616, nicht nur die Menüleiste) auf KasmVNC, Multi-Language"
+LABEL org.opencontainers.image.description="JDownloader 2 für Unraid — schlanke, moderne Dark-Mode-GUI (komplettes monochromes Carbon #161616, nicht nur die Menüleiste) auf Selkies, Multi-Language"
 LABEL org.opencontainers.image.source="https://github.com/junkerderprovinz/jdownloader"
 LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.vendor="junkerderprovinz"
 
-ENV TITLE="JDownloader 2"
+# TITLE feeds the PWA manifest; SELKIES_UI_TITLE is the visible tab/sidebar
+# title of the Selkies web client — both must be set on this base.
+#
+# SELKIES_ENABLE_BASIC_AUTH=false: Selkies' server enables basic auth by DEFAULT
+# with the well-known default credentials (ubuntu / mypasswd), which would pop a
+# login on a container that never set a password — worse, an insecure default
+# one. The KasmVNC base required no login unless CUSTOM_USER/PASSWORD were set,
+# so we keep that: no login by default. The base's nginx would still turn a
+# merely-SET (even empty) PASSWORD into a login, so the init-nologin oneshot
+# drops an empty PASSWORD/CUSTOM_USER before nginx starts. Selkies binds to
+# localhost only, so when a user DOES set a real CUSTOM_USER/PASSWORD the base's
+# nginx enforces HTTP-basic-auth on the proxy (the single reachable entry
+# point), exactly as before.
+#
+# NOTE deliberately UNSET: RESTART_APP (the base watchdog would fight our
+# launcher loop + theme healer in autostart) and PIXELFLUX_WAYLAND (X11 mode is
+# the default and is what JD's whole window/agent mechanic is built on).
+ENV TITLE="JDownloader 2" \
+    SELKIES_UI_TITLE="JDownloader 2" \
+    SELKIES_ENABLE_BASIC_AUTH="false"
 
 # ---------------------------------------------------------------------------
 # Java 21 + Basis-Tools
@@ -52,8 +73,6 @@ RUN set -eux; \
         openjdk-21-jre \
         # Download-Tools für Installer
         wget ca-certificates \
-        # ASCII-Banner im Init-Log
-        figlet \
         # Font-Support (Java rendert Schrift über fontconfig)
         fontconfig \
         fonts-noto fonts-noto-color-emoji \
@@ -107,37 +126,25 @@ RUN chmod +x \
     /usr/local/bin/print-banner.sh \
     /etc/cont-init.d/10-jdownloader-setup \
     /etc/s6-overlay/s6-rc.d/init-jdownloader/run \
+    /etc/s6-overlay/s6-rc.d/init-nologin/run \
     /etc/s6-overlay/s6-rc.d/svc-de/finish \
     /defaults/autostart
 
 # ---------------------------------------------------------------------------
-# Browser-tab favicon
+# Browser-tab favicon / branding
 # ---------------------------------------------------------------------------
-# The web UI is served by the "kclient" wrapper (Node) on top of KasmVNC. The
-# browser tab favicon is its /favicon.ico — the page has no working <link rel=icon>
-# (only an apple-touch-icon that 404s), so the browser falls back to /favicon.ico,
-# i.e. the file /kclient/public/favicon.ico. We overwrite the real kclient favicon
-# (+ the kclient app icon.png, served at /public/icon.png, + the inner client icons
-# for good measure). The build fails loudly if the kclient favicon is gone (layout
-# changed), so CI / the weekly rebuild surfaces the regression. (Same fix as krusader.)
-COPY .github/assets/icon.png    /usr/local/share/jdownloader-icon.png
-COPY .github/assets/favicon.ico /usr/local/share/jdownloader-favicon.ico
+# On the Selkies base the branding is a single file: init-nginx copies
+# /usr/share/selkies/www/icon.png to favicon.ico + icon.png in the served web
+# root on every start and writes the PWA manifest around ${TITLE}. Replacing
+# that one PNG brands the whole web UI — the entire kclient/kasm multi-path
+# surgery of the old base is gone. Fail loudly if the path moves (base layout
+# change), so CI / the weekly rebuild surfaces the regression. (Same as krusader.)
+COPY .github/assets/icon.png /usr/local/share/jdownloader-icon.png
 RUN set -eux; \
-    fav=/kclient/public/favicon.ico; \
-    [ -f "$fav" ] || { echo "ERROR: $fav missing — kclient layout changed, update the favicon override"; exit 1; }; \
-    cp /usr/local/share/jdownloader-favicon.ico "$fav"; \
-    echo "jdownloader: overwrote tab favicon $fav"; \
-    if [ -f /kclient/public/icon.png ]; then \
-        cp /usr/local/share/jdownloader-icon.png /kclient/public/icon.png; \
-        echo "jdownloader: overwrote /kclient/public/icon.png"; \
-    fi; \
-    n=0; \
-    for dest in /usr/share/kasmvnc/www/app/images/icons/368_kasm_logo_only_*.png; do \
-        [ -f "$dest" ] || continue; \
-        cp /usr/local/share/jdownloader-icon.png "$dest"; \
-        n=$((n + 1)); \
-    done; \
-    echo "jdownloader: also overwrote $n inner KasmVNC client icon(s)"
+    dst=/usr/share/selkies/www/icon.png; \
+    [ -f "$dst" ] || { echo "ERROR: $dst missing — selkies base layout changed, update the branding override"; exit 1; }; \
+    cp /usr/local/share/jdownloader-icon.png "$dst"; \
+    echo "jdownloader: branded selkies icon at $dst"
 
 # ---------------------------------------------------------------------------
 # Graceful shutdown so JD can persist column layout etc.

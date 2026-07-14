@@ -1,6 +1,6 @@
 #!/usr/bin/with-contenv bash
 # shellcheck shell=bash
-# Runs synchronously before any service (incl. KasmVNC/openbox).
+# Runs synchronously before any service (incl. Selkies/openbox).
 
 log() { echo "[jdownloader-setup] $*"; }
 
@@ -14,40 +14,10 @@ cp -f /defaults/autostart "${CONFIG_HOME}/openbox/autostart"
 chmod 0755 "${CONFIG_HOME}/openbox/autostart"
 log "autostart synced from /defaults/autostart"
 
-# NO title bar on ANY JD window — the main frame AND the brief install dialogs.
-# The LSIO base ships an openbox catch-all rule <application class="*"> that
-# already maximises every window; we add <decor>no</decor> to it so openbox draws
-# no decorations at all. openbox honours this at MAP time and cont-init runs before
-# openbox starts. Idempotent (and injects the rule if the base ever drops it).
-RC=/etc/xdg/openbox/rc.xml
-if [[ -f "${RC}" ]]; then
-    python3 - "${RC}" <<'PYEOF' && log "openbox rc.xml: decor=no + dialogs un-maximized" || log "openbox rc.xml patch failed (non-fatal)"
-import sys
-rc = sys.argv[1]
-s = open(rc).read()
-changed = False
-
-# 1) No window decorations on any JD window (the LSIO base catch-all already maximises
-#    every window for kiosk; we only strip the title bar).
-marker = '<application class="*">'
-if marker in s and (marker + '<decor>no</decor>') not in s:
-    s = s.replace(marker, marker + '<decor>no</decor>', 1); changed = True
-elif marker not in s and '</applications>' in s:
-    s = s.replace('</applications>',
-                  '  <application class="*"><decor>no</decor></application>\n</applications>', 1)
-    changed = True
-
-# 2) Dialog windows (e.g. "Add premium account", settings popups) must NOT be maximized —
-#    the catch-all maximises everything, but dialogs should float at their natural size.
-#    A later-listed matching rule overrides the catch-all's <maximized> for type=dialog.
-if '<application type="dialog">' not in s and '</applications>' in s:
-    rule = '  <application type="dialog"><maximized>no</maximized><decor>no</decor></application>\n'
-    s = s.replace('</applications>', rule + '</applications>', 1); changed = True
-
-if changed:
-    open(rc, 'w').write(s)
-PYEOF
-fi
+# NOTE: the openbox rc.xml window rules (decor=no + dialog un-maximize) moved to
+# the init-jdownloader s6 oneshot — the Selkies base restores rc.xml from its
+# .bak on every start AFTER this legacy cont-init stage runs, so a patch here
+# would be wiped again each boot. init-jdownloader runs after that restore.
 
 # Ensure cfg dir exists (language/theme scripts seed files here)
 mkdir -p "${JD_CFG}"
@@ -95,7 +65,7 @@ fi
 # First-run window state: start the main frame MAXIMIZED. Without this a fresh
 # install opens JD at its built-in 1024x728 default, leaving black desktop around
 # it (JDGui.internalInitLocationAndDimension applies the saved extendedState right
-# before setVisible; a WM-maximized frame then tracks KasmVNC's dynamic desktop
+# before setVisible; a WM-maximized frame then tracks Selkies' dynamic desktop
 # resize to the browser size). Seed ONLY when absent — JD persists the user's
 # real window state here on every shutdown, and that choice must be preserved.
 FRAME_STATUS="${JD_CFG}/org.jdownloader.settings.GraphicalUserInterfaceSettings.lastframestatus.json"

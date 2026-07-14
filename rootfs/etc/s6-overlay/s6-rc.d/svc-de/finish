@@ -32,4 +32,28 @@ if [ -n "${pids}" ]; then
         i=$((i + 1))
     done
 fi
+
+# This file OVERWRITES the Selkies base's own svc-de/finish, so replicate its
+# cleanup after the JD flush: TERM the remaining desktop descendants recorded
+# in /de-pid (openbox etc.) and remove the pid file. Short wait only — JD (the
+# slow saver) is already down at this point.
+PID_FILE="/de-pid"
+if [ -r "${PID_FILE}" ]; then
+    PARENT_PID=$(cat "${PID_FILE}")
+    if [ -n "${PARENT_PID}" ]; then
+        DESKTOP_PIDS=$(pstree -p "${PARENT_PID}" 2>/dev/null | grep -o '([0-9]\+)' | grep -o '[0-9]\+' | grep -v "^${PARENT_PID}$" || true)
+        if [ -n "${DESKTOP_PIDS}" ]; then
+            echo "${DESKTOP_PIDS}" | xargs --no-run-if-empty kill -TERM -- 2>/dev/null || true
+            for _ in $(seq 1 20); do
+                alive=""
+                for p in ${DESKTOP_PIDS}; do
+                    kill -0 "$p" 2>/dev/null && alive="yes" && break
+                done
+                [ -z "${alive}" ] && break
+                sleep 0.25
+            done
+        fi
+    fi
+    rm -f "${PID_FILE}"
+fi
 exit 0
