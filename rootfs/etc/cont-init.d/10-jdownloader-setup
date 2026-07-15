@@ -74,6 +74,21 @@ if [ ! -f "${FRAME_STATUS}" ]; then
     log "seeded first-run window state: maximized"
 fi
 
+# ffmpeg/ffprobe paths — the image ships system ffmpeg (apt) because JD does not
+# auto-download its own build on Linux; without it YouTube DASH muxing fails.
+# JD usually finds it via PATH, but seed the explicit paths once so detection is
+# deterministic. Seed ONLY when absent — a user's own GUI choice is preserved.
+FFMPEG_CFG="${JD_CFG}/org.jdownloader.controlling.ffmpeg.FFmpegSetup.binarypath.json"
+FFPROBE_CFG="${JD_CFG}/org.jdownloader.controlling.ffmpeg.FFmpegSetup.binarypathprobe.json"
+if [[ ! -f "${FFMPEG_CFG}" && -x /usr/bin/ffmpeg ]]; then
+    printf '%s' '"/usr/bin/ffmpeg"' > "${FFMPEG_CFG}"
+    log "seeded ffmpeg path: /usr/bin/ffmpeg"
+fi
+if [[ ! -f "${FFPROBE_CFG}" && -x /usr/bin/ffprobe ]]; then
+    printf '%s' '"/usr/bin/ffprobe"' > "${FFPROBE_CFG}"
+    log "seeded ffprobe path: /usr/bin/ffprobe"
+fi
+
 # Disable system tray extension — not supported in containers, would otherwise
 # trigger an error popup on every start.
 python3 /usr/local/bin/disable-tray.py "${JD_CFG}" 2>/dev/null || \
