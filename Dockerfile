@@ -24,7 +24,7 @@ ARG BASE_TAG=ubunturesolute
 # config can suppress them; this agent just auto-clicks them. It does NOT touch
 # colours (those come from JD's native colorfor* config).
 # ---------------------------------------------------------------------------
-FROM eclipse-temurin:21-jdk AS agent-builder
+FROM eclipse-temurin:21.0.11_10-jdk AS agent-builder
 WORKDIR /build
 COPY agent/ /build/
 RUN set -eux; \
