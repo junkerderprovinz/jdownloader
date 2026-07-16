@@ -73,6 +73,13 @@ RUN set -eux; \
         openjdk-21-jre \
         # Download-Tools für Installer
         wget ca-certificates \
+        # ffmpeg/ffprobe – JD braucht BEIDE, um DASH-Streams zu muxen (YouTube
+        # liefert Video- und Audiospur getrennt). Auf Linux lädt JD KEINEN eigenen
+        # ffmpeg-Build herunter, sondern erwartet ein System-Binary — ohne es
+        # scheitert das YouTube-Muxing (Video + Audio bleiben getrennt liegen) und
+        # JD öffnet stattdessen den "FFmpeg fehlt"-Installationsdialog. Der Pfad
+        # wird beim Init in die FFmpegSetup-Config geschrieben (10-jdownloader-setup).
+        ffmpeg \
         # Font-Support (Java rendert Schrift über fontconfig)
         fontconfig \
         fonts-noto fonts-noto-color-emoji \

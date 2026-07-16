@@ -121,10 +121,50 @@ public class DialogConfirmAgent {
         System.out.println("[jd-dialog-agent] watching for installer dialogs + enforcing dark chrome");
         INSTRUMENTATION = inst;
         exposeFlatlafToSystemLoader();
+        // Put the light package-expander icons back BEFORE JD's GUI resolves them
+        // (premain runs before JD's main()); the tick loop keeps them in place.
+        restoreExpanderIcons();
         writeFile(PID_FILE, Long.toString(ProcessHandle.current().pid()));
         Thread t = new Thread(DialogConfirmAgent::watch, "jd-dialog-agent");
         t.setDaemon(true);
         t.start();
+    }
+
+    // --- Package-expander icons (Linkgrabber + download list) --------------------
+    // JD's ExtTable draws the package [+]/[-] toggle from the iconset keys
+    // tree_plus / tree_minus (IconKey.ICON_PLUS/ICON_MINUS -> FileColumn, shared by
+    // the download table and the linkgrabber). JD's own bundled "flat" iconset does
+    // NOT contain those two files, so the image ships light-grey ones and the boot
+    // script seeds them to /config/JDownloader/themes/flat/... . But JD self-updates
+    // its core on every start and re-provisions that on-disk iconset dir AFTER the
+    // boot seed, dropping exactly the two files it does not ship itself — so the
+    // handle falls back to JD's dark bundled default and vanishes on #161616 (the
+    // recurring "black [+]" report). The boot seed can't win that in-process race;
+    // the agent runs in EVERY JVM via JAVA_TOOL_OPTIONS, INCLUDING the post-self-
+    // update GUI JVM, so restoring the files here — once at premain (before the GUI
+    // resolves them) and every tick (self-heal if JD wipes them mid-run) — puts them
+    // back before FileColumn reads them, and NewTheme's disk-first lookup finds the
+    // light copy. (The Swing Tree.collapsedIcon override elsewhere only covers real
+    // JTrees in JD dialogs; it never touched this ExtTable handle.)
+    private static final java.io.File EXPANDER_SRC_DIR =
+            new java.io.File("/opt/JDownloader/themes-default/flat/org/jdownloader/images");
+    private static final java.io.File EXPANDER_DST_DIR =
+            new java.io.File("/config/JDownloader/themes/flat/org/jdownloader/images");
+    private static final String[] EXPANDER_ICONS = { "tree_plus.svg", "tree_minus.svg" };
+
+    private static void restoreExpanderIcons() {
+        for (String name : EXPANDER_ICONS) {
+            java.io.File src = new java.io.File(EXPANDER_SRC_DIR, name);
+            java.io.File dst = new java.io.File(EXPANDER_DST_DIR, name);
+            if (!src.isFile()) continue;                          // source missing (older image) -> nothing to do
+            if (dst.isFile() && dst.length() == src.length()) continue; // already the shipped light copy
+            try {
+                EXPANDER_DST_DIR.mkdirs();
+                java.nio.file.Files.copy(src.toPath(), dst.toPath(),
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                System.out.println("[jd-dialog-agent] restored light package-expander icon: " + name);
+            } catch (Throwable ignore) { /* best effort — retried next tick */ }
+        }
     }
 
     // --------------------------------------------- flatlaf on the system classpath
@@ -191,6 +231,7 @@ public class DialogConfirmAgent {
 
     private static void tick() {
         exposeFlatlafToSystemLoader();
+        restoreExpanderIcons();
         handleDialogs();
         registerDefaultsSource();
         applyCustomDefaults();
