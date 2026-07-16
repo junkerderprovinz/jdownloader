@@ -186,6 +186,7 @@ services:
 |---|---|---|
 | `JD_THEME` | `Dark` | UI theme — `Dark` = monochrome Carbon `#161616`, `Light` = JD's light theme |
 | `JD_SELFUPDATE` | `true` | `false` disables JD's periodic self-update checks (opt-in "frozen appliance"). **Note:** the same update channel delivers the hoster plugins, which go stale within weeks — downloads may start failing. First install always uses the updater. |
+| `JD_ENABLE_BROWSER` | `false` | `true` enables JD's "solve captcha in browser" flow: reCAPTCHA/hCaptcha/Turnstile open in a bundled **Firefox** (with **uBlock Origin**) on the web desktop, solved with one click from the container's own IP (tokens are IP-bound); the profile persists in `/config/.config/mozilla`. Off by default — no browser process runs. Only enable it if a hoster you use needs browser captchas (classic image captchas are auto-solved either way); enabling it runs a full browser (more resources + attack surface). |
 | `PUID` | `99` | User ID — Unraid's *nobody* |
 | `PGID` | `100` | Group ID — Unraid's *users* |
 | `TZ` | `Europe/Vienna` | Timezone |

@@ -97,6 +97,58 @@ RUN set -eux; \
 
 
 # ---------------------------------------------------------------------------
+# Firefox — OPTIONAL in-container browser for JD's captcha flow (opt-in)
+# ---------------------------------------------------------------------------
+# Baked in but INERT by default: nothing launches Firefox and it is NOT wired as
+# JD's URL handler unless JD_ENABLE_BROWSER=true (the wiring — mimeapps default +
+# XDG_CURRENT_DESKTOP + BROWSER — is done at runtime in 10-jdownloader-setup, only
+# when the switch is on). So a default container never runs a browser process; the
+# only cost when off is the on-disk size. With it on, JD's "solve in browser" flow
+# (reCAPTCHA/hCaptcha/Turnstile) opens on the Selkies desktop and is solved from the
+# CONTAINER's IP — the same IP the download uses (tokens are IP-bound). Classic image
+# captchas are still auto-solved by JD's built-in JAC, so most users never need this.
+# (Firefox portion of community PR #2 by @ahmed-abdelrazek, reworked as opt-in.)
+#
+# Source is Mozilla's OFFICIAL apt repo packages.mozilla.org (amd64+arm64); Ubuntu's
+# own "firefox" package is a Snap stub (Snaps don't run inside containers).
+RUN set -eux; \
+    install -d -m 0755 /etc/apt/keyrings; \
+    wget -qO /etc/apt/keyrings/packages.mozilla.org.asc \
+        https://packages.mozilla.org/apt/repo-signing-key.gpg; \
+    echo "deb [signed-by=/etc/apt/keyrings/packages.mozilla.org.asc] https://packages.mozilla.org/apt mozilla main" \
+        > /etc/apt/sources.list.d/mozilla.list; \
+    printf 'Package: *\nPin: origin packages.mozilla.org\nPin-Priority: 1000\n' \
+        > /etc/apt/preferences.d/mozilla; \
+    apt-get update; \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        firefox \
+        xdg-utils; \
+    # Route the firefox .desktop launch through ff-launch (COPYed via rootfs/ below):
+    # JD -> xdg-open -> gio -> this .desktop Exec. ff-launch redirects Firefox's stdio
+    # off JD's ProcessBuilder pipe so Firefox is not SIGPIPE-killed when JD reaps
+    # xdg-open. DBusActivatable=false forces gio to honor Exec (else it D-Bus-activates
+    # Firefox, bypassing the wrapper).
+    sed -i -E 's#^Exec=(/usr/lib/firefox/)?firefox#Exec=/usr/local/bin/ff-launch#' \
+        /usr/share/applications/firefox.desktop; \
+    if grep -q '^DBusActivatable' /usr/share/applications/firefox.desktop; then \
+        sed -i 's/^DBusActivatable=.*/DBusActivatable=false/' /usr/share/applications/firefox.desktop; \
+    else \
+        echo 'DBusActivatable=false' >> /usr/share/applications/firefox.desktop; \
+    fi; \
+    # No systemd in the container -> dbus-daemon fails to exec these manifests and spams
+    # "Activated service '...' failed: Permission denied" on every link click; drop them.
+    for svc in login1 timedate1 hostname1 locale1 network1 systemd1; do \
+        rm -f "/usr/share/dbus-1/system-services/org.freedesktop.${svc}.service"; \
+    done; \
+    apt-get clean; \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# Only ever affects a Firefox that actually runs (opt-in): no crash-reporter
+# background tasks on the GPU-less Xvfb display.
+ENV MOZ_CRASHREPORTER_DISABLE=1
+
+
+# ---------------------------------------------------------------------------
 # Skeleton-Configs + s6-overlay init scripts
 # ---------------------------------------------------------------------------
 COPY rootfs/ /
@@ -124,6 +176,7 @@ RUN set -eux; \
 COPY --from=agent-builder /build/jd-dialog-agent.jar /opt/JDownloader/jd-dialog-agent.jar
 
 RUN chmod +x \
+    /usr/local/bin/ff-launch \
     /usr/local/bin/jdownloader-language.sh \
     /usr/local/bin/jdownloader-theme.sh \
     /usr/local/bin/jdownloader-downloaddir.sh \

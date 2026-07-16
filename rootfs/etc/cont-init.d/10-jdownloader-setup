@@ -57,6 +57,30 @@ fi
 # Theme
 /usr/local/bin/jdownloader-theme.sh "${JD_THEME:-JD_Plain_Dark}" || log "theme hook failed (non-fatal)"
 
+# Optional in-container browser for JD's captcha "solve in browser" flow. Firefox is
+# baked into the image but INERT unless JD_ENABLE_BROWSER is truthy: only then do we
+# wire it as the URL handler (mimeapps default) and tell JD's URL opener a desktop it
+# understands. JD's AppWork DesktopSupportLinux only recognises GNOME/KDE/Unity/XFCE;
+# XFCE is the one whose browse command is plain xdg-open (GNOME/KDE want gnome-open/
+# kde-open, absent here). BROWSER points xdg-open's fallback at ff-launch (not bare
+# firefox) so that path also gets the stdio-detached launch. Left off, JD has no
+# browser handler and never launches one — zero browser process, exactly as before.
+case "${JD_ENABLE_BROWSER,,}" in
+    true|yes|1|on)
+        printf '[Default Applications]\nx-scheme-handler/http=firefox.desktop\nx-scheme-handler/https=firefox.desktop\ntext/html=firefox.desktop\n' \
+            > /etc/xdg/mimeapps.list
+        printf '%s' "XFCE"                        > /run/s6/container_environment/XDG_CURRENT_DESKTOP
+        printf '%s' "/usr/local/bin/ff-launch"    > /run/s6/container_environment/BROWSER
+        log "in-container browser ENABLED (JD_ENABLE_BROWSER) — captcha 'solve in browser' will open Firefox"
+        ;;
+    *)
+        # Ensure a stale handler from a previously-enabled run can't linger and make
+        # JD open a browser after the switch was turned back off.
+        rm -f /etc/xdg/mimeapps.list
+        log "in-container browser disabled (default) — set JD_ENABLE_BROWSER=true to enable Firefox captcha solving"
+        ;;
+esac
+
 # Default download folder — seed /downloads (the mapped volume) so a fresh install
 # writes to the download share, not JD's built-in /config/JDownloader/downloads.
 # Only seeds when unset/JD-internal; a user's own GUI choice is preserved.
