@@ -1,0 +1,14 @@
+#!/bin/sh
+# Firefox launcher for JDownloader's browser actions (captcha "open in browser",
+# Help links, etc.), used only when JD_ENABLE_BROWSER is on. JD opens URLs via
+# xdg-open -> gio -> the firefox .desktop Exec, which points here.
+#
+# Why this wrapper exists: JD spawns xdg-open with a ProcessBuilder that hands the
+# child chain JD's own stdout/stderr PIPE. Firefox inherits that pipe and streams
+# startup warnings to it (libEGL/DRI3/sandbox noise on this GPU-less display). As
+# soon as JD reaps the short-lived xdg-open process the pipe's read end closes, and
+# Firefox is killed by SIGPIPE on its next write — so the browser opens on the
+# server and then vanishes within seconds ("nothing happens" in the WebUI).
+# Redirecting Firefox's stdio to /dev/null detaches it from JD's pipe so it keeps
+# running for the whole browsing session.
+exec firefox "$@" >/dev/null 2>&1 </dev/null

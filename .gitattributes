@@ -4,6 +4,7 @@
 # rootfs/opt/JDownloader/themes-default (hundreds of vendored files, leave as-is).
 rootfs/defaults/autostart                      text eol=lf
 rootfs/usr/local/bin/*.sh                       text eol=lf
+rootfs/usr/local/bin/ff-launch                   text eol=lf
 rootfs/usr/local/bin/*.py                       text eol=lf
 rootfs/opt/JDownloader/flatlaf-defaults/*.properties text eol=lf
 rootfs/etc/**                                   text eol=lf
