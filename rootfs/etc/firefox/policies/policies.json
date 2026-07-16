@@ -1,0 +1,39 @@
+{
+  "__comment": "System-wide Firefox enterprise policies for the JDownloader container. Firefox here exists for ONE job: JD's captcha/browser flow on the Selkies desktop. gfx.webrender.software: the Xvfb display has no GPU — Firefox's first-run GPU probe crashed the browser (EGL/DRI3 dead ends) until it cached a software fallback in the profile; forcing software rendering makes the VERY FIRST launch stable. DontCheckDefaultBrowser: Firefox IS the only browser here, the popup is noise. DisableAppUpdate: updates arrive via apt on the weekly image rebuild; the in-app updater could not write /usr/lib anyway. Crash resilience (toolkit.startup.max_resumed_crashes=-1 + session-restore prefs): the /config Firefox profile PERSISTS across container restarts, so if the container is stopped while Firefox is running the profile is left in a crashed state; without these, the next launch shows the 'Firefox closed unexpectedly / start in Safe Mode' prompt (or fails to map a window) instead of just opening the link — which reads as 'nothing happened'. These make Firefox always start clean to the requested URL regardless of how the previous session ended.",
+  "policies": {
+    "SkipTermsOfUse": true,
+    "DontCheckDefaultBrowser": true,
+    "DisableAppUpdate": true,
+    "DisableTelemetry": true,
+    "DisableFirefoxStudies": true,
+    "DisablePocket": true,
+    "OverrideFirstRunPage": "",
+    "OverridePostUpdatePage": "",
+    "Preferences": {
+      "gfx.webrender.software": {
+        "Value": true,
+        "Status": "locked"
+      },
+      "browser.sessionstore.resume_from_crash": {
+        "Value": false,
+        "Status": "locked"
+      },
+      "browser.aboutwelcome.enabled": {
+        "Value": false,
+        "Status": "default"
+      },
+      "toolkit.startup.max_resumed_crashes": {
+        "Value": -1,
+        "Status": "locked"
+      },
+      "browser.sessionstore.resume_session_once": {
+        "Value": false,
+        "Status": "locked"
+      },
+      "browser.startup.couldRestoreSession": {
+        "Value": false,
+        "Status": "locked"
+      }
+    }
+  }
+}

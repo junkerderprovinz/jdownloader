@@ -105,6 +105,14 @@ if [[ -e "${cfg_files[0]}" ]]; then
     log "cfg files: ${cfg_files[*]##*/}"
 fi
 
+# NOTE: we deliberately do NOT pre-create a Firefox profile here. An earlier
+# `firefox -CreateProfile default` created a SEPARATE profile named "default"
+# that Firefox never used — on a normal launch Firefox auto-creates and selects
+# its own "default-release" profile, so ours was dead weight that only added a
+# second profile and a stale .parentlock. Firefox creates and manages its single
+# profile on first launch just fine; the browser stream is handled by the jpeg
+# encoder (see SELKIES_ENCODER in the Dockerfile).
+
 # Make the mapped /downloads volume writable by the JD user (PUID/PGID).
 # Docker creates a MISSING host path as root:root, which the JD user can't write —
 # JD then silently falls back to <config>/Downloads. chown only the TOP level (no -R)

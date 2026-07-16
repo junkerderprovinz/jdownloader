@@ -63,6 +63,19 @@ ENV TITLE="JDownloader 2" \
     SELKIES_UI_TITLE="JDownloader 2" \
     SELKIES_ENABLE_BASIC_AUTH="false"
 
+# SELKIES_ENCODER=jpeg (base default is "x264enc,jpeg", i.e. H.264 preferred).
+# WHY: on the H.264 (x264enc) path this base streams damage-driven with
+# h264_streaming_mode off by default, and a window mapped by a SEPARATE X client
+# — exactly the browser JDownloader opens for a captcha/link — is not pushed to
+# the WebUI until some input (a mouse move) forces a fresh frame. So the browser
+# opens on the server but stays invisible until the user jiggles the mouse. The
+# jpeg encoder streams changed regions without that gate, so a JD-opened browser
+# window shows up on its own within a second. Verified by driving the real WebUI
+# with a headless client and watching Firefox appear with zero synthetic input.
+# Trade-off: jpeg uses more bandwidth than H.264 for video/motion, but this is a
+# mostly-static desktop on a LAN, and paint-over keeps static text crisp.
+ENV SELKIES_ENCODER="jpeg"
+
 # ---------------------------------------------------------------------------
 # Java 21 + Basis-Tools
 # ---------------------------------------------------------------------------
@@ -73,10 +86,10 @@ RUN set -eux; \
         openjdk-21-jre \
         # Download-Tools für Installer
         wget ca-certificates \
-        # ffmpeg/ffprobe – JD braucht beide zum Muxen von DASH-Streams (YouTube:
-        # Video- und Audiospur kommen getrennt). Auf Linux lädt JD KEIN eigenes
-        # ffmpeg nach, es erwartet ein System-Binary (Pfad wird im Setup-Skript
-        # in die FFmpegSetup-Config geschrieben).
+        # ffmpeg/ffprobe – JD needs both to mux DASH streams (YouTube delivers
+        # video and audio as separate tracks). On Linux JD does NOT download its
+        # own ffmpeg build; it expects a system binary (the path is written into
+        # the FFmpegSetup config by the setup script).
         ffmpeg \
         # Font-Support (Java rendert Schrift über fontconfig)
         fontconfig \
@@ -95,9 +108,93 @@ RUN set -eux; \
 
 
 # ---------------------------------------------------------------------------
+# Firefox — makes JD's browser captcha flow usable inside the container
+# ---------------------------------------------------------------------------
+# Without a browser, JD's "solve in browser" flow (reCAPTCHA/hCaptcha/Turnstile
+# via the local loopback solver) is a dead end — captcha-gated hosters simply
+# fail. With Firefox the captcha opens on the Selkies desktop and is solved
+# there — from the CONTAINER's IP, the same IP the download uses (tokens are
+# IP-bound; tokens solved from a foreign IP are rejected by some hosters).
+# Classic image captchas are still auto-solved by JD's built-in JAC.
+#
+# The source is Mozilla's OFFICIAL apt repo packages.mozilla.org (amd64+arm64).
+# Ubuntu's own "firefox" package is just a Snap stub (Snaps don't run inside
+# containers), hence the pin onto Mozilla's repo.
+# The Firefox profile lives under /config/.config/mozilla (Firefox uses XDG
+# paths now) and survives image updates — handy for Cloudflare cookies
+# (cf_clearance is IP-bound as well).
+# First-run stability/quiet comes from /etc/firefox/policies/policies.json
+# (software rendering — the GPU probe crashed on the GPU-less Xvfb — plus no
+# ToU dialog, no default-browser nag, no telemetry).
+RUN set -eux; \
+    install -d -m 0755 /etc/apt/keyrings; \
+    wget -qO /etc/apt/keyrings/packages.mozilla.org.asc \
+        https://packages.mozilla.org/apt/repo-signing-key.gpg; \
+    echo "deb [signed-by=/etc/apt/keyrings/packages.mozilla.org.asc] https://packages.mozilla.org/apt mozilla main" \
+        > /etc/apt/sources.list.d/mozilla.list; \
+    # pin: otherwise Ubuntu's same-named Snap-stub package wins
+    printf 'Package: *\nPin: origin packages.mozilla.org\nPin-Priority: 1000\n' \
+        > /etc/apt/preferences.d/mozilla; \
+    apt-get update; \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        firefox \
+        # JD opens URLs through xdg-open
+        xdg-utils; \
+    # default browser for xdg-open/gio (openbox sets no desktop default)
+    printf '[Default Applications]\nx-scheme-handler/http=firefox.desktop\nx-scheme-handler/https=firefox.desktop\ntext/html=firefox.desktop\n' \
+        > /etc/xdg/mimeapps.list; \
+    # Route the firefox .desktop launch through /usr/local/bin/ff-launch (see that
+    # script): JD -> xdg-open -> gio -> this .desktop Exec. ff-launch redirects
+    # Firefox's stdio off JD's ProcessBuilder pipe so Firefox is not SIGPIPE-killed
+    # when JD reaps xdg-open. DBusActivatable=false forces gio to honor Exec
+    # (otherwise it would D-Bus-activate Firefox, bypassing the wrapper).
+    sed -i -E 's#^Exec=(/usr/lib/firefox/)?firefox#Exec=/usr/local/bin/ff-launch#' \
+        /usr/share/applications/firefox.desktop; \
+    if grep -q '^DBusActivatable' /usr/share/applications/firefox.desktop; then \
+        sed -i 's/^DBusActivatable=.*/DBusActivatable=false/' /usr/share/applications/firefox.desktop; \
+    else \
+        echo 'DBusActivatable=false' >> /usr/share/applications/firefox.desktop; \
+    fi; \
+    # Remove systemd's D-Bus activation manifests: there is no systemd in the
+    # container, so every Firefox start made dbus-daemon try (and fail) to exec
+    # them — "Activated service 'org.freedesktop.login1' failed: Permission
+    # denied" spam on every link click. Without the manifests D-Bus replies
+    # with a clean ServiceUnknown, which Firefox handles silently.
+    for svc in login1 timedate1 hostname1 locale1 network1 systemd1; do \
+        rm -f "/usr/share/dbus-1/system-services/org.freedesktop.${svc}.service"; \
+    done; \
+    apt-get clean; \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# XDG_CURRENT_DESKTOP: JD's URL opener (AppWork DesktopSupportLinux) only
+# recognises GNOME/KDE/Unity/XFCE via env vars — unknown desktops fall back to
+# Java's Desktop.browse(), which is unsupported here ("Unsupported
+# OpenBrowser"). XFCE is the only value whose browse command is plain xdg-open
+# (GNOME/KDE expect gnome-open/kde-open, which don't exist in this image).
+# BROWSER: xdg-open's fallback when no DE is detected — point it at ff-launch
+# (not bare firefox) so that path also gets the stdio-detached launch and
+# survives JD reaping xdg-open (see /usr/local/bin/ff-launch).
+# MOZ_CRASHREPORTER_DISABLE: no crash-reporter background tasks in the
+# container (reports would go nowhere anyway; they kept spawning after the
+# first-run GPU-probe crashes).
+ENV XDG_CURRENT_DESKTOP=XFCE \
+    BROWSER=/usr/local/bin/ff-launch \
+    MOZ_CRASHREPORTER_DISABLE=1
+
+# ---------------------------------------------------------------------------
 # Skeleton-Configs + s6-overlay init scripts
 # ---------------------------------------------------------------------------
 COPY rootfs/ /
+
+# CRLF guard: a Windows checkout (core.autocrlf) can smuggle CRLF into the
+# COPYed scripts when a .gitattributes rule is missing — bash/execline choke
+# on \r (symptom: black screen, startwm.sh syntax error). grep -I skips
+# binaries; only files that actually contain CR are touched.
+RUN set -eux; \
+    CR=$(printf '\r'); \
+    find /defaults /etc/cont-init.d /etc/s6-overlay/s6-rc.d /usr/local/bin -type f \
+        -exec grep -Il "$CR" {} \; 2>/dev/null | \
+    while read -r f; do sed -i 's/\r$//' "$f"; echo "CRLF normalized: $f"; done
 
 # Banner: single source at .github/assets/banner-raw.txt. Strip Windows CR
 # (tr is byte-safe, no locale issues with the block characters used).
@@ -122,6 +219,7 @@ RUN set -eux; \
 COPY --from=agent-builder /build/jd-dialog-agent.jar /opt/JDownloader/jd-dialog-agent.jar
 
 RUN chmod +x \
+    /usr/local/bin/ff-launch \
     /usr/local/bin/jdownloader-language.sh \
     /usr/local/bin/jdownloader-theme.sh \
     /usr/local/bin/jdownloader-downloaddir.sh \

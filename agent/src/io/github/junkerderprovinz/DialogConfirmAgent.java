@@ -1156,10 +1156,25 @@ public class DialogConfirmAgent {
             // button — plain "OK" often just dismisses without restarting. Deliberate
             // side effect: a user changing the LAF manually also gets the JD restart
             // (which is what "apply" needs anyway).
+            //
+            // CRITICAL narrowing: the LAF NAME also appears in purely informational
+            // dialogs — most notably Help -> About, which lists the active look and feel.
+            // Matching on the LAF name ALONE made the agent mistake the About dialog for
+            // this prompt, find no restart button, and fire the "no known button ->
+            // request restart" fallback below — so every time a user opened About, JD
+            // restarted and the desktop went black. Require an actual restart/apply INTENT
+            // in the body, and never touch an About-type info dialog.
             if (w instanceof Dialog) {
                 String body = collectText(w).toLowerCase();
-                if (body.contains("look and feel") || body.contains("look-and-feel")
-                        || body.contains("flatlaf")) {
+                String lower = title.toLowerCase();
+                boolean isInfoDialog = lower.contains("about") || lower.contains("über");
+                boolean mentionsLaf = body.contains("look and feel")
+                        || body.contains("look-and-feel") || body.contains("flatlaf");
+                boolean wantsRestart = body.contains("restart") || body.contains("neu start")
+                        || body.contains("neustart") || body.contains("relaunch")
+                        || body.contains("apply") || body.contains("übernehmen")
+                        || body.contains("anwenden");
+                if (!isInfoDialog && mentionsLaf && wantsRestart) {
                     JButton confirm = findButtonByLabels(w,
                             "Yes", "Ja", "Restart", "Neustart", "Restart now",
                             "Jetzt neu starten", "OK", "Ok");
