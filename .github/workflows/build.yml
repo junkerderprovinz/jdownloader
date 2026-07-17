@@ -124,18 +124,34 @@ jobs:
             exit 1
           fi
           # The WebUI being up only proves Selkies — also require JDownloader itself
-          # to launch: autostart prints this exact line right at the JVM start.
+          # to launch AND STAY UP. Autostart prints this line right BEFORE the JVM
+          # starts, so its presence alone is not proof: a bad -javaagent (e.g. a
+          # class-version mismatch) aborts the JVM right after, and autostart then
+          # relaunches in a loop. So: fail hard on the crash signatures and on a
+          # relaunch loop, and require the JVM to stay up before passing.
           jd_line='[jdownloader-autostart] launching JDownloader JVM (the GUI starts here)...'
-          for i in $(seq 1 120); do
-            # Capture first, then substring-match in bash: `docker logs | grep -q`
-            # under pipefail dies of SIGPIPE (status 141) once the log grows past
-            # grep's early exit — the line was "not found" although present
-            # (flaky gate). No pipeline = no SIGPIPE.
+          launched_at=0
+          for i in $(seq 1 150); do
+            # Capture first, then match in bash: `docker logs | grep -q` under
+            # pipefail dies of SIGPIPE (141) once the log grows past grep's early
+            # exit — the line reads "not found" although present. No pipe from a
+            # live stream = no SIGPIPE (grep on the captured string is fine).
             logs=$(docker logs "$name" 2>&1 || true)
-            if [[ "$logs" == *"$jd_line"* ]]; then
-              echo "✅ JDownloader JVM launch confirmed after ${i}s"
-              docker rm -f "$name" >/dev/null
-              exit 0
+            if [[ "$logs" == *"UnsupportedClassVersionError"* || "$logs" == *"processing of -javaagent failed"* || "$logs" == *"FATAL ERROR in native method"* || "$logs" == *"agent load/premain call failed"* ]]; then
+              echo "❌ JDownloader JVM aborted at startup (agent/JVM crash) — logs:"; echo "$logs" | tail -n 60
+              docker rm -f "$name" >/dev/null; exit 1
+            fi
+            launches=$(grep -cF "$jd_line" <<< "$logs" || true)
+            if [ "${launches:-0}" -ge 2 ]; then
+              echo "❌ JDownloader JVM is crash-looping (launched ${launches}x) — logs:"; echo "$logs" | tail -n 60
+              docker rm -f "$name" >/dev/null; exit 1
+            fi
+            if [ "${launches:-0}" -ge 1 ]; then
+              [ "$launched_at" -eq 0 ] && launched_at=$i
+              if [ $((i - launched_at)) -ge 15 ]; then
+                echo "✅ JDownloader JVM launched and stayed up (${i}s, no crash, no relaunch)"
+                docker rm -f "$name" >/dev/null; exit 0
+              fi
             fi
             if [ -z "$(docker ps -q --filter "name=$name")" ]; then
               echo "❌ container exited early — logs:"; docker logs "$name" || true
@@ -143,7 +159,7 @@ jobs:
             fi
             sleep 1
           done
-          echo "❌ JDownloader JVM launch line not seen within 120s — logs:"
+          echo "❌ JDownloader JVM did not stabilise within 150s — logs:"
           docker logs "$name" || true
           docker rm -f "$name" >/dev/null
           exit 1
