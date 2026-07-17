@@ -8,7 +8,10 @@ name: Theme Preview
 on:
   push:
     branches: [ feat/jd-highlighter ]
-    paths: [ '.github/workflows/theme-preview.yml' ]
+    paths:
+      - '.github/workflows/theme-preview.yml'
+      - 'rootfs/opt/JDownloader/flatlaf-defaults/highlighter.properties.tmpl'
+      - 'rootfs/usr/local/bin/jdownloader-theme.sh'
 
 jobs:
   preview:
