@@ -184,7 +184,8 @@ services:
 
 | Variable | Default | Description |
 |---|---|---|
-| `JD_THEME` | `Dark` | UI theme — `Dark` = monochrome Carbon `#161616`, `Light` = JD's light theme |
+| `JD_THEME` | `Dark` | UI theme — `Dark` = monochrome Carbon `#161616`, `Light` = JD's light theme, `jd-highlighter` = borderless, freely-accented dark |
+| `JD_ACCENT` | `#ffee00` | Accent colour for the `jd-highlighter` theme (any hex) — lights up checkmarks, toggles, focus, the progress bar and primary buttons; large fills stay neutral |
 | `JD_SELFUPDATE` | `true` | `false` disables JD's periodic self-update checks (opt-in "frozen appliance"). **Note:** the same update channel delivers the hoster plugins, which go stale within weeks — downloads may start failing. First install always uses the updater. |
 | `JD_ENABLE_BROWSER` | `false` | `true` enables JD's "solve captcha in browser" flow: reCAPTCHA/hCaptcha/Turnstile open in a bundled **Firefox** (with **uBlock Origin**) on the web desktop, solved with one click from the container's own IP (tokens are IP-bound); the profile persists in `/config/.config/mozilla`. Off by default — no browser process runs. Only enable it if a hoster you use needs browser captchas (classic image captchas are auto-solved either way); enabling it runs a full browser (more resources + attack surface). |
 | `PUID` | `99` | User ID — Unraid's *nobody* |
@@ -217,7 +218,7 @@ On the **first start**, JDownloader installs itself into `/config/JDownloader/`.
     └── JDownloader.jar
 ```
 
-The env-driven setting `JD_THEME` is re-applied on **every start**, so you can change it at any time via the Unraid template.
+The env-driven settings `JD_THEME` and `JD_ACCENT` are re-applied on **every start**, so you can change the theme (or the `jd-highlighter` accent) at any time via the Unraid template.
 
 The base image also supports `/config/custom-cont-init.d/` for your own init scripts — see the [LinuxServer docs](https://docs.linuxserver.io/general/container-customization/).
 

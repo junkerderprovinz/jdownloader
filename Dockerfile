@@ -226,13 +226,15 @@ ENV S6_KILL_GRACETIME=30000 \
 # Standard-ENV (durch Unraid-Template überschreibbar)
 # ---------------------------------------------------------------------------
 # JD_LANG       – UI-Sprache: ISO-Code (de, en, fr, ...)
-# JD_THEME      – UI-Theme: Dark (Carbon #161616) | Light
+# JD_THEME      – UI-Theme: Dark (Carbon #161616) | Light | jd-highlighter (borderless, freely-accented dark)
+# JD_ACCENT     – jd-highlighter accent, any hex (default #ffee00)
 # JD_SELFUPDATE – true (Default) | false = JDs Self-Update-Checks deaktivieren
 #                 (opt-in "frozen appliance"; Achtung: derselbe Kanal liefert die
 #                 Hoster-Plugins — die veralten in Wochen)
 # JD_INST_DIR   – Installations-Pfad (nicht ändern außer für Debugging)
 ENV JD_LANG=en \
     JD_THEME=Dark \
+    JD_ACCENT=#ffee00 \
     JD_SELFUPDATE=true \
     JD_INST_DIR=/config/JDownloader \
     LANG=en_US.UTF-8 \
