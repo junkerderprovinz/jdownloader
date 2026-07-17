@@ -16,10 +16,36 @@
 THEME="${1:-Dark}"
 JD_DIR="${JD_INST_DIR:-/config/JDownloader}"
 JD_CFG="${JD_DIR}/cfg"
+# JD Highlighter: the accent (any hex, default electric yellow) baked into the FlatLaf
+# control defaults on start. Overridable for tests via JD_FLATLAF_DEFAULTS_DIR.
+ACCENT="${JD_ACCENT:-#ffee00}"
+FLATLAF_DEFAULTS_DIR="${JD_FLATLAF_DEFAULTS_DIR:-/opt/JDownloader/flatlaf-defaults}"
+HL=0
 log() { echo "[jdownloader-theme] $*"; }
+
+# --- vendored from jd-highlighter lib/accent.sh (no jd-highlighter checkout at runtime) ---
+# accent_fg <hex> -> #161616 for a light accent, #f4f4f4 for a dark accent (WCAG luminance).
+accent_fg() {
+  hex=$(printf '%s' "$1" | tr 'A-F' 'a-f' | sed 's/^#//')
+  r=$(printf '%d' "0x$(echo "$hex" | cut -c1-2)"); g=$(printf '%d' "0x$(echo "$hex" | cut -c3-4)"); b=$(printf '%d' "0x$(echo "$hex" | cut -c5-6)")
+  fg=$(awk -v r="$r" -v g="$g" -v b="$b" \
+    'function lin(c){c=c/255; return (c<=0.03928)?c/12.92:((c+0.055)/1.055)^2.4}
+     BEGIN{L=0.2126*lin(r)+0.7152*lin(g)+0.0722*lin(b); print (L>=0.5)?"#161616":"#f4f4f4"}')
+  echo "$fg"
+}
+# render_properties <tmpl> <accent-hex> <out> -> writes tmpl with @@ACCENT@@/@@ACCENT_FG@@ filled.
+render_properties() {
+  tmpl="$1"; accent="$2"; out="$3"
+  case "$accent" in \#*) : ;; *) accent="#$accent" ;; esac
+  fg=$(accent_fg "$accent")
+  sed -e "s/@@ACCENT@@/$accent/g" -e "s/@@ACCENT_FG@@/$fg/g" "$tmpl" > "$out"
+}
+# --- end vendored ---
+
 mkdir -p "${JD_CFG}/laf"
 
 case "${THEME}" in
+    jd-highlighter|*[Hh]ighlight*)          LAF="FLATLAF_DARK"  ; HL=1 ;;
     Dark|JD_Plain_Dark|*[Dd][Aa][Rr][Kk]*) LAF="FLATLAF_DARK"  ;;
     Light|JD_Plain)                         LAF="FLATLAF_LIGHT" ;;
     JDDEFAULT)                              LAF="DEFAULT"       ;;
@@ -115,6 +141,16 @@ os.makedirs(os.path.dirname(path), exist_ok=True)
 json.dump(d, open(path, "w"), indent=2)
 print("[jdownloader-theme] Carbon #161616 colorfor* + iconsetid=flat -> %s" % path)
 PYEOF
+
+    # 3) JD Highlighter: bake the user's accent into the FlatLaf control defaults
+    #    (borderless / rounded / accented controls). Only for JD_THEME=jd-highlighter
+    #    (HL=1); plain Dark/Light leave the baked-in FlatDarkLaf.properties untouched.
+    DEF="${FLATLAF_DEFAULTS_DIR}/FlatDarkLaf.properties"
+    TMPL="${FLATLAF_DEFAULTS_DIR}/highlighter.properties.tmpl"
+    if [ "${HL}" = "1" ] && [ -f "${TMPL}" ]; then
+        render_properties "${TMPL}" "${ACCENT}" "${DEF}"
+        log "jd-highlighter: wrote accented FlatLaf defaults (accent=${ACCENT}) -> ${DEF}"
+    fi
 else
     # Light: JD_Plain (flat) icons, JD's default light colours.
     python3 - "${JD_CFG}/laf/FlatLightLaf.json" <<'PYEOF'

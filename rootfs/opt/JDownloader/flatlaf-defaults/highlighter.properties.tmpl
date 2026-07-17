@@ -1,0 +1,40 @@
+# JD Highlighter — FlatLaf control theme (loaded via registerCustomDefaultsSource).
+# @@ACCENT@@ / @@ACCENT_FG@@ are substituted at apply time (container: jdownloader-theme.sh;
+# desktop: the theme agent / installer). The accent is the one knob; large fills stay neutral.
+
+# --- base ---
+@background          = #161616
+@foreground          = #f4f4f4
+@componentBackground = #1e1e1e
+@disabledForeground  = #6f6f6f
+
+# --- accent (the one knob) ---
+@accentColor                    = @@ACCENT@@
+ToggleButton.selectedBackground = @@ACCENT@@
+Button.default.foreground       = @@ACCENT_FG@@
+ProgressBar.selectionForeground = @@ACCENT_FG@@
+ProgressBar.background          = #262626
+ProgressBar.selectionBackground = #f4f4f4
+
+# --- selection stays neutral (readable at any accent) ---
+@selectionBackground = #525252
+@selectionForeground = #f4f4f4
+
+# --- borderless ---
+Component.borderColor         = #161616
+Component.disabledBorderColor = #161616
+Component.focusWidth          = 0
+Component.innerFocusWidth     = 0.5
+Button.borderWidth            = 0
+Button.default.borderWidth    = 0
+Separator.foreground          = #161616
+TabbedPane.showTabSeparators  = false
+MenuBar.borderColor           = #161616
+ToolBar.borderColor           = #161616
+PopupMenu.borderColor         = #161616
+
+# --- rounded ---
+Button.arc        = 6
+Component.arc     = 6
+TextComponent.arc = 6
+CheckBox.arc      = 4
