@@ -17,8 +17,9 @@ THEME="${1:-Dark}"
 JD_DIR="${JD_INST_DIR:-/config/JDownloader}"
 JD_CFG="${JD_DIR}/cfg"
 # JD Highlighter: the accent (any hex, default electric yellow) baked into the FlatLaf
-# control defaults on start. Overridable for tests via JD_FLATLAF_DEFAULTS_DIR.
-ACCENT="${JD_ACCENT:-#ffee00}"
+# control defaults on start. $2 (forwarded by autostart) wins over the JD_ACCENT env for
+# robustness; overridable for tests via JD_FLATLAF_DEFAULTS_DIR.
+ACCENT="${2:-${JD_ACCENT:-#ffee00}}"
 FLATLAF_DEFAULTS_DIR="${JD_FLATLAF_DEFAULTS_DIR:-/opt/JDownloader/flatlaf-defaults}"
 HL=0
 log() { echo "[jdownloader-theme] $*"; }
