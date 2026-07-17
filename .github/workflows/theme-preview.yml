@@ -55,12 +55,21 @@ jobs:
             echo "::error::agent/JVM crash signature present"; exit 1
           else echo "(clean)"; fi
 
-      - name: Screenshot the live desktop
+      - name: Screenshot the live desktop (base + controls views)
         run: |
-          docker exec -u root jd bash -c 'apt-get update -qq >/dev/null 2>&1; apt-get install -y -qq x11-apps imagemagick >/dev/null 2>&1' || true
+          docker exec -u root jd bash -c 'apt-get update -qq >/dev/null 2>&1; apt-get install -y -qq x11-apps imagemagick xdotool >/dev/null 2>&1' || true
           DISP=$(docker exec jd sh -c 'ls /tmp/.X11-unix 2>/dev/null | head -1 | sed "s/^X/:/"')
-          echo "X display: ${DISP:-:1}"
-          docker exec -u root jd sh -c "xwd -root -display ${DISP:-:1} -silent | convert xwd:- png:-" > out/desktop.png || echo "screenshot failed"
+          DISP="${DISP:-:1}"
+          echo "X display: $DISP"
+          shoot() { docker exec -u root jd sh -c "xwd -root -display $DISP -silent | convert xwd:- png:-" > "out/$1" || echo "shot $1 failed"; }
+          click() { docker exec -u root jd sh -c "DISPLAY=$DISP xdotool mousemove $1 $2 click 1" || true; }
+          # 1) base download tab
+          shoot desktop.png
+          # 2) open the Add New Links dialog (bottom-left button) -> reveals checkboxes/buttons/text fields with the accent
+          click 70 734; sleep 5; shoot desktop-addlinks.png
+          # 3) close it (Esc), then try the Settings tab (upper tab bar) for the fullest control surface
+          docker exec -u root jd sh -c "DISPLAY=$DISP xdotool key Escape" || true; sleep 2
+          click 300 78; sleep 5; shoot desktop-settings.png
           ls -la out/
 
       - name: Upload artifacts
