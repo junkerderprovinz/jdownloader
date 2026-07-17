@@ -1,0 +1,68 @@
+name: Theme Preview
+
+# Diagnostic-only, manual: builds THIS branch's image locally (no push), boots it
+# with JD_THEME=jd-highlighter + a chosen JD_ACCENT, waits for the READY banner,
+# records the theme/agent/crash log signals, and screenshots the live desktop.
+# Nothing is published. Used to validate the jd-highlighter theme before release.
+
+on:
+  workflow_dispatch:
+    inputs:
+      accent:
+        description: 'JD_ACCENT hex (default #ffee00)'
+        required: false
+        default: '#ffee00'
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the branch image (amd64, no push)
+        run: DOCKER_BUILDKIT=1 docker build -t jd:preview .
+
+      - name: Boot with the jd-highlighter theme
+        run: |
+          docker run -d --name jd \
+            -e JD_THEME=jd-highlighter \
+            -e JD_ACCENT="${{ github.event.inputs.accent }}" \
+            -e JD_DEBUG_GEO=1 \
+            -p 3000:3000 -p 3001:3001 jd:preview
+
+      - name: Wait for the JD GUI (READY banner, up to 15 min)
+        run: |
+          set -uo pipefail
+          for i in $(seq 1 90); do
+            if docker logs jd 2>&1 | grep -q "IS READY"; then echo "READY after ~$((i*10))s"; break; fi
+            if [ -z "$(docker ps -q --filter name=jd)" ]; then echo "container exited early:"; docker logs jd || true; exit 1; fi
+            sleep 10
+          done
+
+      - name: Settle, then collect log signals
+        run: |
+          sleep 60
+          mkdir -p out
+          docker logs jd > out/full.log 2>&1 || true
+          echo "=== theme signals (expect the accented-defaults + registered lines) ==="
+          grep -E "wrote accented FlatLaf defaults|registered custom defaults source|Theme=jd-highlighter|lookandfeeltheme" out/full.log | tail -20 || echo "(none found)"
+          echo "=== crash signatures (MUST be empty) ==="
+          if grep -E "UnsupportedClassVersionError|processing of -javaagent failed|FATAL ERROR in native method|agent load/premain call failed" out/full.log; then
+            echo "::error::agent/JVM crash signature present"; exit 1
+          else echo "(clean)"; fi
+
+      - name: Screenshot the live desktop
+        run: |
+          docker exec -u root jd bash -c 'apt-get update -qq >/dev/null 2>&1; apt-get install -y -qq x11-apps imagemagick >/dev/null 2>&1' || true
+          DISP=$(docker exec jd sh -c 'ls /tmp/.X11-unix 2>/dev/null | head -1 | sed "s/^X/:/"')
+          echo "X display: ${DISP:-:1}"
+          docker exec -u root jd sh -c "xwd -root -display ${DISP:-:1} -silent | convert xwd:- png:-" > out/desktop.png || echo "screenshot failed"
+          ls -la out/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: theme-preview-${{ github.event.inputs.accent }}
+          path: out/
+          if-no-files-found: warn
