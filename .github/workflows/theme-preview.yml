@@ -1,33 +1,36 @@
 name: Theme Preview
 
-# Diagnostic-only, manual: builds THIS branch's image locally (no push), boots it
-# with JD_THEME=jd-highlighter + a chosen JD_ACCENT, waits for the READY banner,
-# records the theme/agent/crash log signals, and screenshots the live desktop.
-# Nothing is published. Used to validate the jd-highlighter theme before release.
+# Diagnostic-only: builds THIS branch's image locally (no push), boots it with
+# JD_THEME=jd-highlighter for each accent in the matrix, waits for the READY
+# banner, records the theme/agent/crash log signals, and screenshots the live
+# desktop. Nothing is published. Runs only when this file changes on the branch.
 
 on:
-  workflow_dispatch:
-    inputs:
-      accent:
-        description: 'JD_ACCENT hex (default #ffee00)'
-        required: false
-        default: '#ffee00'
+  push:
+    branches: [ feat/jd-highlighter ]
+    paths: [ '.github/workflows/theme-preview.yml' ]
 
 jobs:
   preview:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { accent: '#ffee00', tag: yellow }
+          - { accent: '#4589ff', tag: blue }
     steps:
       - uses: actions/checkout@v4
 
       - name: Build the branch image (amd64, no push)
         run: DOCKER_BUILDKIT=1 docker build -t jd:preview .
 
-      - name: Boot with the jd-highlighter theme
+      - name: Boot with the jd-highlighter theme (accent ${{ matrix.accent }})
         run: |
           docker run -d --name jd \
             -e JD_THEME=jd-highlighter \
-            -e JD_ACCENT="${{ github.event.inputs.accent }}" \
+            -e JD_ACCENT="${{ matrix.accent }}" \
             -e JD_DEBUG_GEO=1 \
             -p 3000:3000 -p 3001:3001 jd:preview
 
@@ -45,7 +48,7 @@ jobs:
           sleep 60
           mkdir -p out
           docker logs jd > out/full.log 2>&1 || true
-          echo "=== theme signals (expect the accented-defaults + registered lines) ==="
+          echo "=== theme signals ==="
           grep -E "wrote accented FlatLaf defaults|registered custom defaults source|Theme=jd-highlighter|lookandfeeltheme" out/full.log | tail -20 || echo "(none found)"
           echo "=== crash signatures (MUST be empty) ==="
           if grep -E "UnsupportedClassVersionError|processing of -javaagent failed|FATAL ERROR in native method|agent load/premain call failed" out/full.log; then
@@ -63,6 +66,6 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: theme-preview-${{ github.event.inputs.accent }}
+          name: theme-preview-${{ matrix.tag }}
           path: out/
           if-no-files-found: warn
