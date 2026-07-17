@@ -27,10 +27,15 @@ ARG BASE_TAG=ubunturesolute
 FROM eclipse-temurin:25.0.3_9-jdk AS agent-builder
 WORKDIR /build
 COPY agent/ /build/
+# JDownloader runs on the Java 21 runtime (openjdk-21-jre below), so the agent's
+# class files must target 21. Pin javac --release 21 so a newer build JDK (e.g. a
+# Renovate bump of the temurin tag above to 25) can't ship a class-69 agent that
+# the 21 runtime refuses to load — that crash-looped the GUI with
+# UnsupportedClassVersionError (class file version 69.0 vs 65.0).
 RUN set -eux; \
     mkdir -p out; \
     find src -name '*.java' > sources.txt; \
-    javac -d out @sources.txt; \
+    javac --release 21 -d out @sources.txt; \
     jar cfm jd-dialog-agent.jar manifest.mf -C out .
 
 FROM ghcr.io/linuxserver/baseimage-selkies:${BASE_TAG}
