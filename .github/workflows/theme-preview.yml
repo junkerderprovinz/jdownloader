@@ -22,7 +22,6 @@ jobs:
       matrix:
         include:
           - { accent: '#ffee00', tag: yellow }
-          - { accent: '#4589ff', tag: blue }
     steps:
       - uses: actions/checkout@v4
 
@@ -58,21 +57,25 @@ jobs:
             echo "::error::agent/JVM crash signature present"; exit 1
           else echo "(clean)"; fi
 
-      - name: Screenshot the live desktop (base + controls views)
+      - name: Populate a download + screenshot (progress bar + accent button)
         run: |
           docker exec -u root jd bash -c 'apt-get update -qq >/dev/null 2>&1; apt-get install -y -qq x11-apps imagemagick xdotool >/dev/null 2>&1' || true
-          DISP=$(docker exec jd sh -c 'ls /tmp/.X11-unix 2>/dev/null | head -1 | sed "s/^X/:/"')
-          DISP="${DISP:-:1}"
+          DISP=$(docker exec jd sh -c 'ls /tmp/.X11-unix 2>/dev/null | head -1 | sed "s/^X/:/"'); DISP="${DISP:-:1}"
           echo "X display: $DISP"
           shoot() { docker exec -u root jd sh -c "xwd -root -display $DISP -silent | convert xwd:- png:-" > "out/$1" || echo "shot $1 failed"; }
           click() { docker exec -u root jd sh -c "DISPLAY=$DISP xdotool mousemove $1 $2 click 1" || true; }
-          # 1) base download tab
+          type_() { docker exec -u root jd sh -c "DISPLAY=$DISP xdotool type --delay 40 -- '$1'" || true; }
+          # empty download tab first
           shoot desktop.png
-          # 2) open the Add New Links dialog (bottom-left button) -> reveals checkboxes/buttons/text fields with the accent
-          click 70 734; sleep 5; shoot desktop-addlinks.png
-          # 3) close it (Esc), then try the Settings tab (upper tab bar) for the fullest control surface
-          docker exec -u root jd sh -c "DISPLAY=$DISP xdotool key Escape" || true; sleep 2
-          click 300 78; sleep 5; shoot desktop-settings.png
+          # queue an auto-start download via folderwatch so a row + accent progress bar appears
+          docker exec jd sh -c 'D=/config/JDownloader/folderwatch; mkdir -p "$D"; printf "text=https://speed.hetzner.de/1GB.bin\nautoStart=TRUE\nautoConfirm=TRUE\nenabled=TRUE\naddOfflineLink=TRUE\n" > "$D/preview.crawljob"' || true
+          echo "waiting for the download to appear + progress..."; sleep 55
+          docker logs jd 2>&1 | grep -iE "crawljob|folderwatch|1GB|hetzner|LinkCrawler|download" | tail -10 || true
+          shoot desktop-downloads.png
+          # Add New Links dialog, type a URL -> enables the accent-filled default button
+          click 70 734; sleep 4
+          click 400 254; sleep 1; type_ "https://speed.hetzner.de/100MB.bin"; sleep 2
+          shoot desktop-addlinks-filled.png
           ls -la out/
 
       - name: Upload artifacts
