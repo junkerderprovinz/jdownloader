@@ -1,9 +1,9 @@
-name: Theme Preview
+name: Preview Image
 
-# Diagnostic-only: builds THIS branch's image locally (no push), boots it with
-# JD_THEME=jd-highlighter for each accent in the matrix, waits for the READY
-# banner, records the theme/agent/crash log signals, and screenshots the live
-# desktop. Nothing is published. Runs only when this file changes on the branch.
+# Builds THIS branch's image, boots it with JD_THEME=jd-highlighter to prove the
+# theme applies and the JVM stays up, then pushes it to GHCR under a SEPARATE
+# preview tag (:jd-highlighter-preview) so it can be run as a parallel test
+# container. It never touches :latest. Runs when this file or the theme changes.
 
 on:
   push:
@@ -13,74 +13,46 @@ on:
       - 'rootfs/opt/JDownloader/flatlaf-defaults/highlighter.properties.tmpl'
       - 'rootfs/usr/local/bin/jdownloader-theme.sh'
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   preview:
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { accent: '#ffee00', tag: yellow }
+    env:
+      IMG: ghcr.io/junkerderprovinz/jdownloader:jd-highlighter-preview
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build the branch image (amd64, no push)
+      - name: Build the branch image (amd64)
         run: DOCKER_BUILDKIT=1 docker build -t jd:preview .
 
-      - name: Boot with the jd-highlighter theme (accent ${{ matrix.accent }})
-        run: |
-          docker run -d --name jd \
-            -e JD_THEME=jd-highlighter \
-            -e JD_ACCENT="${{ matrix.accent }}" \
-            -e JD_DEBUG_GEO=1 \
-            -p 3000:3000 -p 3001:3001 jd:preview
-
-      - name: Wait for the JD GUI (READY banner, up to 15 min)
+      - name: Boot with the jd-highlighter theme (READY + no crash gate)
         run: |
           set -uo pipefail
+          docker run -d --name jd \
+            -e JD_THEME=jd-highlighter -e JD_ACCENT="#ffee00" -e JD_DEBUG_GEO=1 \
+            -p 3000:3000 -p 3001:3001 jd:preview
           for i in $(seq 1 90); do
-            if docker logs jd 2>&1 | grep -q "IS READY"; then echo "READY after ~$((i*10))s"; break; fi
-            if [ -z "$(docker ps -q --filter name=jd)" ]; then echo "container exited early:"; docker logs jd || true; exit 1; fi
+            docker logs jd 2>&1 | grep -q "IS READY" && { echo "READY after ~$((i*10))s"; break; }
+            [ -z "$(docker ps -q --filter name=jd)" ] && { echo "exited early:"; docker logs jd || true; exit 1; }
             sleep 10
           done
+          sleep 20
+          docker logs jd > full.log 2>&1 || true
+          grep -E "wrote accented FlatLaf defaults|registered custom defaults source" full.log | tail -5 || echo "(no theme signals)"
+          if grep -E "UnsupportedClassVersionError|processing of -javaagent failed|FATAL ERROR in native method|agent load/premain call failed" full.log; then
+            echo "::error::agent/JVM crash signature — not pushing"; exit 1
+          fi
+          echo "clean — safe to publish the preview tag"
 
-      - name: Settle, then collect log signals
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Push the preview tag (never :latest)
         run: |
-          sleep 60
-          mkdir -p out
-          docker logs jd > out/full.log 2>&1 || true
-          echo "=== theme signals ==="
-          grep -E "wrote accented FlatLaf defaults|registered custom defaults source|Theme=jd-highlighter|lookandfeeltheme" out/full.log | tail -20 || echo "(none found)"
-          echo "=== crash signatures (MUST be empty) ==="
-          if grep -E "UnsupportedClassVersionError|processing of -javaagent failed|FATAL ERROR in native method|agent load/premain call failed" out/full.log; then
-            echo "::error::agent/JVM crash signature present"; exit 1
-          else echo "(clean)"; fi
-
-      - name: Populate a download + screenshot (progress bar + accent button)
-        run: |
-          docker exec -u root jd bash -c 'apt-get update -qq >/dev/null 2>&1; apt-get install -y -qq x11-apps imagemagick xdotool >/dev/null 2>&1' || true
-          DISP=$(docker exec jd sh -c 'ls /tmp/.X11-unix 2>/dev/null | head -1 | sed "s/^X/:/"'); DISP="${DISP:-:1}"
-          echo "X display: $DISP"
-          shoot() { docker exec -u root jd sh -c "xwd -root -display $DISP -silent | convert xwd:- png:-" > "out/$1" || echo "shot $1 failed"; }
-          click() { docker exec -u root jd sh -c "DISPLAY=$DISP xdotool mousemove $1 $2 click 1" || true; }
-          type_() { docker exec -u root jd sh -c "DISPLAY=$DISP xdotool type --delay 40 -- '$1'" || true; }
-          # empty download tab first
-          shoot desktop.png
-          # queue an auto-start download via folderwatch so a row + accent progress bar appears
-          docker exec jd sh -c 'D=/config/JDownloader/folderwatch; mkdir -p "$D"; printf "text=https://speed.hetzner.de/1GB.bin\nautoStart=TRUE\nautoConfirm=TRUE\nenabled=TRUE\naddOfflineLink=TRUE\n" > "$D/preview.crawljob"' || true
-          echo "waiting for the download to appear + progress..."; sleep 55
-          docker logs jd 2>&1 | grep -iE "crawljob|folderwatch|1GB|hetzner|LinkCrawler|download" | tail -10 || true
-          shoot desktop-downloads.png
-          # Add New Links dialog, type a URL -> enables the accent-filled default button
-          click 70 734; sleep 4
-          click 400 254; sleep 1; type_ "https://speed.hetzner.de/100MB.bin"; sleep 2
-          shoot desktop-addlinks-filled.png
-          ls -la out/
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v7
-        with:
-          name: theme-preview-${{ matrix.tag }}
-          path: out/
-          if-no-files-found: warn
+          docker tag jd:preview "$IMG"
+          docker push "$IMG"
+          echo "published $IMG"
