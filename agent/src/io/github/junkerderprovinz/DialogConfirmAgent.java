@@ -1184,7 +1184,7 @@ public class DialogConfirmAgent {
         return accentCache;
     }
 
-    private static final int SIDEBAR_ROW_PX = 52;
+    private static final int SIDEBAR_ROW_PX = 66;   // native is ~53 in this JD build; must exceed it
 
     /**
      * Raise the Settings sidebar's row height. JD gives every entry a fixed size from a
@@ -1359,6 +1359,7 @@ public class DialogConfirmAgent {
                     } catch (Throwable ignore) { }
                 }
                 hideSeparators(panel);   // remove the "title ----" section lines; cards give structure
+                spreadSections(panel);   // add a vertical gap between sections so cards sit apart
             }
             if (child instanceof Container) cardSectionsIn((Container) child);
         }
@@ -1380,7 +1381,7 @@ public class DialogConfirmAgent {
     private static final class SectionCardBorder implements javax.swing.border.Border {
         private final javax.swing.border.Border original;
         private static final Color CARD = new Color(0x1e, 0x1e, 0x1e);
-        private static final int PAD_H = 10, PAD_TOP = 8, ARC = 14, GAP = 10;
+        private static final int PAD_H = 12, PAD_TOP = 10, PAD_BOTTOM = 12, ARC = 14;
         SectionCardBorder(javax.swing.border.Border original) { this.original = original; }
 
         public boolean isBorderOpaque() { return false; }
@@ -1388,18 +1389,15 @@ public class DialogConfirmAgent {
         public java.awt.Insets getBorderInsets(Component c) {
             java.awt.Insets in = (original != null) ? original.getBorderInsets(c)
                     : new java.awt.Insets(0, 0, 0, 0);
-            return new java.awt.Insets(in.top + PAD_TOP, in.left + PAD_H, in.bottom + PAD_TOP, in.right + PAD_H);
+            return new java.awt.Insets(in.top + PAD_TOP, in.left + PAD_H, in.bottom + PAD_BOTTOM, in.right + PAD_H);
         }
 
         public void paintBorder(Component c, Graphics g, int x, int y, int w, int h) {
             if (!(c instanceof Container)) return;
+            Container p = (Container) c;
             List<Component> headers = new ArrayList<>();
-            int contentBottom = 0;
-            for (Component ch : ((Container) c).getComponents()) {
-                if (!ch.isVisible()) continue;
-                contentBottom = Math.max(contentBottom, ch.getY() + ch.getHeight());
-                if (ch.getClass().getName().endsWith(".Header")) headers.add(ch);
-            }
+            for (Component ch : p.getComponents())
+                if (ch.isVisible() && ch.getClass().getName().endsWith(".Header")) headers.add(ch);
             if (!headers.isEmpty()) {
                 headers.sort((a, b) -> Integer.compare(a.getY(), b.getY()));
                 Graphics2D g2 = (Graphics2D) g.create();
@@ -1408,19 +1406,50 @@ public class DialogConfirmAgent {
                     g2.setColor(CARD);
                     int left = x + 2, right = x + w - 2;
                     for (int i = 0; i < headers.size(); i++) {
-                        int top = headers.get(i).getY() - PAD_TOP;
-                        int bottom = (i + 1 < headers.size())
-                                ? headers.get(i + 1).getY() - GAP
-                                : contentBottom + PAD_TOP;
-                        if (bottom - top > 6) {
+                        int hTop = headers.get(i).getY();
+                        int hNext = (i + 1 < headers.size()) ? headers.get(i + 1).getY() : Integer.MAX_VALUE;
+                        // Enclose ONLY this section's rows (children between this header and the
+                        // next). The card ends at the content, so the injected gap-above-header
+                        // (spreadSections) shows as a clean gap between the cards.
+                        int contentBottom = hTop + headers.get(i).getHeight();
+                        for (Component ch : p.getComponents()) {
+                            if (!ch.isVisible()) continue;
+                            int cy = ch.getY();
+                            if (cy >= hTop && cy < hNext) contentBottom = Math.max(contentBottom, cy + ch.getHeight());
+                        }
+                        int top = hTop - PAD_TOP, bottom = contentBottom + PAD_BOTTOM;
+                        if (bottom - top > 6)
                             g2.fill(new java.awt.geom.RoundRectangle2D.Float(
                                     left, top, right - left, bottom - top, ARC, ARC));
-                        }
                     }
                 } finally { g2.dispose(); }
             }
             if (original != null) original.paintBorder(c, g, x, y, w, h);
         }
+    }
+
+    // Inject a vertical gap ABOVE each section (except the first) via the config panel's
+    // MigLayout, so the cards sit clearly apart. Idempotent (skips a header that already
+    // carries our gaptop) + re-applies after a JD rebuild. Same setComponentConstraints
+    // reflection the toolbar-grow already uses.
+    private static void spreadSections(JComponent panel) {
+        LayoutManager lm = panel.getLayout();
+        if (lm == null || !lm.getClass().getName().contains("MigLayout")) return;
+        try {
+            Method gc = lm.getClass().getMethod("getComponentConstraints", Component.class);
+            Method sc = lm.getClass().getMethod("setComponentConstraints", Component.class, Object.class);
+            boolean first = true, changed = false;
+            for (Component ch : panel.getComponents()) {
+                if (!ch.getClass().getName().endsWith(".Header")) continue;
+                if (first) { first = false; continue; }   // no gap above the first section
+                Object cur = gc.invoke(lm, ch);
+                String cc = (cur == null) ? "" : cur.toString();
+                if (cc.contains("gaptop")) continue;       // already spread
+                sc.invoke(lm, ch, (cc.isEmpty() ? "" : cc + ",") + "gaptop 26");
+                changed = true;
+            }
+            if (changed) { panel.revalidate(); panel.repaint(); }
+        } catch (Throwable ignore) { }
     }
 
     // --- pop-up dialogs: lighter content + dimmed backdrop -------------------
