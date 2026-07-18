@@ -17,10 +17,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - name: Boot the container
+      - name: Boot the container (jd-highlighter theme)
         run: |
-          docker run -d --name jd -e JD_DEBUG_GEO=1 -p 3000:3000 -p 3001:3001 \
-            "${{ github.event.inputs.image || 'ghcr.io/junkerderprovinz/jdownloader:v3-preview' }}"
+          docker run -d --name jd -e JD_DEBUG_GEO=1 \
+            -e JD_THEME=jd-highlighter -e JD_ACCENT="#ffee00" \
+            -p 3000:3000 -p 3001:3001 \
+            "${{ github.event.inputs.image || 'ghcr.io/junkerderprovinz/jdownloader:jd-highlighter-preview' }}"
 
       - name: Wait for the JD GUI (READY banner, up to 15 min)
         run: |
@@ -60,13 +62,21 @@ jobs:
           echo "=== heal lines ==="
           grep -E "INVALID flatlaf|deregistered|requested flatlaf" out/full.log || echo "(none)"
 
-      - name: Screenshot the live desktop
+      - name: Screenshot the live desktop (main + tab-hover + settings + menu)
         run: |
-          docker exec -u root jd bash -c 'apt-get update -qq >/dev/null 2>&1; apt-get install -y -qq x11-apps imagemagick >/dev/null 2>&1' || true
-          DISP=$(docker exec jd sh -c 'ls /tmp/.X11-unix 2>/dev/null | head -1 | sed "s/^X/:/"')
-          echo "X display: ${DISP:-unknown}"
-          docker exec -u root jd sh -c "xwd -root -display ${DISP:-:1} -silent | convert xwd:- png:-" > out/desktop.png || echo "screenshot failed"
-          ls -la out/
+          set -uo pipefail
+          docker exec -u root jd bash -c 'apt-get update -qq >/dev/null 2>&1; apt-get install -y -qq x11-apps imagemagick xdotool >/dev/null 2>&1' || true
+          DISP=$(docker exec jd sh -c 'ls /tmp/.X11-unix 2>/dev/null | head -1 | sed "s/^X/:/"'); DISP="${DISP:-:1}"
+          echo "X display: $DISP"; docker exec -u root -e DISPLAY="$DISP" jd sh -c 'xdotool getdisplaygeometry' || true
+          shot() { docker exec -u root jd sh -c "xwd -root -display $DISP -silent | convert xwd:- png:-" > "out/$1.png" 2>/dev/null && echo "  shot $1 ($(wc -c < out/$1.png) bytes)"; }
+          xd() { docker exec -u root -e DISPLAY="$DISP" jd xdotool "$@" 2>/dev/null || true; }
+          WIN=$(docker exec -u root -e DISPLAY="$DISP" jd sh -c 'xdotool search --name JDownloader 2>/dev/null | tail -1' || true)
+          [ -n "$WIN" ] && xd windowactivate "$WIN"; sleep 3
+          shot 01-main
+          xd mousemove 250 95;  sleep 1; shot 02-tab-hover      # hover the LinkGrabber tab (accent hover)
+          xd key ctrl+p;        sleep 6; shot 03-settings        # open Settings (cards/sidebar/fields)
+          xd key F10; sleep 1; xd key Down; sleep 1; shot 04-menu; xd key Escape
+          ls -la out/*.png 2>/dev/null || echo "no shots"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
