@@ -41,3 +41,40 @@ Button.arc        = 6
 Component.arc     = 6
 TextComponent.arc = 6
 CheckBox.arc      = 4
+
+# --- main tabs: the selected tab is an accent BUTTON (pill), not an underline ---
+TabbedPane.selectedBackground = @@ACCENT@@
+TabbedPane.selectedForeground = @@ACCENT_FG@@
+TabbedPane.tabSelectionHeight = 0
+TabbedPane.hoverColor         = @@ACCENT@@
+TabbedPane.tabArc             = 10
+TabbedPane.cardTabArc         = 10
+TabbedPane.tabInsets          = 4,12,4,12
+
+# --- toolbar + menu: accent background on hover / selection ---
+Button.toolbar.hoverBackground    = @@ACCENT@@
+Button.toolbar.pressedBackground  = @@ACCENT@@
+Button.toolbar.selectedBackground = @@ACCENT@@
+MenuBar.hoverBackground           = @@ACCENT@@
+MenuBar.selectionBackground       = @@ACCENT@@
+MenuBar.selectionForeground       = @@ACCENT_FG@@
+Menu.hoverBackground              = @@ACCENT@@
+Menu.selectionBackground          = @@ACCENT@@
+Menu.selectionForeground          = @@ACCENT_FG@@
+MenuItem.selectionBackground      = @@ACCENT@@
+MenuItem.selectionForeground      = @@ACCENT_FG@@
+
+# --- no lines anywhere: differentiate by shading, not borders ---
+Table.showHorizontalLines        = false
+Table.showVerticalLines          = false
+Table.gridColor                  = #161616
+Table.intercellSpacing           = 0,0
+TableHeader.separatorColor       = #161616
+TableHeader.bottomSeparatorColor = #161616
+TableHeader.background           = #1e1e1e
+TableHeader.foreground           = #f4f4f4
+ScrollPane.border                = 0,0,0,0
+List.border                      = 0,0,0,0
+Tree.border                      = 0,0,0,0
+SplitPane.background             = #161616
+SplitPaneDivider.draggingColor   = #161616

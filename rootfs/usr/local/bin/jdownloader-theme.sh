@@ -152,6 +152,18 @@ PYEOF
         render_properties "${TMPL}" "${ACCENT}" "${DEF}"
         log "jd-highlighter: wrote accented FlatLaf defaults (accent=${ACCENT}) -> ${DEF}"
     fi
+    # jd-highlighter: borderless JD panels — drop the #393939 border line so JD's own
+    # content areas differentiate by shading, not lines (Dark keeps its border).
+    if [ "${HL}" = "1" ]; then
+        python3 - "${JD_CFG}/laf/FlatDarkLaf.json" <<'PYEOF'
+import json, sys
+p = sys.argv[1]
+d = json.load(open(p))
+d["colorforpanelborders"] = "#ff161616"
+json.dump(d, open(p, "w"), indent=2)
+print("[jdownloader-theme] jd-highlighter: borderless panels (colorforpanelborders=bg)")
+PYEOF
+    fi
 else
     # Light: JD_Plain (flat) icons, JD's default light colours.
     python3 - "${JD_CFG}/laf/FlatLightLaf.json" <<'PYEOF'
