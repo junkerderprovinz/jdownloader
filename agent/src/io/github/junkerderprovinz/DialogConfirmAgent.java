@@ -259,6 +259,7 @@ public class DialogConfirmAgent {
             lafTick = 0;
             writeLafMarker();
             if (GEO_DEBUG) dumpGeometry();
+            if (isHighlighter()) logHlPolish();   // ground-truth what the polish sweep finds
         }
     }
 
@@ -1212,13 +1213,18 @@ public class DialogConfirmAgent {
                         Object dim = f.get(null);
                         if (dim instanceof Dimension && ((Dimension) dim).height < SIDEBAR_ROW_PX) {
                             ((Dimension) dim).height = SIDEBAR_ROW_PX;
+                            // a variable-height JList caches cell heights; the DIMENSION change alone
+                            // does NOT invalidate that cache. Toggling fixedCellHeight fires the
+                            // property change that forces the UI to recompute, then back to variable.
+                            list.setFixedCellHeight(SIDEBAR_ROW_PX);
+                            list.setFixedCellHeight(-1);
                             list.revalidate();
                             list.repaint();
                             System.out.println("[jd-dialog-agent] jd-highlighter: settings sidebar row height -> "
                                     + SIDEBAR_ROW_PX + "px");
                         }
-                    } catch (Throwable ignore) {
-                        // field shape differs on this JD build -> leave the height stock
+                    } catch (Throwable t) {
+                        System.out.println("[jd-dialog-agent] sidebar height bump failed: " + t);
                     }
                     // Accent hover: ConfigSidebar paints the hovered row as a 10%-alpha fill of
                     // the list FOREGROUND; the TreeRenderer sets its own text colour, so tinting
@@ -1285,17 +1291,39 @@ public class DialogConfirmAgent {
         for (Component child : c.getComponents()) {
             if (child instanceof javax.swing.JTabbedPane) {
                 javax.swing.JTabbedPane tp = (javax.swing.JTabbedPane) child;
-                int sel = tp.getSelectedIndex();
-                for (int i = 0; i < tp.getTabCount(); i++) {
-                    // plain Color (not ColorUIResource) so FlatLaf treats it as app-set + honours it
-                    Color want = new Color((i == sel ? selFg : norFg).getRGB());
-                    if (!want.equals(tp.getForegroundAt(i))) tp.setForegroundAt(i, want);
-                    Component tc = tp.getTabComponentAt(i);   // custom tab component (JLabel etc.)
-                    if (tc != null) setLabelFg(tc, want);
-                }
+                applyTabForegrounds(tp, selFg, norFg, -1);   // no hover known here; the listener tracks it
+                installTabHoverListener(tp, selFg, norFg);
             }
             if (child instanceof Container) recolorTabsIn((Container) child, selFg, norFg);
         }
+    }
+
+    /** Dark text on tabs with an accent background (SELECTED or HOVERED), light on the rest.
+     *  JD's custom tab components bypass FlatLaf's hover/selectedForeground, so we own it. */
+    private static void applyTabForegrounds(javax.swing.JTabbedPane tp, Color selFg, Color norFg, int hover) {
+        int sel = tp.getSelectedIndex();
+        for (int i = 0; i < tp.getTabCount(); i++) {
+            boolean accentBg = (i == sel || i == hover);
+            Color want = new Color((accentBg ? selFg : norFg).getRGB());  // plain Color: app-set, honoured
+            if (!want.equals(tp.getForegroundAt(i))) tp.setForegroundAt(i, want);
+            Component tc = tp.getTabComponentAt(i);   // custom tab component (JLabel etc.)
+            if (tc != null) setLabelFg(tc, want);
+        }
+    }
+
+    private static final String TAB_HOVER_WIRED = "jdp.tabHoverWired";
+    private static void installTabHoverListener(final javax.swing.JTabbedPane tp,
+                                                final Color selFg, final Color norFg) {
+        if (Boolean.TRUE.equals(tp.getClientProperty(TAB_HOVER_WIRED))) return;
+        tp.putClientProperty(TAB_HOVER_WIRED, Boolean.TRUE);
+        MouseAdapter h = new MouseAdapter() {
+            @Override public void mouseMoved(MouseEvent e) {
+                applyTabForegrounds(tp, selFg, norFg, tp.indexAtLocation(e.getX(), e.getY()));
+            }
+            @Override public void mouseExited(MouseEvent e) { applyTabForegrounds(tp, selFg, norFg, -1); }
+        };
+        tp.addMouseMotionListener(h);
+        tp.addMouseListener(h);
     }
 
     private static void setLabelFg(Component c, Color fg) {
@@ -1317,17 +1345,35 @@ public class DialogConfirmAgent {
 
     private static void cardSectionsIn(Container c) {
         for (Component child : c.getComponents()) {
-            if (child instanceof JComponent && child.getClass().getName().endsWith(".AbstractConfigPanel")) {
+            // JD's settings pages are SUBCLASSES of AbstractConfigPanel (GeneralSettingsConfigPanel,
+            // ...), so match the superclass chain, not the exact class name.
+            if (child instanceof JComponent && isConfigPanel(child.getClass())) {
                 JComponent panel = (JComponent) child;
                 if (!(panel.getBorder() instanceof SectionCardBorder)) {
                     try {
                         panel.setBorder(new SectionCardBorder(panel.getBorder()));
                         panel.revalidate();
                         panel.repaint();
+                        System.out.println("[jd-dialog-agent] jd-highlighter: carded settings panel "
+                                + child.getClass().getSimpleName());
                     } catch (Throwable ignore) { }
                 }
+                hideSeparators(panel);   // remove the "title ----" section lines; cards give structure
             }
             if (child instanceof Container) cardSectionsIn((Container) child);
+        }
+    }
+
+    private static boolean isConfigPanel(Class<?> k) {
+        for (; k != null && k != Object.class; k = k.getSuperclass())
+            if (k.getName().endsWith(".AbstractConfigPanel")) return true;
+        return false;
+    }
+
+    private static void hideSeparators(Container c) {
+        for (Component ch : c.getComponents()) {
+            if (ch instanceof javax.swing.JSeparator) { if (ch.isVisible()) ch.setVisible(false); }
+            else if (ch instanceof Container) hideSeparators((Container) ch);
         }
     }
 
@@ -1413,44 +1459,75 @@ public class DialogConfirmAgent {
             new java.util.WeakHashMap<Window, Component>();
 
     private static void dimModalBackdrops() {
-        java.util.Set<Window> needDim = new java.util.HashSet<Window>();
+        boolean modal = false;
         for (Window w : Window.getWindows()) {
-            if (!(w instanceof Dialog) || !w.isShowing()) continue;
-            if (((Dialog) w).getModalityType() == Dialog.ModalityType.MODELESS) continue;
-            Window owner = ((Dialog) w).getOwner();
-            while (owner instanceof Dialog) owner = ((Dialog) owner).getOwner();
-            if (owner instanceof javax.swing.RootPaneContainer && owner.isShowing()) needDim.add(owner);
+            if (w instanceof Dialog && w.isShowing()
+                    && ((Dialog) w).getModalityType() != Dialog.ModalityType.MODELESS) { modal = true; break; }
         }
-        for (Window owner : needDim) {
-            if (DIMMED.containsKey(owner)) continue;
-            try {
-                javax.swing.JRootPane rp = ((javax.swing.RootPaneContainer) owner).getRootPane();
+        // Dim the MAIN frame (the big visible one). A modal dialog's DECLARED owner is often a
+        // hidden shared frame, so dimming that showed nothing (why the backdrop looked absent).
+        // The dialog is a separate window and stays bright above the dimmed main frame.
+        Frame main = null;
+        for (Frame f : Frame.getFrames()) {
+            if (f.isShowing() && f.getWidth() > 600 && f.getHeight() > 400
+                    && f instanceof javax.swing.RootPaneContainer) { main = f; break; }
+        }
+        if (main == null) return;
+        boolean has = DIMMED.containsKey(main);
+        try {
+            javax.swing.JRootPane rp = ((javax.swing.RootPaneContainer) main).getRootPane();
+            if (rp == null) return;
+            if (modal && !has) {
                 Component saved = rp.getGlassPane();
                 JComponent dim = new JComponent() {
                     protected void paintComponent(Graphics g) {
-                        g.setColor(new Color(0, 0, 0, 96));
+                        g.setColor(new Color(0, 0, 0, 140));   // ~55% black backdrop
                         g.fillRect(0, 0, getWidth(), getHeight());
                     }
                 };
                 dim.setOpaque(false);
                 rp.setGlassPane(dim);
                 dim.setVisible(true);
-                DIMMED.put(owner, saved);
-            } catch (Throwable ignore) { }
-        }
-        for (java.util.Iterator<java.util.Map.Entry<Window, Component>> it = DIMMED.entrySet().iterator(); it.hasNext();) {
-            java.util.Map.Entry<Window, Component> e = it.next();
-            if (needDim.contains(e.getKey())) continue;
-            try {
-                Window owner = e.getKey();
-                if (owner instanceof javax.swing.RootPaneContainer) {
-                    javax.swing.JRootPane rp = ((javax.swing.RootPaneContainer) owner).getRootPane();
-                    Component saved = e.getValue();
-                    if (saved != null) { rp.setGlassPane(saved); saved.setVisible(false); }
-                    else rp.getGlassPane().setVisible(false);
+                DIMMED.put(main, saved);
+                System.out.println("[jd-dialog-agent] jd-highlighter: dimmed main window behind modal dialog");
+            } else if (!modal && has) {
+                Component saved = DIMMED.remove(main);
+                if (saved != null) { rp.setGlassPane(saved); saved.setVisible(false); }
+                else rp.getGlassPane().setVisible(false);
+            }
+        } catch (Throwable ignore) { }
+    }
+
+    // --- diagnostics: what does the jd-highlighter sweep actually find? ------
+    private static void logHlPolish() {
+        try {
+            int[] n = {0, 0, 0};   // tabbedPanes, configPanels, combos
+            int[] sidebarH = {-1}; // -1 none, -2 list-but-no-DIMENSION, >0 the DIMENSION height
+            for (Window w : Window.getWindows()) {
+                if (w.isShowing()) countHl(w, n, sidebarH);
+            }
+            System.out.println("[jd-dialog-agent] hl-polish: tabbedPanes=" + n[0]
+                    + " configPanels=" + n[1]
+                    + " sidebar=" + (sidebarH[0] == -1 ? "none" : sidebarH[0] == -2 ? "list-no-DIMENSION" : sidebarH[0] + "px")
+                    + " combos=" + n[2]);
+        } catch (Throwable ignore) { }
+    }
+
+    private static void countHl(Container c, int[] n, int[] sidebarH) {
+        for (Component ch : c.getComponents()) {
+            if (ch instanceof javax.swing.JTabbedPane) n[0]++;
+            if (ch instanceof JComponent && isConfigPanel(ch.getClass())) n[1]++;
+            if (ch instanceof javax.swing.JComboBox) n[2]++;
+            if (ch instanceof javax.swing.JList) {
+                javax.swing.ListCellRenderer<?> r = ((javax.swing.JList<?>) ch).getCellRenderer();
+                if (r != null && r.getClass().getName().endsWith("TreeRenderer")) {
+                    try {
+                        Object dim = r.getClass().getField("DIMENSION").get(null);
+                        if (dim instanceof Dimension) sidebarH[0] = ((Dimension) dim).height;
+                    } catch (Throwable ignore) { sidebarH[0] = -2; }
                 }
-            } catch (Throwable ignore) { }
-            it.remove();
+            }
+            if (ch instanceof Container) countHl((Container) ch, n, sidebarH);
         }
     }
 
