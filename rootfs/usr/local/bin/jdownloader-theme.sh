@@ -54,6 +54,71 @@ case "${THEME}" in
 esac
 log "Theme=${THEME} -> lookandfeeltheme=${LAF}"
 
+# --- icon colour mode: color (JD's flat, default) | mono (runtime monochrome set) ---
+# JD ships only colourful iconsets, has no monochrome one, and FlatLaf cannot tint
+# JD's icons (they load via AppWork NewTheme, bypassing the LAF). So JD_ICONS=mono
+# GENERATES a monochrome copy of the flat set at start: every saturated fill -> one
+# mono colour, near-white knockouts -> transparent (the surface shows the glyph). The
+# copy uses the "my-" prefix so JD's self-update never overwrites it. It is built on
+# the user's own machine and never redistributed (the flat set is icons8 CC BY-ND).
+ICONS="${JD_ICONS:-color}"
+ICONSET="flat"
+case "${ICONS,,}" in
+    mono|bw|monochrome|blackwhite) ICONSET="my-flat-mono" ;;
+esac
+if [ "${ICONSET}" = "my-flat-mono" ]; then
+    MONO="#f4f4f4"; [ "${LAF}" = "FLATLAF_LIGHT" ] && MONO="#161616"
+    ICON_SRC="${JD_DIR}/themes/flat"
+    ICON_DST="${JD_DIR}/themes/my-flat-mono"
+    if [ -d "${ICON_SRC}" ] && [ ! -d "${ICON_DST}" ]; then
+        python3 - "${ICON_SRC}" "${ICON_DST}" "${MONO}" <<'PYEOF'
+import os, re, shutil, sys
+src, dst, mono = sys.argv[1], sys.argv[2], sys.argv[3]
+
+def lum(h):
+    h = h.lstrip('#')
+    if len(h) == 3:
+        h = ''.join(c * 2 for c in h)
+    r, g, b = (int(h[i:i + 2], 16) for i in (0, 2, 4))
+    def lin(c):
+        c /= 255.0
+        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+    return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+
+if os.path.isdir(dst):
+    shutil.rmtree(dst)
+shutil.copytree(src, dst)
+
+fill_re = re.compile(r'(fill\s*[:=]\s*["\']?)(#[0-9a-fA-F]{3,6})')
+def sub(m):
+    # near-white knockouts -> transparent so the glyph reads on any surface;
+    # every other fill -> the single mono colour.
+    return m.group(1) + ('none' if lum(m.group(2)) >= 0.82 else mono)
+
+changed = 0
+for root, _, files in os.walk(dst):
+    parts = root.replace(os.sep, '/').lower().split('/')
+    if 'flags' in parts or 'logo' in parts:   # keep country flags + JD logo in colour
+        continue
+    for fn in files:
+        if not fn.lower().endswith('.svg'):
+            continue
+        p = os.path.join(root, fn)
+        with open(p, 'r', encoding='utf-8', errors='ignore') as fh:
+            svg = fh.read()
+        new = fill_re.sub(sub, svg)
+        if new != svg:
+            with open(p, 'w', encoding='utf-8') as fh:
+                fh.write(new)
+            changed += 1
+print("[jdownloader-theme] mono icons: recoloured %d svgs -> %s (mono=%s)" % (changed, dst, mono))
+PYEOF
+    fi
+    # never point JD at a set that isn't there (e.g. flat not seeded yet)
+    [ -d "${ICON_DST}" ] || { ICONSET="flat"; log "mono icon set unavailable — falling back to flat"; }
+fi
+log "icons=${ICONS} -> iconsetid=${ICONSET}"
+
 # 1) Look-and-Feel (window chrome / Swing) — GraphicalUserInterfaceSettings
 python3 - "${JD_CFG}/org.jdownloader.settings.GraphicalUserInterfaceSettings.json" "${LAF}" <<'PYEOF'
 import json, os, sys
@@ -71,14 +136,15 @@ PYEOF
 if [ "${LAF}" = "FLATLAF_DARK" ]; then
     # JD_Plain (flat) icons + IBM Carbon #161616 "colorfor*" palette. JD reads these
     # for the download list, link grabber, settings table, progress bars, etc.
-    python3 - "${JD_CFG}/laf/FlatDarkLaf.json" <<'PYEOF'
+    python3 - "${JD_CFG}/laf/FlatDarkLaf.json" "${ICONSET}" <<'PYEOF'
 import json, os, sys
 path = sys.argv[1]
+iconset = sys.argv[2]
 # Write a FRESH dict (do NOT load+merge the existing file). Otherwise JD's previous
 # values for keys we no longer set linger forever (e.g. an old grey speed-meter graph).
 # Any key we omit is filled by JD's own default (e.g. the GREEN speed-meter graph).
 d = {
-    "iconsetid": "flat",
+    "iconsetid": iconset,
     # IBM Carbon grayscale — pure monochrome dark, #161616 base, NO colour accent.
     # panels / config
     "colorforpanelbackground":                    "#ff161616",
@@ -140,7 +206,7 @@ d = {
 }
 os.makedirs(os.path.dirname(path), exist_ok=True)
 json.dump(d, open(path, "w"), indent=2)
-print("[jdownloader-theme] Carbon #161616 colorfor* + iconsetid=flat -> %s" % path)
+print("[jdownloader-theme] Carbon #161616 colorfor* + iconsetid=%s -> %s" % (iconset, path))
 PYEOF
 
     # 3) JD Highlighter: bake the user's accent into the FlatLaf control defaults
@@ -166,14 +232,15 @@ PYEOF
     fi
 else
     # Light: JD_Plain (flat) icons, JD's default light colours.
-    python3 - "${JD_CFG}/laf/FlatLightLaf.json" <<'PYEOF'
+    python3 - "${JD_CFG}/laf/FlatLightLaf.json" "${ICONSET}" <<'PYEOF'
 import json, os, sys
 path = sys.argv[1]
+iconset = sys.argv[2]
 # Fresh dict (no load+merge) — same reasoning as the dark branch.
-d = {"iconsetid": "flat", "windowdecorationenabled": False}  # no FlatLaf title bar (kiosk)
+d = {"iconsetid": iconset, "windowdecorationenabled": False}  # no FlatLaf title bar (kiosk)
 os.makedirs(os.path.dirname(path), exist_ok=True)
 json.dump(d, open(path, "w"), indent=2)
-print("[jdownloader-theme] light: iconsetid=flat -> %s" % path)
+print("[jdownloader-theme] light: iconsetid=%s -> %s" % (iconset, path))
 PYEOF
 fi
 

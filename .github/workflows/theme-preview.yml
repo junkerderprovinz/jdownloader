@@ -12,6 +12,7 @@ on:
       - '.github/workflows/theme-preview.yml'
       - 'rootfs/opt/JDownloader/flatlaf-defaults/highlighter.properties.tmpl'
       - 'rootfs/usr/local/bin/jdownloader-theme.sh'
+      - 'rootfs/etc/cont-init.d/10-jdownloader-setup'
 
 permissions:
   contents: read
@@ -33,7 +34,7 @@ jobs:
         run: |
           set -uo pipefail
           docker run -d --name jd \
-            -e JD_THEME=jd-highlighter -e JD_ACCENT="#ffee00" -e JD_DEBUG_GEO=1 \
+            -e JD_THEME=jd-highlighter -e JD_ACCENT="#ffee00" -e JD_ICONS=mono -e JD_DEBUG_GEO=1 \
             -p 3000:3000 -p 3001:3001 jd:preview
           for i in $(seq 1 90); do
             docker logs jd 2>&1 | grep -q "IS READY" && { echo "READY after ~$((i*10))s"; break; }
@@ -42,7 +43,10 @@ jobs:
           done
           sleep 20
           docker logs jd > full.log 2>&1 || true
-          grep -E "wrote accented FlatLaf defaults|registered custom defaults source" full.log | tail -5 || echo "(no theme signals)"
+          grep -E "wrote accented FlatLaf defaults|registered custom defaults source|mono icons: recoloured|folderwatch enabled" full.log | tail -8 || echo "(no theme signals)"
+          # the mono-icon generator must have run and produced a non-empty set
+          grep -qE "mono icons: recoloured [1-9][0-9]* svgs" full.log || { echo "::error::mono icon generation produced nothing"; exit 1; }
+          docker exec jd sh -c 'ls /config/JDownloader/themes/my-flat-mono/org/jdownloader/images >/dev/null 2>&1' || { echo "::error::my-flat-mono iconset missing"; exit 1; }
           if grep -E "UnsupportedClassVersionError|processing of -javaagent failed|FATAL ERROR in native method|agent load/premain call failed" full.log; then
             echo "::error::agent/JVM crash signature — not pushing"; exit 1
           fi

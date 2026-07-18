@@ -65,16 +65,22 @@ MenuItem.selectionBackground      = @@ACCENT@@
 MenuItem.selectionForeground      = @@ACCENT_FG@@
 
 # --- no lines anywhere: differentiate by shading, not borders ---
-Table.showHorizontalLines        = false
-Table.showVerticalLines          = false
-Table.gridColor                  = #161616
-Table.intercellSpacing           = 0,0
-TableHeader.separatorColor       = #161616
-TableHeader.bottomSeparatorColor = #161616
-TableHeader.background           = #1e1e1e
-TableHeader.foreground           = #f4f4f4
-ScrollPane.border                = 0,0,0,0
-List.border                      = 0,0,0,0
-Tree.border                      = 0,0,0,0
-SplitPane.background             = #161616
-SplitPaneDivider.draggingColor   = #161616
+# The header keeps a subtly lighter fill (#1e1e1e) so it reads as a header by
+# SHADE, not by lines. The column separators + underline MUST equal that header
+# fill: a #161616 separator on a #1e1e1e header renders as a darker hairline
+# (that was the "lines are still there" bug). Match them to the fill and they vanish.
+Table.showHorizontalLines            = false
+Table.showVerticalLines              = false
+Table.showTrailingVerticalLine       = false
+Table.gridColor                      = #161616
+Table.intercellSpacing               = 0,0
+TableHeader.background                = #1e1e1e
+TableHeader.foreground               = #f4f4f4
+TableHeader.separatorColor           = #1e1e1e
+TableHeader.bottomSeparatorColor     = #1e1e1e
+TableHeader.showTrailingVerticalLine = false
+ScrollPane.border                    = 0,0,0,0
+List.border                          = 0,0,0,0
+Tree.border                          = 0,0,0,0
+SplitPane.background                 = #161616
+SplitPaneDivider.draggingColor       = #161616

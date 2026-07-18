@@ -86,6 +86,24 @@ esac
 # Only seeds when unset/JD-internal; a user's own GUI choice is preserved.
 /usr/local/bin/jdownloader-downloaddir.sh || log "download-dir hook failed (non-fatal)"
 
+# Folder-watch — auto-import files dropped into the Selkies web desktop. The base
+# lands drag/upload files in $FILE_MANAGER_PATH (default /config/Desktop); without
+# this, a dropped .dlc uploads but nothing appears in the LinkGrabber. JD's built-in
+# folderwatchV2 extension scans that dir and imports link containers (.dlc/.ccf/.rsdf,
+# decrypted) and .crawljob files into the LinkGrabber. Seed ONLY when absent so a
+# user's later GUI toggle-off survives. Theme-independent (applies to every JD_THEME).
+WATCH_DIR="${JD_WATCH_DIR:-${FILE_MANAGER_PATH:-/config/Desktop}}"
+mkdir -p "${WATCH_DIR}"
+FOLDERWATCH_CFG="${JD_CFG}/org.jdownloader.extensions.folderwatchV2.FolderWatchExtension.json"
+if [ ! -f "${FOLDERWATCH_CFG}" ]; then
+    python3 - "${FOLDERWATCH_CFG}" "${WATCH_DIR}" <<'PYEOF'
+import json, sys
+path, watch = sys.argv[1], sys.argv[2]
+json.dump({"enabled": True, "folders": [watch], "checkInterval": 5000}, open(path, "w"), indent=2)
+print("[jdownloader-setup] folderwatch enabled -> %s (watching %s)" % (path, watch))
+PYEOF
+fi
+
 # First-run window state: start the main frame MAXIMIZED. Without this a fresh
 # install opens JD at its built-in 1024x728 default, leaving black desktop around
 # it (JDGui.internalInitLocationAndDimension applies the saved extendedState right
