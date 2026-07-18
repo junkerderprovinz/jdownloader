@@ -150,7 +150,14 @@ public class DialogConfirmAgent {
             new java.io.File("/opt/JDownloader/themes-default/flat/org/jdownloader/images");
     private static final java.io.File EXPANDER_DST_DIR =
             new java.io.File("/config/JDownloader/themes/flat/org/jdownloader/images");
-    private static final String[] EXPANDER_ICONS = { "tree_plus.svg", "tree_minus.svg" };
+    // tree_plus/tree_minus: JD doesn't ship them (see above). exttable/lockColumn +
+    // widthLocked: JD DOES ship them but black (fill #000000), invisible on the dark
+    // header; the image carries light #b0b0b0 versions in themes-default, but JD's
+    // runtime re-provision drops the light copy back to black — same race, same heal.
+    private static final String[] EXPANDER_ICONS = {
+        "tree_plus.svg", "tree_minus.svg",
+        "exttable/lockColumn.svg", "exttable/widthLocked.svg",
+    };
 
     private static void restoreExpanderIcons() {
         for (String name : EXPANDER_ICONS) {
@@ -159,10 +166,10 @@ public class DialogConfirmAgent {
             if (!src.isFile()) continue;                          // source missing (older image) -> nothing to do
             if (dst.isFile() && dst.length() == src.length()) continue; // already the shipped light copy
             try {
-                EXPANDER_DST_DIR.mkdirs();
+                dst.getParentFile().mkdirs();                     // name may carry a subdir (exttable/)
                 java.nio.file.Files.copy(src.toPath(), dst.toPath(),
                         java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-                System.out.println("[jd-dialog-agent] restored light package-expander icon: " + name);
+                System.out.println("[jd-dialog-agent] restored light theme icon: " + name);
             } catch (Throwable ignore) { /* best effort — retried next tick */ }
         }
     }
@@ -240,9 +247,13 @@ public class DialogConfirmAgent {
         widenSpeedEditors();
         growSpeedMeter();
         replaceSpeedGraph();
-        if (isHighlighter()) {          // jd-highlighter-only polish (JD-hardcoded values)
-            bumpSidebarRowHeight();
+        if (isHighlighter()) {          // jd-highlighter-only polish (JD-hardcoded / accent bits)
+            styleSidebar();
             stripSectionUnderlines();
+            recolorMainTabs();
+            cardSettingsSections();
+            recolorDialogs();
+            dimModalBackdrops();
         }
         if (++lafTick >= 12) {   // every ~5s (ticks run every 400ms)
             lafTick = 0;
@@ -1032,8 +1043,13 @@ public class DialogConfirmAgent {
             if (!(val instanceof Color)) continue;
             String ks = key.toString().toLowerCase();
             // Selection backgrounds -> the visible lighter grey (no colour accent).
+            // jd-highlighter EXCEPTION: keep the theme's accent Menu/MenuBar/MenuItem
+            // selection — else an OPENED menu goes grey (its selectionForeground stays
+            // dark -> unreadable dark-on-grey). ks.contains("menu") also covers
+            // CheckBoxMenuItem / RadioButtonMenuItem.selectionBackground.
             if (ks.contains("selectionbackground")) {
-                d.put(key, withAlpha(SEL, ((Color) val).getAlpha()));
+                if (!(isHighlighter() && ks.contains("menu")))
+                    d.put(key, withAlpha(SEL, ((Color) val).getAlpha()));
                 continue;
             }
             // Foreground / text greys must stay readable: de-blue them but NEVER darken
@@ -1044,8 +1060,12 @@ public class DialogConfirmAgent {
             Color rep = remap((Color) val, isText);
             if (rep != null) d.put(key, rep);
         }
-        d.put("Component.accentColor", SEL);   // FlatLaf derives focus/selection from this
-        d.put("TableHeader.background", HEADER);
+        // jd-highlighter keeps its accent (focus/selection) and its own #1e1e1e header;
+        // only plain Dark greys the FlatLaf accent + darkens the header here.
+        if (!isHighlighter()) {
+            d.put("Component.accentColor", SEL);   // FlatLaf derives focus/selection from this
+            d.put("TableHeader.background", HEADER);
+        }
         // Standard Swing JTrees (in some JD dialogs) draw dark [+]/[-] / chevrons that
         // vanish on #161616 — light them. (JD's download package toggle is NOT a Swing
         // tree; it loads theme icons tree_plus/tree_minus, shipped light in the iconset.)
@@ -1135,8 +1155,35 @@ public class DialogConfirmAgent {
 
     private static boolean isHighlighter() { return HL_MARKER.isFile(); }
 
-    private static final int SIDEBAR_ROW_PX = 44;
-    private static boolean   sidebarRowBumped = false;
+    // The user's accent, read once from the rendered FlatLaf defaults (jdownloader-theme.sh
+    // writes "@accentColor = #rrggbb" into HL_MARKER). NOT from UIManager: enforceDarkChrome
+    // greys a blue accent in the defaults. Falls back to JD_ACCENT env, then electric yellow.
+    private static Color   accentCache = null;
+    private static boolean accentRead  = false;
+    private static Color accentColor() {
+        if (accentRead) return accentCache;
+        String hex = null;
+        try {
+            for (String line : java.nio.file.Files.readAllLines(HL_MARKER.toPath())) {
+                String s = line.trim();
+                if (s.startsWith("@accentColor")) {
+                    int eq = s.indexOf('=');
+                    if (eq > 0) { hex = s.substring(eq + 1).trim(); break; }
+                }
+            }
+        } catch (Throwable ignore) { }
+        if (hex == null || hex.isEmpty()) {
+            String env = System.getenv("JD_ACCENT");
+            hex = (env != null && !env.isEmpty()) ? env : "#ffee00";
+        }
+        if (!hex.startsWith("#")) hex = "#" + hex;
+        try { accentCache = Color.decode(hex); }
+        catch (Throwable e) { accentCache = new Color(0xff, 0xee, 0x00); }
+        accentRead = true;
+        return accentCache;
+    }
+
+    private static final int SIDEBAR_ROW_PX = 52;
 
     /**
      * Raise the Settings sidebar's row height. JD gives every entry a fixed size from a
@@ -1146,36 +1193,45 @@ public class DialogConfirmAgent {
      * row at once. Reached through a LIVE renderer instance found in the tree, so the
      * static field resolves in JD's own classloader regardless of the agent's.
      */
-    private static void bumpSidebarRowHeight() {
-        if (sidebarRowBumped) return;
+    private static void styleSidebar() {
         for (Window w : Window.getWindows()) {
-            if (w.isShowing() && bumpSidebarRowIn(w)) return;
+            if (w.isShowing() && styleSidebarIn(w)) return;
         }
     }
 
-    private static boolean bumpSidebarRowIn(Container c) {
+    private static boolean styleSidebarIn(Container c) {
         for (Component child : c.getComponents()) {
             if (child instanceof javax.swing.JList) {
-                javax.swing.ListCellRenderer<?> r = ((javax.swing.JList<?>) child).getCellRenderer();
+                javax.swing.JList<?> list = (javax.swing.JList<?>) child;
+                javax.swing.ListCellRenderer<?> r = list.getCellRenderer();
                 if (r != null && r.getClass().getName().endsWith("sidebar.TreeRenderer")) {
+                    // Roomier rows: bump the shared static DIMENSION height. Idempotent (the
+                    // < guard stops once it is 52), so it survives sidebar rebuilds.
                     try {
                         Field f = r.getClass().getField("DIMENSION");   // public static final Dimension
                         Object dim = f.get(null);
                         if (dim instanceof Dimension && ((Dimension) dim).height < SIDEBAR_ROW_PX) {
                             ((Dimension) dim).height = SIDEBAR_ROW_PX;
-                            child.revalidate();
-                            child.repaint();
+                            list.revalidate();
+                            list.repaint();
                             System.out.println("[jd-dialog-agent] jd-highlighter: settings sidebar row height -> "
                                     + SIDEBAR_ROW_PX + "px");
                         }
                     } catch (Throwable ignore) {
-                        // field shape differs on this JD build -> leave the sidebar stock
+                        // field shape differs on this JD build -> leave the height stock
                     }
-                    sidebarRowBumped = true;   // one shot either way; DIMENSION is shared/static
+                    // Accent hover: ConfigSidebar paints the hovered row as a 10%-alpha fill of
+                    // the list FOREGROUND; the TreeRenderer sets its own text colour, so tinting
+                    // the list foreground accents only the hover overlay. Re-applied per instance
+                    // (not one-shot) so a rebuilt sidebar keeps the accent hover.
+                    try {
+                        Color acc = accentColor();
+                        if (acc != null && !acc.equals(list.getForeground())) list.setForeground(acc);
+                    } catch (Throwable ignore) { }
                     return true;
                 }
             }
-            if (child instanceof Container && bumpSidebarRowIn((Container) child)) return true;
+            if (child instanceof Container && styleSidebarIn((Container) child)) return true;
         }
         return false;
     }
@@ -1207,6 +1263,194 @@ public class DialogConfirmAgent {
                 }
             }
             if (child instanceof Container) stripUnderlinesIn((Container) child);
+        }
+    }
+
+    // --- main tabs: readable text on the accent selected tab ------------------
+    // FlatLaf's TabbedPane.selectedForeground is defeated when JD sets a per-tab foreground
+    // / a custom tab component / an HTML title (JD recolours the LinkGrabber tab for "new
+    // links"). So set the per-tab foreground ourselves: dark on the accent selected tab,
+    // light on the rest, reusing the theme's own TabbedPane colours from UIManager. Re-run
+    // each tick (idempotent) so it survives rebuilds + selection changes.
+    private static void recolorMainTabs() {
+        Color selFg = UIManager.getColor("TabbedPane.selectedForeground");   // accent_fg (dark)
+        Color norFg = UIManager.getColor("TabbedPane.foreground");           // light
+        if (selFg == null || norFg == null) return;
+        for (Window w : Window.getWindows()) {
+            if (w.isShowing()) recolorTabsIn(w, selFg, norFg);
+        }
+    }
+
+    private static void recolorTabsIn(Container c, Color selFg, Color norFg) {
+        for (Component child : c.getComponents()) {
+            if (child instanceof javax.swing.JTabbedPane) {
+                javax.swing.JTabbedPane tp = (javax.swing.JTabbedPane) child;
+                int sel = tp.getSelectedIndex();
+                for (int i = 0; i < tp.getTabCount(); i++) {
+                    // plain Color (not ColorUIResource) so FlatLaf treats it as app-set + honours it
+                    Color want = new Color((i == sel ? selFg : norFg).getRGB());
+                    if (!want.equals(tp.getForegroundAt(i))) tp.setForegroundAt(i, want);
+                    Component tc = tp.getTabComponentAt(i);   // custom tab component (JLabel etc.)
+                    if (tc != null) setLabelFg(tc, want);
+                }
+            }
+            if (child instanceof Container) recolorTabsIn((Container) child, selFg, norFg);
+        }
+    }
+
+    private static void setLabelFg(Component c, Color fg) {
+        if (!fg.equals(c.getForeground())) c.setForeground(fg);
+        if (c instanceof Container) for (Component ch : ((Container) c).getComponents()) setLabelFg(ch, fg);
+    }
+
+    // --- settings sections as cards (CC-style) --------------------------------
+    // Install a Border on each AbstractConfigPanel that paints a rounded #1e1e1e band behind
+    // every section (between successive Header y's) and insets the rows so they float inside a
+    // padded card. Border paints AFTER the panel background + BEFORE the children, so the band
+    // sits behind the rows with no re-parenting and no layout mutation (re-parenting is fatal:
+    // JD rebuilds the panel on every navigation). Idempotent (a fresh panel re-gets the border).
+    private static void cardSettingsSections() {
+        for (Window w : Window.getWindows()) {
+            if (w.isShowing()) cardSectionsIn(w);
+        }
+    }
+
+    private static void cardSectionsIn(Container c) {
+        for (Component child : c.getComponents()) {
+            if (child instanceof JComponent && child.getClass().getName().endsWith(".AbstractConfigPanel")) {
+                JComponent panel = (JComponent) child;
+                if (!(panel.getBorder() instanceof SectionCardBorder)) {
+                    try {
+                        panel.setBorder(new SectionCardBorder(panel.getBorder()));
+                        panel.revalidate();
+                        panel.repaint();
+                    } catch (Throwable ignore) { }
+                }
+            }
+            if (child instanceof Container) cardSectionsIn((Container) child);
+        }
+    }
+
+    private static final class SectionCardBorder implements javax.swing.border.Border {
+        private final javax.swing.border.Border original;
+        private static final Color CARD = new Color(0x1e, 0x1e, 0x1e);
+        private static final int PAD_H = 10, PAD_TOP = 8, ARC = 14, GAP = 10;
+        SectionCardBorder(javax.swing.border.Border original) { this.original = original; }
+
+        public boolean isBorderOpaque() { return false; }
+
+        public java.awt.Insets getBorderInsets(Component c) {
+            java.awt.Insets in = (original != null) ? original.getBorderInsets(c)
+                    : new java.awt.Insets(0, 0, 0, 0);
+            return new java.awt.Insets(in.top + PAD_TOP, in.left + PAD_H, in.bottom + PAD_TOP, in.right + PAD_H);
+        }
+
+        public void paintBorder(Component c, Graphics g, int x, int y, int w, int h) {
+            if (!(c instanceof Container)) return;
+            List<Component> headers = new ArrayList<>();
+            int contentBottom = 0;
+            for (Component ch : ((Container) c).getComponents()) {
+                if (!ch.isVisible()) continue;
+                contentBottom = Math.max(contentBottom, ch.getY() + ch.getHeight());
+                if (ch.getClass().getName().endsWith(".Header")) headers.add(ch);
+            }
+            if (!headers.isEmpty()) {
+                headers.sort((a, b) -> Integer.compare(a.getY(), b.getY()));
+                Graphics2D g2 = (Graphics2D) g.create();
+                try {
+                    g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                    g2.setColor(CARD);
+                    int left = x + 2, right = x + w - 2;
+                    for (int i = 0; i < headers.size(); i++) {
+                        int top = headers.get(i).getY() - PAD_TOP;
+                        int bottom = (i + 1 < headers.size())
+                                ? headers.get(i + 1).getY() - GAP
+                                : contentBottom + PAD_TOP;
+                        if (bottom - top > 6) {
+                            g2.fill(new java.awt.geom.RoundRectangle2D.Float(
+                                    left, top, right - left, bottom - top, ARC, ARC));
+                        }
+                    }
+                } finally { g2.dispose(); }
+            }
+            if (original != null) original.paintBorder(c, g, x, y, w, h);
+        }
+    }
+
+    // --- pop-up dialogs: lighter content + dimmed backdrop -------------------
+    // (1) recolour each shown dialog's panels to #262626 so it lifts off the #161616 chrome
+    //     by shade (buttons/fields keep @componentBackground and read as raised pills on top).
+    private static final java.util.Set<Window> DIALOG_TINTED =
+            java.util.Collections.newSetFromMap(new java.util.WeakHashMap<Window, Boolean>());
+    private static final Color DIALOG_BG = new Color(0x26, 0x26, 0x26);
+
+    private static void recolorDialogs() {
+        for (Window w : Window.getWindows()) {
+            if (!(w instanceof Dialog) || !w.isShowing() || ((Dialog) w).getOwner() == null) continue;
+            if (!DIALOG_TINTED.add(w)) continue;   // once per dialog
+            try {
+                if (w instanceof javax.swing.RootPaneContainer)
+                    tintPanels(((javax.swing.RootPaneContainer) w).getContentPane());
+            } catch (Throwable ignore) { }
+        }
+    }
+
+    private static void tintPanels(Container c) {
+        for (Component ch : c.getComponents()) {
+            if (ch instanceof javax.swing.JPanel || ch instanceof javax.swing.JOptionPane
+                    || ch instanceof javax.swing.Box) {
+                if (!DIALOG_BG.equals(ch.getBackground())) ch.setBackground(DIALOG_BG);
+            }
+            if (ch instanceof Container) tintPanels((Container) ch);
+        }
+    }
+
+    // (2) dim the OWNER window behind a modal pop-up so it stands out (no lines/blur). A
+    //     translucent glass pane on the owner darkens only the owner; the modal dialog is a
+    //     separate top-level window and stays bright. Polled + self-healing: removed as soon
+    //     as no modal child is showing, so an abnormally-disposed dialog can't leak the overlay.
+    private static final java.util.Map<Window, Component> DIMMED =
+            new java.util.WeakHashMap<Window, Component>();
+
+    private static void dimModalBackdrops() {
+        java.util.Set<Window> needDim = new java.util.HashSet<Window>();
+        for (Window w : Window.getWindows()) {
+            if (!(w instanceof Dialog) || !w.isShowing()) continue;
+            if (((Dialog) w).getModalityType() == Dialog.ModalityType.MODELESS) continue;
+            Window owner = ((Dialog) w).getOwner();
+            while (owner instanceof Dialog) owner = ((Dialog) owner).getOwner();
+            if (owner instanceof javax.swing.RootPaneContainer && owner.isShowing()) needDim.add(owner);
+        }
+        for (Window owner : needDim) {
+            if (DIMMED.containsKey(owner)) continue;
+            try {
+                javax.swing.JRootPane rp = ((javax.swing.RootPaneContainer) owner).getRootPane();
+                Component saved = rp.getGlassPane();
+                JComponent dim = new JComponent() {
+                    protected void paintComponent(Graphics g) {
+                        g.setColor(new Color(0, 0, 0, 96));
+                        g.fillRect(0, 0, getWidth(), getHeight());
+                    }
+                };
+                dim.setOpaque(false);
+                rp.setGlassPane(dim);
+                dim.setVisible(true);
+                DIMMED.put(owner, saved);
+            } catch (Throwable ignore) { }
+        }
+        for (java.util.Iterator<java.util.Map.Entry<Window, Component>> it = DIMMED.entrySet().iterator(); it.hasNext();) {
+            java.util.Map.Entry<Window, Component> e = it.next();
+            if (needDim.contains(e.getKey())) continue;
+            try {
+                Window owner = e.getKey();
+                if (owner instanceof javax.swing.RootPaneContainer) {
+                    javax.swing.JRootPane rp = ((javax.swing.RootPaneContainer) owner).getRootPane();
+                    Component saved = e.getValue();
+                    if (saved != null) { rp.setGlassPane(saved); saved.setVisible(false); }
+                    else rp.getGlassPane().setVisible(false);
+                }
+            } catch (Throwable ignore) { }
+            it.remove();
         }
     }
 

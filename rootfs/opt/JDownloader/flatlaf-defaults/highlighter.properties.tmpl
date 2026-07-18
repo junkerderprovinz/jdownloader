@@ -49,6 +49,20 @@ Component.arc     = 6
 TextComponent.arc = 6
 CheckBox.arc      = 4
 
+# --- roomier controls: taller fields + more padded dropdown rows (space, not lines) ---
+# Combo/dropdown popups are JLists, so List.cellMargins is what makes each dropdown
+# ROW taller; Component.minimumHeight + ComboBox.padding pad the collapsed field.
+Component.minimumHeight = 28
+ComboBox.padding        = 4,8,4,8
+List.cellMargins        = 5,8,5,8
+List.selectionInsets    = 1,2,1,2
+List.selectionArc       = 6
+
+# --- pop-up dialogs lift off the #161616 chrome by SHADE, no lines (JOptionPane paths;
+#     custom AppWork dialogs are recoloured by the agent) ---
+OptionPane.background = #262626
+RootPane.background   = #262626
+
 # --- main tabs: the selected tab is an accent BUTTON (pill), not an underline ---
 TabbedPane.selectedBackground = @@ACCENT@@
 TabbedPane.selectedForeground = @@ACCENT_FG@@

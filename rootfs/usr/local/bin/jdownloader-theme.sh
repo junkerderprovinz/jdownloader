@@ -54,22 +54,34 @@ case "${THEME}" in
 esac
 log "Theme=${THEME} -> lookandfeeltheme=${LAF}"
 
-# --- icon colour mode: color (JD's flat, default) | mono (runtime monochrome set) ---
+# --- icon colour mode: color (JD flat, default) | mono | mono-light | mono-dark ---
 # JD ships only colourful iconsets, has no monochrome one, and FlatLaf cannot tint
-# JD's icons (they load via AppWork NewTheme, bypassing the LAF). So JD_ICONS=mono
-# GENERATES a monochrome copy of the flat set at start: every saturated fill -> one
-# mono colour, near-white knockouts -> transparent (the surface shows the glyph). The
-# copy uses the "my-" prefix so JD's self-update never overwrites it. It is built on
-# the user's own machine and never redistributed (the flat set is icons8 CC BY-ND).
+# JD's icons (they load via AppWork NewTheme, bypassing the LAF). So the mono modes
+# GENERATE a monochrome copy of the flat set at start: every saturated fill -> one mono
+# colour, near-white knockouts -> transparent (the surface shows the glyph). The copy
+# uses the "my-" prefix so JD's self-update never overwrites it; it is built on the
+# user's own machine and never redistributed (the flat set is icons8 CC BY-ND).
+#   mono       = tone AUTO-follows the LAF (dark theme -> light glyphs) — back-compat
+#   mono-light = always light (#f4f4f4)  ]  FIXED tone: icons/logo never flip when the
+#   mono-dark  = always dark  (#161616)  ]  user toggles themes.
 ICONS="${JD_ICONS:-color}"
 ICONSET="flat"
+TONE=""
 case "${ICONS,,}" in
-    mono|bw|monochrome|blackwhite) ICONSET="my-flat-mono" ;;
+    mono|bw|monochrome|blackwhite) TONE="auto"  ;;
+    mono-light|monolight)          TONE="light" ;;
+    mono-dark|monodark)            TONE="dark"  ;;
 esac
-if [ "${ICONSET}" = "my-flat-mono" ]; then
-    MONO="#f4f4f4"; [ "${LAF}" = "FLATLAF_LIGHT" ] && MONO="#161616"
+if [ -n "${TONE}" ]; then
+    if [ "${TONE}" = "auto" ]; then
+        TONE="light"; [ "${LAF}" = "FLATLAF_LIGHT" ] && TONE="dark"
+    fi
+    MONO="#f4f4f4"; [ "${TONE}" = "dark" ] && MONO="#161616"
+    [ "${LAF}" = "FLATLAF_DARK" ] && [ "${TONE}" = "dark" ] && \
+        log "note: mono-dark on the dark theme -> glyphs only readable on the accent fill"
+    ICONSET="my-flat-mono-${TONE}"           # per-tone dir: switching tone never reuses a stale set
     ICON_SRC="${JD_DIR}/themes/flat"
-    ICON_DST="${JD_DIR}/themes/my-flat-mono"
+    ICON_DST="${JD_DIR}/themes/${ICONSET}"
     if [ -d "${ICON_SRC}" ] && [ ! -d "${ICON_DST}" ]; then
         python3 - "${ICON_SRC}" "${ICON_DST}" "${MONO}" <<'PYEOF'
 import os, re, shutil, sys

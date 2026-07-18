@@ -48,7 +48,7 @@ jobs:
           grep -E "wrote accented FlatLaf defaults|registered custom defaults source|mono icons: recoloured|folderwatch enabled" full.log | tail -8 || echo "(no theme signals)"
           # the mono-icon generator must have run and produced a non-empty set
           grep -qE "mono icons: recoloured [1-9][0-9]* svgs" full.log || { echo "::error::mono icon generation produced nothing"; exit 1; }
-          docker exec jd sh -c 'ls /config/JDownloader/themes/my-flat-mono/org/jdownloader/images >/dev/null 2>&1' || { echo "::error::my-flat-mono iconset missing"; exit 1; }
+          docker exec jd sh -c 'ls -d /config/JDownloader/themes/my-flat-mono-*/org/jdownloader/images >/dev/null 2>&1' || { echo "::error::my-flat-mono-* iconset missing"; exit 1; }
           if grep -E "UnsupportedClassVersionError|processing of -javaagent failed|FATAL ERROR in native method|agent load/premain call failed" full.log; then
             echo "::error::agent/JVM crash signature — not pushing"; exit 1
           fi
