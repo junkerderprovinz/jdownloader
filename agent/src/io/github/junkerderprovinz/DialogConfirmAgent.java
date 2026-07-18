@@ -1295,11 +1295,15 @@ public class DialogConfirmAgent {
         }
     }
 
+    private static final String TAB_HOVER_IDX = "jdp.tabHoverIdx";
     private static void recolorTabsIn(Container c, Color selFg, Color norFg) {
         for (Component child : c.getComponents()) {
             if (child instanceof javax.swing.JTabbedPane) {
                 javax.swing.JTabbedPane tp = (javax.swing.JTabbedPane) child;
-                applyTabForegrounds(tp, selFg, norFg, -1);   // no hover known here; the listener tracks it
+                // Respect the CURRENT hover (tracked by the listener) so the 400ms tick does not
+                // reset the hovered tab back to light (that fight left the hover text unreadable).
+                Object hv = tp.getClientProperty(TAB_HOVER_IDX);
+                applyTabForegrounds(tp, selFg, norFg, (hv instanceof Integer) ? (Integer) hv : -1);
                 installTabHoverListener(tp, selFg, norFg);
             }
             if (child instanceof Container) recolorTabsIn((Container) child, selFg, norFg);
@@ -1326,9 +1330,14 @@ public class DialogConfirmAgent {
         tp.putClientProperty(TAB_HOVER_WIRED, Boolean.TRUE);
         MouseAdapter h = new MouseAdapter() {
             @Override public void mouseMoved(MouseEvent e) {
-                applyTabForegrounds(tp, selFg, norFg, tp.indexAtLocation(e.getX(), e.getY()));
+                int idx = tp.indexAtLocation(e.getX(), e.getY());
+                tp.putClientProperty(TAB_HOVER_IDX, Integer.valueOf(idx));   // so the tick keeps it dark
+                applyTabForegrounds(tp, selFg, norFg, idx);
             }
-            @Override public void mouseExited(MouseEvent e) { applyTabForegrounds(tp, selFg, norFg, -1); }
+            @Override public void mouseExited(MouseEvent e) {
+                tp.putClientProperty(TAB_HOVER_IDX, Integer.valueOf(-1));
+                applyTabForegrounds(tp, selFg, norFg, -1);
+            }
         };
         tp.addMouseMotionListener(h);
         tp.addMouseListener(h);
