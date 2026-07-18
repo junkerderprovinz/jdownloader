@@ -13,6 +13,8 @@ on:
       - 'rootfs/opt/JDownloader/flatlaf-defaults/highlighter.properties.tmpl'
       - 'rootfs/usr/local/bin/jdownloader-theme.sh'
       - 'rootfs/etc/cont-init.d/10-jdownloader-setup'
+      - 'rootfs/defaults/autostart'
+      - 'agent/**'
 
 permissions:
   contents: read

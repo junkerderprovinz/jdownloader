@@ -240,6 +240,10 @@ public class DialogConfirmAgent {
         widenSpeedEditors();
         growSpeedMeter();
         replaceSpeedGraph();
+        if (isHighlighter()) {          // jd-highlighter-only polish (JD-hardcoded values)
+            bumpSidebarRowHeight();
+            stripSectionUnderlines();
+        }
         if (++lafTick >= 12) {   // every ~5s (ticks run every 400ms)
             lafTick = 0;
             writeLafMarker();
@@ -1116,6 +1120,94 @@ public class DialogConfirmAgent {
                 if (plus) g.drawLine(x + 5, y + 3, x + 5, y + 7);  // vertical -> plus
             }
         });
+    }
+
+    // ----------------------------------------------- jd-highlighter-only polish
+    // Two things the user wants that JD HARDCODES, so no theme key can reach them:
+    // the Settings sidebar's fixed 35px row height and the <u> underline baked into
+    // every Settings section title. Gated to jd-highlighter — the presence of the
+    // RENDERED FlatDarkLaf.properties (written by jdownloader-theme.sh only for
+    // JD_THEME=jd-highlighter) marks the theme — so plain Dark stays faithful to
+    // stock JD. Both are best-effort: any failure leaves JD exactly as it was.
+
+    private static final java.io.File HL_MARKER =
+            new java.io.File(DEFAULTS_DIR, "FlatDarkLaf.properties");
+
+    private static boolean isHighlighter() { return HL_MARKER.isFile(); }
+
+    private static final int SIDEBAR_ROW_PX = 44;
+    private static boolean   sidebarRowBumped = false;
+
+    /**
+     * Raise the Settings sidebar's row height. JD gives every entry a fixed size from a
+     * shared public-static Dimension on the list's cell renderer
+     * (jd...settings.sidebar.TreeRenderer.DIMENSION = new Dimension(0, 35)); there is no
+     * List.cellHeight / UIManager key. Mutating that one Dimension object raises every
+     * row at once. Reached through a LIVE renderer instance found in the tree, so the
+     * static field resolves in JD's own classloader regardless of the agent's.
+     */
+    private static void bumpSidebarRowHeight() {
+        if (sidebarRowBumped) return;
+        for (Window w : Window.getWindows()) {
+            if (w.isShowing() && bumpSidebarRowIn(w)) return;
+        }
+    }
+
+    private static boolean bumpSidebarRowIn(Container c) {
+        for (Component child : c.getComponents()) {
+            if (child instanceof javax.swing.JList) {
+                javax.swing.ListCellRenderer<?> r = ((javax.swing.JList<?>) child).getCellRenderer();
+                if (r != null && r.getClass().getName().endsWith("sidebar.TreeRenderer")) {
+                    try {
+                        Field f = r.getClass().getField("DIMENSION");   // public static final Dimension
+                        Object dim = f.get(null);
+                        if (dim instanceof Dimension && ((Dimension) dim).height < SIDEBAR_ROW_PX) {
+                            ((Dimension) dim).height = SIDEBAR_ROW_PX;
+                            child.revalidate();
+                            child.repaint();
+                            System.out.println("[jd-dialog-agent] jd-highlighter: settings sidebar row height -> "
+                                    + SIDEBAR_ROW_PX + "px");
+                        }
+                    } catch (Throwable ignore) {
+                        // field shape differs on this JD build -> leave the sidebar stock
+                    }
+                    sidebarRowBumped = true;   // one shot either way; DIMENSION is shared/static
+                    return true;
+                }
+            }
+            if (child instanceof Container && bumpSidebarRowIn((Container) child)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Strip the underline from Settings section titles. JD builds each title as
+     * "&lt;html&gt;&lt;u&gt;&lt;b&gt;name&lt;/b&gt;&lt;/u&gt;&lt;/html&gt;" (Header.java); the underline is baked into
+     * the markup and no colour key reaches it. Remove the &lt;u&gt; tags so the titles read as
+     * clean bold text. Idempotent: once stripped the text no longer matches. Re-runs each
+     * tick so a settings page rebuilt on navigation is cleaned again within ~400ms.
+     */
+    private static void stripSectionUnderlines() {
+        for (Window w : Window.getWindows()) {
+            if (w.isShowing()) stripUnderlinesIn(w);
+        }
+    }
+
+    private static void stripUnderlinesIn(Container c) {
+        for (Component child : c.getComponents()) {
+            if (child instanceof JLabel) {
+                JLabel lbl = (JLabel) child;
+                String t = lbl.getText();
+                if (t != null && t.length() >= 7) {
+                    String low = t.toLowerCase();
+                    if (low.startsWith("<html") && low.contains("<u>")) {
+                        lbl.setText(t.replace("<u>", "").replace("</u>", "")
+                                     .replace("<U>", "").replace("</U>", ""));
+                    }
+                }
+            }
+            if (child instanceof Container) stripUnderlinesIn((Container) child);
+        }
     }
 
     // --------------------------------------------------------------- dialogs

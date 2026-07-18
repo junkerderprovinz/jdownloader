@@ -478,6 +478,18 @@ PYEOF
     # inherit the previous JVM's "LAF applied" marker (READY would lie).
     rm -f /tmp/.jd-agent.pid /tmp/.jd-laf-applied /tmp/.jd-laf-restart-request
 
+    # folderwatch (and any pre-seeded-enabled extension) only runs if JD DISCOVERS it on
+    # this GUI boot. JD caches extension discovery in tmp/extensioncache/extensionInfos.json
+    # and, when that cache is non-empty, SKIPS the rescan (ExtensionController.init ->
+    # loadFromCache, never load()). Our headless pre-install writes that cache before the
+    # GUI-only extension provisioning has settled, so a freshly-enabled folderwatch is
+    # absent from it and is never init()/start()ed — the seeded enabled:true is never even
+    # read (root cause of "folderwatch does nothing on first boot"). Deleting the cache here
+    # forces a fresh scan (loadFromCache empty -> load()), which discovers folderwatch, reads
+    # its enabled:true and starts the folder scanner. Cheap (JD rescans a few extensions in
+    # ms) and safe: per-extension enabled state lives in each extension's own cfg, not here.
+    rm -f "${JD_DIR}/tmp/extensioncache/extensionInfos.json"
+
     launch_ts=$(date +%s)
     echo "[jdownloader-autostart] launching JDownloader JVM (the GUI starts here)..." >&2
     java \
