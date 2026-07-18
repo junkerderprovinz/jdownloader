@@ -5,7 +5,7 @@
 # --- base ---
 @background          = #161616
 @foreground          = #f4f4f4
-@componentBackground = #1e1e1e
+@componentBackground = #262626
 @disabledForeground  = #6f6f6f
 
 # --- accent (the one knob) ---
@@ -24,10 +24,17 @@ ProgressBar.selectionBackground = #f4f4f4
 @selectionForeground = #f4f4f4
 
 # --- borderless ---
-Component.borderColor         = #161616
-Component.disabledBorderColor = #161616
+# Input fields (text/combo/spinner) always draw a 1px FlatBorder line; borderWidth=0
+# removes it entirely (padding/arc kept) so fields read as raised #262626 pills,
+# differentiated by fill not by a rahmen. borderColor is matched to the fill too as
+# belt-and-suspenders (a #161616 line on a #262626 fill would show as a dark hairline).
+Component.borderWidth         = 0
+Component.borderColor         = #262626
+Component.disabledBorderColor = #262626
 Component.focusWidth          = 0
 Component.innerFocusWidth     = 0.5
+Spinner.buttonBackground      = #262626
+ComboBox.buttonBackground     = #262626
 Button.borderWidth            = 0
 Button.default.borderWidth    = 0
 Separator.foreground          = #161616
@@ -47,6 +54,7 @@ TabbedPane.selectedBackground = @@ACCENT@@
 TabbedPane.selectedForeground = @@ACCENT_FG@@
 TabbedPane.tabSelectionHeight = 0
 TabbedPane.hoverColor         = @@ACCENT@@
+TabbedPane.hoverForeground    = @@ACCENT_FG@@
 TabbedPane.tabArc             = 10
 TabbedPane.cardTabArc         = 10
 TabbedPane.tabInsets          = 4,12,4,12

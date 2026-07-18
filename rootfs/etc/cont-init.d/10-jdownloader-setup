@@ -99,7 +99,17 @@ if [ ! -f "${FOLDERWATCH_CFG}" ]; then
     python3 - "${FOLDERWATCH_CFG}" "${WATCH_DIR}" <<'PYEOF'
 import json, sys
 path, watch = sys.argv[1], sys.argv[2]
-json.dump({"enabled": True, "folders": [watch], "checkInterval": 5000}, open(path, "w"), indent=2)
+# freshinstall=false is the critical flag: on first launch JD's AbstractExtension.init()
+# resets "enabled" to the extension default (false) whenever isFreshInstall() is true
+# (its default), so without this our enabled:true is wiped before folderwatch ever starts.
+# Keys are the lowercased getter names on disk (checkinterval, not checkInterval).
+json.dump({
+    "enabled": True,
+    "freshinstall": False,
+    "folders": [watch],
+    "checkinterval": 5000,
+    "debugenabled": True,
+}, open(path, "w"), indent=2)
 print("[jdownloader-setup] folderwatch enabled -> %s (watching %s)" % (path, watch))
 PYEOF
 fi

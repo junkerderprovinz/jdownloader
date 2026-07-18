@@ -225,9 +225,11 @@ PYEOF
 import json, sys
 p = sys.argv[1]
 d = json.load(open(p))
-d["colorforpanelborders"] = "#ff161616"
+d["colorforpanelborders"] = "#ff161616"              # account/plugin config boxes -> invisible
+d["linktablehorizontalrowlineweight"] = 0            # download/linkgrabber rows: no horizontal lines
+d["paintstatusbartopborder"] = False                 # drop the statusbar top hairline
 json.dump(d, open(p, "w"), indent=2)
-print("[jdownloader-theme] jd-highlighter: borderless panels (colorforpanelborders=bg)")
+print("[jdownloader-theme] jd-highlighter: borderless panels + no row/statusbar lines")
 PYEOF
     fi
 else

@@ -52,6 +52,32 @@ jobs:
           fi
           echo "clean — safe to publish the preview tag"
 
+      - name: Folderwatch end-to-end (crawljob auto-import)
+        run: |
+          set -uo pipefail
+          FW=/config/JDownloader/cfg/org.jdownloader.extensions.folderwatchV2.FolderWatchExtension.json
+          echo "--- seeded folderwatch config ---"
+          docker exec jd cat "$FW" || true
+          # the freshinstall trap: JD must NOT have reset enabled back to false on first boot
+          docker exec jd sh -c "grep -Eq '\"enabled\"[[:space:]]*:[[:space:]]*true' $FW" \
+            || { echo "::error::folderwatch enable flag was reset on first boot (freshinstall trap)"; exit 1; }
+          # drop a LOCAL-parse crawljob (no network needed) into the Selkies upload dir
+          docker exec jd sh -c 'mkdir -p /config/Desktop && printf "text=https://example.org/fw-citest.bin\npackageName=fw-citest\nenabled=TRUE\nautoStart=FALSE\n" > /config/Desktop/fw-citest.crawljob'
+          # folderwatch moves a consumed file into <dir>/added/ AFTER submitting it to the LinkGrabber
+          ok=0
+          for i in $(seq 1 12); do
+            if docker exec jd sh -c 'ls /config/Desktop/added/*.crawljob >/dev/null 2>&1'; then
+              ok=1; echo "folderwatch imported the crawljob after ~$((i*5))s (moved to added/)"; break
+            fi
+            sleep 5
+          done
+          if [ "$ok" != 1 ]; then
+            echo "::error::folderwatch did NOT consume the crawljob — extension inactive"
+            docker exec jd sh -c 'ls -la /config/Desktop /config/Desktop/added 2>/dev/null' || true
+            docker logs jd 2>&1 | grep -iE "folderwatch" | tail -20 || true
+            exit 1
+          fi
+
       - name: Log in to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
