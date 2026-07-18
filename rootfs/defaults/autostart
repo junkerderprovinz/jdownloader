@@ -62,6 +62,36 @@ if "flatlaf-themes" not in ids:
 PYEOF
 }
 
+# folderwatch is a SEPARATELY-installable optional extension (id "folderwatch", per
+# ExtensionController.MAPPING), NOT bundled in Core.jar. Its module jar
+# (extensions/FolderWatch.jar) is only fetched if requested — without it the extension
+# is never discovered and our cfg/…FolderWatchExtension.json (enabled:true) is never
+# read, so a dropped .dlc "uploads" but yields no links. Request it via the same
+# sanctioned updater path + array-of-ids format as seed_flatlaf_request. Must run BEFORE
+# a clean JVM init (a running JD holds the JD2 single-instance lock, so a late request
+# sits unconsumed). Idempotent: no-op once the jar is present.
+folderwatch_installed() { ls "${JD_DIR}/extensions/" 2>/dev/null | grep -qi folderwatch; }
+seed_folderwatch_request() {
+    folderwatch_installed && return 0
+    python3 - "${JD_DIR}/update/versioninfo/JD/extensions.requestedinstalls.json" <<'PYEOF' >&2 || true
+import json, os, sys
+path = sys.argv[1]
+ids = []
+if os.path.exists(path):
+    try:
+        ids = json.load(open(path))
+        if not isinstance(ids, list):
+            ids = []
+    except Exception:
+        ids = []
+if "folderwatch" not in ids:
+    ids.append("folderwatch")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    json.dump(ids, open(path, "w"))
+    print("[jdownloader-autostart] requested folderwatch extension install (the updater will fetch it)")
+PYEOF
+}
+
 # True when flatlaf.jar is a readable zip that actually CONTAINS the FlatLaf
 # classes. Existence is not enough: a truncated write (e.g. the pre-install kill
 # chain stopping the updater mid-download) leaves a jar that every boot fails
@@ -155,6 +185,7 @@ if [ ! -f "${JD_DIR}/Core.jar" ]; then
     # start finds NOTHING pending, never shows the design-install dialog, and JD
     # falls back to its light Synthetica default.
     seed_flatlaf_request
+    seed_folderwatch_request
     java -Djava.awt.headless=true -jar "${LAUNCHER}" < /dev/null >> /config/jd-headless-install.log 2>&1 &
     # Settle = Core.jar + build.json present AND (when a FlatLaf theme is
     # expected) a zip-VALID flatlaf.jar, on 3 consecutive checks (~30s quiet);
@@ -171,7 +202,8 @@ if [ ! -f "${JD_DIR}/Core.jar" ]; then
         sleep 10
         tries=$((tries + 1))
         if [ -f "${JD_DIR}/Core.jar" ] && [ -f "${JD_DIR}/build.json" ] \
-           && { [ -z "${EXPECT_LAF}" ] || flatlaf_jar_valid "${JD_DIR}/libs/laf/flatlaf.jar"; }; then
+           && { [ -z "${EXPECT_LAF}" ] || flatlaf_jar_valid "${JD_DIR}/libs/laf/flatlaf.jar"; } \
+           && folderwatch_installed; then
             settle=$((settle + 1))
         else
             settle=0
@@ -419,6 +451,7 @@ while true; do
     # JD's updater then fetches it on its next check and the healer applies it.
     heal_invalid_flatlaf
     seed_flatlaf_request
+    seed_folderwatch_request
 
     # Optional frozen-appliance mode: JD_SELFUPDATE=false disables JD's periodic
     # self-update checks. OPT-IN only — the same updater channel also delivers the
