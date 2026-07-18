@@ -25,6 +25,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      security-events: write   # upload the Trivy SARIF to the Security tab
 
     steps:
       - name: Checkout
@@ -164,6 +165,27 @@ jobs:
           docker rm -f "$name" >/dev/null
           exit 1
 
+      # CVE scan of the locally-built smoke image. Report-only: exit-code stays 0
+      # so a fresh CVE in the base can never block a push; findings land in the
+      # repo's Security tab (SARIF) for triage. Ignores unfixed CVEs (nothing to
+      # do until upstream ships a fix) and only surfaces HIGH/CRITICAL.
+      - name: Scan image for CVEs (Trivy)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: jdownloader:smoke-amd64
+          format: sarif
+          output: trivy-results.sarif
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "0"     # MUST stay 0 — report only, never fail the build
+
+      - name: Upload Trivy results to the Security tab
+        if: ${{ github.event_name != 'pull_request' }}
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy
+
       - name: Build & push
         uses: docker/build-push-action@v7
         with:
@@ -173,6 +195,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          provenance: true
+          sbom: true
           build-args: |
             BUILD_SHA=${{ github.sha }}
             BUILD_DATE=${{ github.event.repository.updated_at }}
