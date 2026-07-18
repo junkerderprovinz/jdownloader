@@ -54,30 +54,31 @@ jobs:
           fi
           echo "clean — safe to publish the preview tag"
 
-      - name: Folderwatch deep diagnostics (NON-GATING — module installs, why no scan?)
+      - name: Folderwatch deep diagnostics v2 (NON-GATING; headless-vs-GUI load + restart test)
         run: |
-          set -uo pipefail
-          echo "=== module + installed list ==="
-          docker exec jd sh -c 'ls -la /config/JDownloader/extensions/; echo installed:; cat /config/JDownloader/update/versioninfo/JD/extensions.installed.json 2>/dev/null'
-          echo "=== discovery cache (folderwatch present? enabled?) ==="
-          docker exec jd sh -c 'cat /config/JDownloader/tmp/extensioncache/extensionInfos.json 2>/dev/null | tr "{}," "\n\n\n" | grep -iE "classname|enabled|jarpath|folderwatch" | head -60' || echo "(none)"
-          echo "=== ExtensionController / FolderWatch init+start log lines ==="
-          docker logs jd 2>&1 | grep -iE "ExtensionController|OptionalExtension|FolderWatch|folderwatch|LazyExtension|Loaded Extension|StartExtension|scheduler" | tail -60 || echo "(none)"
-          echo "=== BOOT #1: drop crawljob AS ABC (real Selkies upload owner) ==="
-          docker exec -u abc jd sh -c 'mkdir -p /config/Desktop && printf "text=https://example.org/fw-a.bin\npackageName=fw-a\n" > /config/Desktop/fw-a.crawljob'
-          sleep 35
-          docker exec jd sh -c 'ls -la /config/Desktop /config/Desktop/added 2>/dev/null'
-          docker logs jd 2>&1 | grep -iE "folderwatch|crawljob|added|LinkColl" | tail -15 || true
-          echo "=== RESTART TEST: does a freshly-installed extension need a 2nd boot? ==="
-          docker restart jd >/dev/null 2>&1 || true
-          for i in $(seq 1 36); do docker logs jd 2>&1 | grep -q "IS READY" && { echo "ready after restart ~$((i*5))s"; break; }; sleep 5; done
-          sleep 15
-          docker exec -u abc jd sh -c 'printf "text=https://example.org/fw-b.bin\npackageName=fw-b\n" > /config/Desktop/fw-b.crawljob' || true
-          sleep 35
-          echo "--- BOOT #2 (after restart): ---"
-          docker exec jd sh -c 'ls -la /config/Desktop /config/Desktop/added 2>/dev/null' || true
-          docker logs jd 2>&1 | grep -iE "folderwatch|crawljob|added" | tail -15 || true
-          echo "(diagnostics only — never fails the build)"
+          set +e   # pure diagnostics: override the runner's bash -e so nothing aborts mid-way
+          echo "=== module ==="
+          docker exec jd sh -c 'ls -la /config/JDownloader/extensions/ 2>&1; echo installed:; cat /config/JDownloader/update/versioninfo/JD/extensions.installed.json 2>&1'
+          echo "=== WHEN is FolderWatch.jar loaded (headless pre-install JVM vs the GUI JVM)? ==="
+          docker logs jd 2>&1 | grep -nE "FolderWatch.jar classloader|Installed Extensions|StartExtension|ExtensionController|Extension Controller"
+          echo "=== any FolderWatch class activity / start / exception? ==="
+          docker logs jd 2>&1 | grep -E "FolderWatch|folderwatchV2" | tail -40
+          echo "=== BOOT #1: abc-owned crawljob, wait 40s ==="
+          docker exec -u abc jd sh -c 'mkdir -p /config/Desktop; printf "text=https://example.org/fw-a.bin\npackageName=fw-a\n" > /config/Desktop/fw-a.crawljob'
+          sleep 40
+          docker exec jd sh -c 'echo "Desktop:"; ls -la /config/Desktop; echo "added:"; ls -la /config/Desktop/added 2>&1'
+          echo "=== RESTART, then BOOT #2 ==="
+          docker restart jd
+          for i in $(seq 1 40); do docker logs jd 2>&1 | grep -q "IS READY" && { echo "ready ~$((i*5))s after restart"; break; }; sleep 5; done
+          sleep 20
+          echo "--- boot#2 FolderWatch load/start logs ---"
+          docker logs jd 2>&1 | grep -E "FolderWatch|folderwatchV2" | tail -30
+          docker exec -u abc jd sh -c 'printf "text=https://example.org/fw-b.bin\npackageName=fw-b\n" > /config/Desktop/fw-b.crawljob'
+          sleep 40
+          echo "--- boot#2 result ---"
+          docker exec jd sh -c 'echo "Desktop:"; ls -la /config/Desktop; echo "added:"; ls -la /config/Desktop/added 2>&1'
+          echo "=== END DIAGNOSTICS ==="
+          exit 0
 
       - name: Log in to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
