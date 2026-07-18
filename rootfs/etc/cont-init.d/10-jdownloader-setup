@@ -95,24 +95,42 @@ esac
 WATCH_DIR="${JD_WATCH_DIR:-${FILE_MANAGER_PATH:-/config/Desktop}}"
 mkdir -p "${WATCH_DIR}"
 FOLDERWATCH_CFG="${JD_CFG}/org.jdownloader.extensions.folderwatchV2.FolderWatchExtension.json"
+FOLDERWATCH_FOLDERS="${JD_CFG}/org.jdownloader.extensions.folderwatchV2.FolderWatchExtension.folders.json"
 if [ ! -f "${FOLDERWATCH_CFG}" ]; then
-    python3 - "${FOLDERWATCH_CFG}" "${WATCH_DIR}" <<'PYEOF'
+    python3 - "${FOLDERWATCH_CFG}" <<'PYEOF'
 import json, sys
-path, watch = sys.argv[1], sys.argv[2]
-# freshinstall=false is the critical flag: on first launch JD's AbstractExtension.init()
-# resets "enabled" to the extension default (false) whenever isFreshInstall() is true
-# (its default), so without this our enabled:true is wiped before folderwatch ever starts.
-# Keys are the lowercased getter names on disk (checkinterval, not checkInterval).
-json.dump({
-    "enabled": True,
-    "freshinstall": False,
-    "folders": [watch],
-    "checkinterval": 5000,
-    "debugenabled": True,
-}, open(path, "w"), indent=2)
-print("[jdownloader-setup] folderwatch enabled -> %s (watching %s)" % (path, watch))
+# enabled / freshinstall / checkinterval / debugenabled live in the MAIN config.
+# freshinstall=false stops JD's first-run reset of "enabled" to the extension default
+# (false). Keys are the lowercased getter names (checkinterval, not checkInterval). The
+# watched "folders" array is NOT here — AppWork's StorageHandler stores array getters in a
+# SEPARATE <ConfigClass>.<key>.json file, seeded just below.
+path = sys.argv[1]
+json.dump({"enabled": True, "freshinstall": False, "checkinterval": 5000, "debugenabled": True},
+          open(path, "w"), indent=2)
+print("[jdownloader-setup] folderwatch enabled -> %s" % path)
 PYEOF
 fi
+# The watched folder(s) live in a SEPARATE per-key file — JD reads the array from
+# …FolderWatchExtension.folders.json, NOT from the main config (verified in CI: a
+# "folders" key inside the main file is ignored and JD watches its relative "folderwatch"
+# default instead, so a .dlc dropped in the Selkies upload dir was never seen). Ensure the
+# upload dir is present (append-if-missing so a user's extra folders survive).
+python3 - "${FOLDERWATCH_FOLDERS}" "${WATCH_DIR}" <<'PYEOF'
+import json, os, sys
+path, watch = sys.argv[1], sys.argv[2]
+folders = []
+if os.path.exists(path):
+    try:
+        folders = json.load(open(path))
+        if not isinstance(folders, list):
+            folders = []
+    except Exception:
+        folders = []
+if watch not in folders:
+    folders.append(watch)
+    json.dump(folders, open(path, "w"), indent=2)
+    print("[jdownloader-setup] folderwatch watching -> %s (%s)" % (watch, path))
+PYEOF
 
 # First-run window state: start the main frame MAXIMIZED. Without this a fresh
 # install opens JD at its built-in 1024x728 default, leaving black desktop around

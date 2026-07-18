@@ -54,31 +54,28 @@ jobs:
           fi
           echo "clean — safe to publish the preview tag"
 
-      - name: Folderwatch deep diagnostics v2 (NON-GATING; headless-vs-GUI load + restart test)
+      - name: Folderwatch end-to-end (module + correct watch dir + crawljob import)
         run: |
-          set +e   # pure diagnostics: override the runner's bash -e so nothing aborts mid-way
-          echo "=== module ==="
-          docker exec jd sh -c 'ls -la /config/JDownloader/extensions/ 2>&1; echo installed:; cat /config/JDownloader/update/versioninfo/JD/extensions.installed.json 2>&1'
-          echo "=== WHEN is FolderWatch.jar loaded (headless pre-install JVM vs the GUI JVM)? ==="
-          docker logs jd 2>&1 | grep -nE "FolderWatch.jar classloader|Installed Extensions|StartExtension|ExtensionController|Extension Controller"
-          echo "=== any FolderWatch class activity / start / exception? ==="
-          docker logs jd 2>&1 | grep -E "FolderWatch|folderwatchV2" | tail -40
-          echo "=== BOOT #1: abc-owned crawljob, wait 40s ==="
-          docker exec -u abc jd sh -c 'mkdir -p /config/Desktop; printf "text=https://example.org/fw-a.bin\npackageName=fw-a\n" > /config/Desktop/fw-a.crawljob'
-          sleep 40
-          docker exec jd sh -c 'echo "Desktop:"; ls -la /config/Desktop; echo "added:"; ls -la /config/Desktop/added 2>&1'
-          echo "=== RESTART, then BOOT #2 ==="
-          docker restart jd
-          for i in $(seq 1 40); do docker logs jd 2>&1 | grep -q "IS READY" && { echo "ready ~$((i*5))s after restart"; break; }; sleep 5; done
-          sleep 20
-          echo "--- boot#2 FolderWatch load/start logs ---"
-          docker logs jd 2>&1 | grep -E "FolderWatch|folderwatchV2" | tail -30
-          docker exec -u abc jd sh -c 'printf "text=https://example.org/fw-b.bin\npackageName=fw-b\n" > /config/Desktop/fw-b.crawljob'
-          sleep 40
-          echo "--- boot#2 result ---"
-          docker exec jd sh -c 'echo "Desktop:"; ls -la /config/Desktop; echo "added:"; ls -la /config/Desktop/added 2>&1'
-          echo "=== END DIAGNOSTICS ==="
-          exit 0
+          set -uo pipefail
+          FOLDERS=/config/JDownloader/cfg/org.jdownloader.extensions.folderwatchV2.FolderWatchExtension.folders.json
+          # (1) the module jar is installed
+          docker exec jd sh -c 'ls /config/JDownloader/extensions/ | grep -qi folderwatch' \
+            || { echo "::error::FolderWatch.jar not installed"; exit 1; }
+          # (2) folderwatch is watching the Selkies upload dir (separate per-key file)
+          echo "folders.json:"; docker exec jd cat "$FOLDERS" 2>/dev/null || echo "(missing)"
+          docker exec jd sh -c "grep -q '/config/Desktop' $FOLDERS" \
+            || { echo "::error::folderwatch is not watching /config/Desktop"; exit 1; }
+          # (3) a dropped abc-owned crawljob (real Selkies upload owner) is imported: folderwatch
+          #     moves it to <dir>/added/ after submitting it to the LinkGrabber
+          docker exec -u abc jd sh -c 'mkdir -p /config/Desktop && printf "text=https://example.org/fw-citest.bin\npackageName=fw-citest\n" > /config/Desktop/fw-citest.crawljob'
+          ok=0
+          for i in $(seq 1 15); do
+            docker exec jd sh -c 'ls /config/Desktop/added/*.crawljob >/dev/null 2>&1' \
+              && { ok=1; echo "folderwatch imported the crawljob after ~$((i*5))s (moved to added/)"; break; }
+            sleep 5
+          done
+          [ "$ok" = 1 ] || { echo "::error::folderwatch did NOT consume the crawljob"; docker exec jd sh -c 'ls -la /config/Desktop /config/Desktop/added 2>/dev/null || true'; docker logs jd 2>&1 | grep -iE "folderwatch" | tail -30 || true; exit 1; }
+          echo "folderwatch END-TO-END PASS."
 
       - name: Log in to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
