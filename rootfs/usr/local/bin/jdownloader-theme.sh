@@ -233,15 +233,20 @@ PYEOF
     # jd-highlighter: borderless JD panels — drop the #393939 border line so JD's own
     # content areas differentiate by shading, not lines (Dark keeps its border).
     if [ "${HL}" = "1" ]; then
-        python3 - "${JD_CFG}/laf/FlatDarkLaf.json" <<'PYEOF'
+        ACC_HEX=$(printf '%s' "${ACCENT}" | sed 's/^#//')      # rrggbb
+        ACC_FG=$(accent_fg "${ACCENT}" | sed 's/^#//')          # 161616 (light accent) / f4f4f4 (dark)
+        python3 - "${JD_CFG}/laf/FlatDarkLaf.json" "${ACC_HEX}" "${ACC_FG}" <<'PYEOF'
 import json, sys
-p = sys.argv[1]
+p, acc, accfg = sys.argv[1], sys.argv[2], sys.argv[3]
 d = json.load(open(p))
 d["colorforpanelborders"] = "#ff161616"              # account/plugin config boxes -> invisible
 d["linktablehorizontalrowlineweight"] = 0            # download/linkgrabber rows: no horizontal lines
 d["paintstatusbartopborder"] = False                 # drop the statusbar top hairline
+# list/table row HOVER highlight = the accent, with an auto-contrasted (dark-on-light) text
+d["colorfortablemouseoverrowbackground"] = "#ff" + acc
+d["colorfortablemouseoverrowforeground"] = "#ff" + accfg
 json.dump(d, open(p, "w"), indent=2)
-print("[jdownloader-theme] jd-highlighter: borderless panels + no row/statusbar lines")
+print("[jdownloader-theme] jd-highlighter: borderless + no row/statusbar lines + accent row hover")
 PYEOF
     fi
 else

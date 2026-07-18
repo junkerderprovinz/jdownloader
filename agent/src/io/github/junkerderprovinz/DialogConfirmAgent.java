@@ -1206,8 +1206,16 @@ public class DialogConfirmAgent {
                 javax.swing.JList<?> list = (javax.swing.JList<?>) child;
                 javax.swing.ListCellRenderer<?> r = list.getCellRenderer();
                 if (r != null && r.getClass().getName().endsWith("sidebar.TreeRenderer")) {
+                    // Center the icon+text vertically in the taller row — JD's renderer top-aligns,
+                    // which looks off at 66px. Works if TreeRenderer is JLabel-based; no-op otherwise.
+                    try {
+                        if (r instanceof javax.swing.JLabel) {
+                            ((javax.swing.JLabel) r).setVerticalAlignment(javax.swing.SwingConstants.CENTER);
+                            ((javax.swing.JLabel) r).setVerticalTextPosition(javax.swing.SwingConstants.CENTER);
+                        }
+                    } catch (Throwable ignore) { }
                     // Roomier rows: bump the shared static DIMENSION height. Idempotent (the
-                    // < guard stops once it is 52), so it survives sidebar rebuilds.
+                    // < guard stops once it reaches SIDEBAR_ROW_PX), so it survives sidebar rebuilds.
                     try {
                         Field f = r.getClass().getField("DIMENSION");   // public static final Dimension
                         Object dim = f.get(null);
@@ -1380,16 +1388,18 @@ public class DialogConfirmAgent {
 
     private static final class SectionCardBorder implements javax.swing.border.Border {
         private final javax.swing.border.Border original;
-        private static final Color CARD = new Color(0x1e, 0x1e, 0x1e);
-        private static final int PAD_H = 12, PAD_TOP = 10, PAD_BOTTOM = 12, ARC = 14;
+        private static final Color CARD = new Color(0x24, 0x24, 0x24);   // surface: base < field < card
+        private static final int MARGIN = 10, INNER = 12, ARC = 14;      // equal MARGIN gap on all sides
         SectionCardBorder(javax.swing.border.Border original) { this.original = original; }
 
         public boolean isBorderOpaque() { return false; }
 
         public java.awt.Insets getBorderInsets(Component c) {
+            // rows sit MARGIN+INNER from the panel edge = INNER inside the card, MARGIN outside it
+            int p = MARGIN + INNER;
             java.awt.Insets in = (original != null) ? original.getBorderInsets(c)
                     : new java.awt.Insets(0, 0, 0, 0);
-            return new java.awt.Insets(in.top + PAD_TOP, in.left + PAD_H, in.bottom + PAD_BOTTOM, in.right + PAD_H);
+            return new java.awt.Insets(in.top + p, in.left + p, in.bottom + p, in.right + p);
         }
 
         public void paintBorder(Component c, Graphics g, int x, int y, int w, int h) {
@@ -1404,20 +1414,19 @@ public class DialogConfirmAgent {
                 try {
                     g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                     g2.setColor(CARD);
-                    int left = x + 2, right = x + w - 2;
+                    int left = x + MARGIN, right = x + w - MARGIN;   // equal side margins
                     for (int i = 0; i < headers.size(); i++) {
                         int hTop = headers.get(i).getY();
                         int hNext = (i + 1 < headers.size()) ? headers.get(i + 1).getY() : Integer.MAX_VALUE;
-                        // Enclose ONLY this section's rows (children between this header and the
-                        // next). The card ends at the content, so the injected gap-above-header
-                        // (spreadSections) shows as a clean gap between the cards.
+                        // enclose ONLY this section's rows; the injected gap-above-header
+                        // (spreadSections) then shows as an equal gap between the cards.
                         int contentBottom = hTop + headers.get(i).getHeight();
                         for (Component ch : p.getComponents()) {
                             if (!ch.isVisible()) continue;
                             int cy = ch.getY();
                             if (cy >= hTop && cy < hNext) contentBottom = Math.max(contentBottom, cy + ch.getHeight());
                         }
-                        int top = hTop - PAD_TOP, bottom = contentBottom + PAD_BOTTOM;
+                        int top = hTop - INNER, bottom = contentBottom + INNER;
                         if (bottom - top > 6)
                             g2.fill(new java.awt.geom.RoundRectangle2D.Float(
                                     left, top, right - left, bottom - top, ARC, ARC));
@@ -1445,7 +1454,7 @@ public class DialogConfirmAgent {
                 Object cur = gc.invoke(lm, ch);
                 String cc = (cur == null) ? "" : cur.toString();
                 if (cc.contains("gaptop")) continue;       // already spread
-                sc.invoke(lm, ch, (cc.isEmpty() ? "" : cc + ",") + "gaptop 26");
+                sc.invoke(lm, ch, (cc.isEmpty() ? "" : cc + ",") + "gaptop 34");   // = MARGIN + 2*INNER
                 changed = true;
             }
             if (changed) { panel.revalidate(); panel.repaint(); }
@@ -1457,7 +1466,7 @@ public class DialogConfirmAgent {
     //     by shade (buttons/fields keep @componentBackground and read as raised pills on top).
     private static final java.util.Set<Window> DIALOG_TINTED =
             java.util.Collections.newSetFromMap(new java.util.WeakHashMap<Window, Boolean>());
-    private static final Color DIALOG_BG = new Color(0x26, 0x26, 0x26);
+    private static final Color DIALOG_BG = new Color(0x24, 0x24, 0x24);   // surface (matches cards)
 
     private static void recolorDialogs() {
         for (Window w : Window.getWindows()) {
