@@ -1400,27 +1400,60 @@ public class DialogConfirmAgent {
     private static final java.util.Map<javax.swing.Icon, String> KEY_CACHE = new java.util.WeakHashMap<>();
     private static final String KEY_NONE = " noKey";
 
-    /** The JD icon's short name (e.g. "reconnect", "logo/myjdownloader") or null if it carries none. */
+    /** The JD icon's short name (e.g. "reconnect", "logo/myjdownloader") or null if it carries none.
+     *  Wrapper/merged icons (ExtMergedIcon = base glyph + a state badge, ScaledIcon, ...) report a null
+     *  key, so we recurse into their component icons and take the first that resolves — that recovers
+     *  the toolbar toggles + any composite chrome glyph. Cached per icon. */
     private static String iconKey(javax.swing.Icon ic) {
         if (ic == null) return null;
         synchronized (KEY_CACHE) {
             String c = KEY_CACHE.get(ic);
             if (c != null) return (c == KEY_NONE) ? null : c;
         }
-        String result = null;
-        try {
+        String result = resolveKey(ic, 0);
+        synchronized (KEY_CACHE) { KEY_CACHE.put(ic, result == null ? KEY_NONE : result); }
+        return result;
+    }
+
+    private static String resolveKey(javax.swing.Icon ic, int depth) {
+        if (ic == null || depth > 3) return null;
+        try {   // 1. direct: getIdentifier().getKey()
             java.lang.reflect.Method m = ic.getClass().getMethod("getIdentifier");
-            try { m.setAccessible(true); } catch (Throwable ignore) { }   // reach public method on a package-private class
+            try { m.setAccessible(true); } catch (Throwable ignore) { }
             Object id = m.invoke(ic);
             if (id != null) {
                 java.lang.reflect.Method gk = id.getClass().getMethod("getKey");
                 try { gk.setAccessible(true); } catch (Throwable ignore) { }
                 Object k = gk.invoke(id);
-                if (k != null) { String s = k.toString(); if (!s.isEmpty()) result = s; }
+                if (k != null) { String s = k.toString(); if (!s.isEmpty() && !"null".equals(s)) return s; }
             }
         } catch (Throwable ignore) { }
-        synchronized (KEY_CACHE) { KEY_CACHE.put(ic, result == null ? KEY_NONE : result); }
-        return result;
+        // 2. unwrap: scan instance fields for a component icon (merged/scaled/wrapped) and recurse
+        for (Class<?> cl = ic.getClass(); cl != null && cl != Object.class; cl = cl.getSuperclass()) {
+            for (java.lang.reflect.Field f : cl.getDeclaredFields()) {
+                if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) continue;
+                try {
+                    f.setAccessible(true);
+                    String k = keyFromValue(f.get(ic), depth);
+                    if (k != null) return k;
+                } catch (Throwable ignore) { }
+            }
+        }
+        return null;
+    }
+
+    private static String keyFromValue(Object v, int depth) {
+        if (v instanceof javax.swing.Icon) return resolveKey((javax.swing.Icon) v, depth + 1);
+        if (v instanceof Object[]) {
+            for (Object o : (Object[]) v) if (o instanceof javax.swing.Icon) {
+                String k = resolveKey((javax.swing.Icon) o, depth + 1); if (k != null) return k;
+            }
+        } else if (v instanceof java.util.Collection) {
+            for (Object o : (java.util.Collection<?>) v) if (o instanceof javax.swing.Icon) {
+                String k = resolveKey((javax.swing.Icon) o, depth + 1); if (k != null) return k;
+            }
+        }
+        return null;
     }
 
     /** White Tabler base icon for a JD key at exactly w x h (nearest shipped size, scaled), cached. */
@@ -1639,6 +1672,17 @@ public class DialogConfirmAgent {
                         if (!fieldHeader) { writeDiag("=== CONFIG FIELDS (round 32) ==="); fieldHeader = true; }
                         writeDiag(rec);
                     }
+                } catch (Throwable ignore) { }
+            } else if (cfg && !(ch instanceof javax.swing.JLabel)) {
+                // round-34b: find the section-HEADER component (it is not a plain JLabel, so it never
+                // showed up as CFGLBL). Any config component exposing a non-null getIcon() is a candidate.
+                try {
+                    java.lang.reflect.Method gi = ch.getClass().getMethod("getIcon");
+                    Object icv = gi.invoke(ch);
+                    if (icv instanceof javax.swing.Icon && ((javax.swing.Icon) icv).getIconWidth() > 0
+                            && FIELD_SEEN.add("HDR" + ch.getClass().getName()))
+                        writeDiag("HDRICON " + ch.getClass().getName() + " key=" + iconKey((javax.swing.Icon) icv)
+                                + " " + iconId((javax.swing.Icon) icv));
                 } catch (Throwable ignore) { }
             }
             if (ch instanceof Container) logFieldsIn((Container) ch, cfg);
@@ -2246,7 +2290,7 @@ public class DialogConfirmAgent {
                 JComponent dim = new JComponent() {
                     protected void paintComponent(Graphics g) {
                         if (blur != null) g.drawImage(blur, 0, 0, getWidth(), getHeight(), null);
-                        g.setColor(new Color(0, 0, 0, blur != null ? 150 : 175));   // darker veil over the blur
+                        g.setColor(new Color(0, 0, 0, blur != null ? 110 : 175));   // lighter veil over the blur = frosted, not black
                         g.fillRect(0, 0, getWidth(), getHeight());
                     }
                 };
