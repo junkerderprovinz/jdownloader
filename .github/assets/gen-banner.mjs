@@ -44,7 +44,12 @@ const CLAIM = "Grab it. All of it. In the dark.";
 // GitHub-dark bg + light text. Same logo in both (see header comment).
 const THEMES = [
   { suffix: "",      bg: "#ffffff", name: "#161616", claim: "#5a5d5e" }, // Carbon on white
-  { suffix: "-dark", bg: "#0d1117", name: "#e6edf3", claim: "#9aa4ad" },
+  // Dark theme: the logo's near-black greys (#161616 disc, #0b0b0b outlines)
+  // vanish on the #0d1117 canvas — lighten JUST those two greys for this theme
+  // (user-ordered 2026-07-19). Exact-colour swaps on the embedded markup only;
+  // greens/ambers and all geometry stay verbatim.
+  { suffix: "-dark", bg: "#0d1117", name: "#e6edf3", claim: "#9aa4ad",
+    logoSwaps: [["#161616", "#2d333b"], ["#0b0b0b", "#21262d"]] },
 ];
 const W = 1600, H = 500;
 const LH = 360; // logo height (icon.svg is square, 48x48 units)
@@ -149,9 +154,10 @@ logo = logo.replace(
 const { Resvg } = require(`${gRoot}/@resvg/resvg-js`);
 
 for (const t of THEMES) {
+  const themedLogo = (t.logoSwaps ?? []).reduce((acc, [from, to]) => acc.split(from).join(to), logo);
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="JDownloader">
   <rect width="${W}" height="${H}" fill="${t.bg}"/>
-  ${logo}
+  ${themedLogo}
   <path d="${namePath}" fill="${t.name}"/>
   <path d="${claimPath}" fill="${t.claim}"/>
 </svg>
