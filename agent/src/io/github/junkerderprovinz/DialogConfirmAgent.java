@@ -1549,40 +1549,17 @@ public class DialogConfirmAgent {
             b.setRolloverIcon(tablerForButton(b, cur, accentFg()));  // dark glyph for the accent hover fill
             // Toggle buttons keep a distinct icon per state; swap each. Only runs on the (re)mono pass
             // (the getIcon()==jdp.monoBtn guard returns early otherwise), so no churn.
+            // The rollover / selected / pressed states all paint the accent background (via the
+            // ToggleButton.* + Button.* hover keys), so their glyphs go DARK to stay readable on it.
             javax.swing.Icon si = b.getSelectedIcon();
-            if (si != null && si != mono) b.setSelectedIcon(tablerForButton(b, si, SIDEBAR_TEXT));
+            if (si != null && si != mono) b.setSelectedIcon(tablerForButton(b, si, accentFg()));
             javax.swing.Icon rsi = b.getRolloverSelectedIcon();
             if (rsi != null && rsi != mono) b.setRolloverSelectedIcon(tablerForButton(b, rsi, accentFg()));
             javax.swing.Icon pi = b.getPressedIcon();
-            if (pi != null && pi != mono) b.setPressedIcon(tablerForButton(b, pi, SIDEBAR_TEXT));
-            // Leave disabledIcon null so Swing derives a grey version of our mono icon (avoids a third
-            // tone colliding with the accent tone in tintIcon's two-bucket cache).
-            installAccentHover(b);
+            if (pi != null && pi != mono) b.setPressedIcon(tablerForButton(b, pi, accentFg()));
+            // Leave disabledIcon null so Swing derives a grey version of our mono icon.
+            b.setContentAreaFilled(true);   // so FlatLaf's ToggleButton.hoverBackground actually paints
         } catch (Throwable ignore) { }
-    }
-
-    /** AppWork toolbar buttons ignore FlatLaf's hoverBackground, so the accent fill never appears and
-     *  the dark rollover glyph lands on the plain dark toolbar (looks like nothing happens / the icon
-     *  vanishes on mouseover). Paint the accent fill ourselves on rollover, restoring the original
-     *  paint on exit. Once per button. FlatLaf buttons already hover-accent, so they are skipped. */
-    private static void installAccentHover(final javax.swing.AbstractButton b) {
-        if (!b.getClass().getName().startsWith("org.appwork")) return;
-        if (b.getClientProperty("jdp.accentHover") != null) return;
-        b.putClientProperty("jdp.accentHover", Boolean.TRUE);
-        final Color origBg = b.getBackground();
-        final boolean origOpaque = b.isOpaque();
-        final boolean origFilled = b.isContentAreaFilled();
-        b.addMouseListener(new java.awt.event.MouseAdapter() {
-            @Override public void mouseEntered(java.awt.event.MouseEvent e) {
-                if (!b.isEnabled()) return;
-                Color acc = accentColor();
-                if (acc == null) return;
-                b.setContentAreaFilled(true); b.setOpaque(true); b.setBackground(acc); b.repaint();
-            }
-            @Override public void mouseExited(java.awt.event.MouseEvent e) {
-                b.setBackground(origBg); b.setOpaque(origOpaque); b.setContentAreaFilled(origFilled); b.repaint();
-            }
-        });
     }
 
     /** Like tablerIcon, but for a button: when the icon carries no name (a merged toggle glyph), pick
@@ -2073,8 +2050,9 @@ public class DialogConfirmAgent {
 
     /** Dark text on tabs with an accent background (SELECTED or HOVERED), light on the rest.
      *  JD's custom tab components bypass FlatLaf's hover/selectedForeground, so we own it. */
-    private static void applyTabForegrounds(javax.swing.JTabbedPane tp, Color selFg, Color norFg, int hover) {
+    private static void applyTabForegrounds(final javax.swing.JTabbedPane tp, Color selFg, Color norFg, int hover) {
         int sel = tp.getSelectedIndex();
+        boolean pillInstalled = false;
         for (int i = 0; i < tp.getTabCount(); i++) {
             boolean accentBg = (i == sel || i == hover);
             Color want = new Color((accentBg ? selFg : norFg).getRGB());  // plain Color: app-set, honoured
@@ -2091,14 +2069,31 @@ public class DialogConfirmAgent {
             if (tc != null) {
                 setLabelFg(tc, want);
                 tablerTabIcons(tc, iconTone);
-                // Install the inset accent-pill border once; it grows the tab, so revalidate the pane.
+                // Install the inset accent-pill border once; it grows each tab's preferred width.
                 if (tc instanceof javax.swing.JComponent
                         && !(((javax.swing.JComponent) tc).getBorder() instanceof PillBorder)) {
                     ((javax.swing.JComponent) tc).setBorder(new PillBorder());
-                    tp.revalidate();
-                    tp.repaint();
+                    pillInstalled = true;
                 }
             }
+        }
+        if (pillInstalled) {
+            // FlatLaf caches tab widths and a plain revalidate() during the tick did not re-measure
+            // (the label clipped: "Downloads" -> "Download"). Re-SET each tab component + revalidate,
+            // deferred to the next EDT cycle, which forces FlatTabbedPaneUI to recompute the widths
+            // from the now-bordered components — so the pill has room and nothing clips.
+            javax.swing.SwingUtilities.invokeLater(new Runnable() {
+                public void run() {
+                    try {
+                        for (int i = 0; i < tp.getTabCount(); i++) {
+                            Component t = tp.getTabComponentAt(i);
+                            if (t != null) { t.invalidate(); tp.setTabComponentAt(i, t); }
+                        }
+                        tp.revalidate();
+                        tp.repaint();
+                    } catch (Throwable ignore) { }
+                }
+            });
         }
     }
 
@@ -2109,7 +2104,7 @@ public class DialogConfirmAgent {
      *  on top of the pill. Its insets pad the content inside the pill; the FlatLaf tabInsets margin
      *  around this component then reads as the dark gap between pills. */
     private static final class PillBorder implements javax.swing.border.Border {
-        private static final int PAD_V = 4, PAD_H = 12, ARC = 14;
+        private static final int PAD_V = 4, PAD_H = 10, ARC = 12;
         public boolean isBorderOpaque() { return false; }
         public java.awt.Insets getBorderInsets(Component c) { return new java.awt.Insets(PAD_V, PAD_H, PAD_V, PAD_H); }
         public void paintBorder(Component c, Graphics g, int x, int y, int w, int h) {
@@ -2353,13 +2348,17 @@ public class DialogConfirmAgent {
         }
     }
 
-    /** Remove a decorative frame (Titled/Etched/Line/Bevel/Matte) so the dialog reads by shade, not
-     *  by lines; leave EmptyBorder/compound padding intact. */
+    /** Remove a decorative frame (Titled/Etched/Line/Bevel/Matte, or an AppWork dialog border that
+     *  draws the grey rectangle around a pop-up) so the dialog reads by shade, not by lines; leave
+     *  EmptyBorder/compound padding intact. */
     private static void stripFramingBorder(JComponent jc) {
         javax.swing.border.Border b = jc.getBorder();
+        if (b == null || b instanceof javax.swing.border.EmptyBorder) return;
+        String cn = b.getClass().getName();
         if (b instanceof javax.swing.border.TitledBorder || b instanceof javax.swing.border.EtchedBorder
                 || b instanceof javax.swing.border.LineBorder || b instanceof javax.swing.border.BevelBorder
-                || b instanceof javax.swing.border.MatteBorder)
+                || b instanceof javax.swing.border.MatteBorder
+                || cn.startsWith("org.appwork") || cn.contains("LineBorder") || cn.contains("Etched"))
             jc.setBorder(javax.swing.BorderFactory.createEmptyBorder());
     }
 

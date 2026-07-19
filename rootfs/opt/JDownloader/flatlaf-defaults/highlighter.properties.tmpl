@@ -12,13 +12,25 @@
 
 # --- accent (the one knob) ---
 @accentColor                    = @@ACCENT@@
-ToggleButton.selectedBackground = @@ACCENT@@
+# toolbar TOGGLE buttons (clipboard/reconnect/premium/silent) are FlatLaf toggles: they need the
+# ToggleButton.* keys (Button.* does not reach them), else the accent hover never paints and the
+# dark rollover glyph lands on dark = the "toolbar mouseover funktioniert nicht" bug.
+ToggleButton.selectedBackground         = @@ACCENT@@
+ToggleButton.hoverBackground            = @@ACCENT@@
+ToggleButton.pressedBackground          = @@ACCENT@@
+ToggleButton.toolbar.hoverBackground    = @@ACCENT@@
+ToggleButton.toolbar.pressedBackground  = @@ACCENT@@
+ToggleButton.toolbar.selectedBackground = @@ACCENT@@
 # every button looks the SAME: a #2a2a2a raised button, accent only on hover. The "default"
-# button (Save & Restart etc.) is NOT permanently accent-filled — that was the inconsistency.
-Button.default.foreground       = #f4f4f4
-Button.default.background        = #2a2a2a
+# button (Save & Restart / Ok) is NOT permanently accent-filled and has NO extra frame — that was
+# the inconsistency ("buttons sollen immer gleich sein").
+Button.default.foreground        = #f4f4f4
+Button.default.background         = #2a2a2a
+Button.default.borderColor       = #2a2a2a
+Button.default.focusedBorderColor = @@ACCENT@@
 Button.default.focusedBackground = @@ACCENT@@
-Button.default.hoverBackground  = @@ACCENT@@
+Button.default.hoverBackground   = @@ACCENT@@
+Button.default.boldText          = false
 CheckBox.icon.checkmarkColor     = @@ACCENT@@
 RadioButton.icon.centerColor     = @@ACCENT@@
 # the UNCHECKED box was a near-invisible dark square on dark chrome: give it a visible grey
