@@ -1392,19 +1392,34 @@ public class DialogConfirmAgent {
     private static final Object TABLER_NONE = new Object();
     private static final java.util.Map<String, Object> TABLER_CACHE = new java.util.concurrent.ConcurrentHashMap<>();
 
+    // Resolved-key cache: iconKey() is called on every sidebar cell paint (and the hover listener
+    // repaints the whole list on each mouseMoved), so the reflection must not run per paint. JD's
+    // icon objects have stable identity (it caches them), so a WeakHashMap keyed on the icon gives an
+    // O(1) hit after the first resolve. KEY_NONE marks icons that carry no name so we never re-reflect.
+    private static final java.util.Map<javax.swing.Icon, String> KEY_CACHE = new java.util.WeakHashMap<>();
+    private static final String KEY_NONE = " noKey";
+
     /** The JD icon's short name (e.g. "reconnect", "logo/myjdownloader") or null if it carries none. */
     private static String iconKey(javax.swing.Icon ic) {
         if (ic == null) return null;
+        synchronized (KEY_CACHE) {
+            String c = KEY_CACHE.get(ic);
+            if (c != null) return (c == KEY_NONE) ? null : c;
+        }
+        String result = null;
         try {
             java.lang.reflect.Method m = ic.getClass().getMethod("getIdentifier");
+            try { m.setAccessible(true); } catch (Throwable ignore) { }   // reach public method on a package-private class
             Object id = m.invoke(ic);
             if (id != null) {
                 java.lang.reflect.Method gk = id.getClass().getMethod("getKey");
+                try { gk.setAccessible(true); } catch (Throwable ignore) { }
                 Object k = gk.invoke(id);
-                if (k != null) { String s = k.toString(); if (!s.isEmpty()) return s; }
+                if (k != null) { String s = k.toString(); if (!s.isEmpty()) result = s; }
             }
         } catch (Throwable ignore) { }
-        return null;
+        synchronized (KEY_CACHE) { KEY_CACHE.put(ic, result == null ? KEY_NONE : result); }
+        return result;
     }
 
     /** White Tabler base icon for a JD key at exactly w x h (nearest shipped size, scaled), cached. */
@@ -1472,7 +1487,7 @@ public class DialogConfirmAgent {
             // ALL buttons (JD's toolbar is not a JToolBar, so scoping to JToolBar missed the play
             // button) + section-header labels inside config panels (the coloured section icons).
             if (child instanceof javax.swing.AbstractButton) monoButtonIcon((javax.swing.AbstractButton) child);
-            else if (cfg && child instanceof javax.swing.JLabel) monoLabelIcon((javax.swing.JLabel) child);
+            else if (child instanceof javax.swing.JLabel) monoLabelIcon((javax.swing.JLabel) child, cfg);
             if (child instanceof Container) monoChromeIn((Container) child, cfg);
         }
     }
@@ -1487,14 +1502,34 @@ public class DialogConfirmAgent {
             b.setIcon(mono);
             b.putClientProperty("jdp.monoBtn", mono);
             b.setRolloverIcon(tablerIcon(cur, accentFg(), b));       // dark glyph for the accent hover fill
+            // Toggle toolbar buttons (clipboard-observer, auto-reconnect, ...) keep a distinct, often
+            // colourful icon per state; mono each from its OWN glyph. This block only runs on the
+            // (re)mono pass (the getIcon()==jdp.monoBtn guard returns early otherwise), so no churn.
+            javax.swing.Icon si = b.getSelectedIcon();
+            if (si != null && si != mono) b.setSelectedIcon(tablerIcon(si, SIDEBAR_TEXT, b));
+            javax.swing.Icon rsi = b.getRolloverSelectedIcon();
+            if (rsi != null && rsi != mono) b.setRolloverSelectedIcon(tablerIcon(rsi, accentFg(), b));
+            javax.swing.Icon pi = b.getPressedIcon();
+            if (pi != null && pi != mono) b.setPressedIcon(tablerIcon(pi, SIDEBAR_TEXT, b));
+            // Leave disabledIcon null so Swing derives a grey version of our mono icon (avoids a third
+            // tone colliding with the accent tone in tintIcon's two-bucket cache).
         } catch (Throwable ignore) { }
     }
 
-    private static void monoLabelIcon(javax.swing.JLabel l) {
+    private static void monoLabelIcon(javax.swing.JLabel l, boolean cfg) {
         try {
             javax.swing.Icon cur = l.getIcon();
             if (cur == null) return;
             if (cur == l.getClientProperty("jdp.monoLbl")) return;
+            if (l.getClientProperty("jdp.tabOrig") != null) return;   // tab labels are owned by recolorMainTabs (tone-aware)
+            // Inside a config panel we mono every label icon (section headers etc.). OUTSIDE one, only
+            // touch KNOWN chrome icons (those with a mapped Tabler asset) — this reaches the main-tab
+            // row and status-bar chrome without recolouring content icons (hoster favicons, file-type
+            // thumbnails) which carry no mapped key.
+            if (!cfg) {
+                String key = iconKey(cur);
+                if (key == null || tablerBase(key, cur.getIconWidth(), cur.getIconHeight()) == null) return;
+            }
             javax.swing.Icon mono = tablerIcon(cur, SIDEBAR_TEXT, l);
             if (mono != cur) { l.setIcon(mono); l.putClientProperty("jdp.monoLbl", mono); }
         } catch (Throwable ignore) { }
@@ -1835,9 +1870,33 @@ public class DialogConfirmAgent {
             boolean accentBg = (i == sel || i == hover);
             Color want = new Color((accentBg ? selFg : norFg).getRGB());  // plain Color: app-set, honoured
             if (!want.equals(tp.getForegroundAt(i))) tp.setForegroundAt(i, want);
+            Color iconTone = accentBg ? accentFg() : SIDEBAR_TEXT;        // dark glyph on the accent tab, light otherwise
+            javax.swing.Icon slot = tp.getIconAt(i);                      // JD may set the icon via setIconAt(...)
+            if (slot != null) {
+                String pk = "jdp.tabIcOrig." + i;
+                javax.swing.Icon o = (javax.swing.Icon) tp.getClientProperty(pk);
+                if (o == null && iconKey(slot) != null) { o = slot; tp.putClientProperty(pk, o); }
+                if (o != null) { javax.swing.Icon nw = tablerIcon(o, iconTone, tp); if (nw != tp.getIconAt(i)) tp.setIconAt(i, nw); }
+            }
             Component tc = tp.getTabComponentAt(i);   // custom tab component (JLabel etc.)
-            if (tc != null) setLabelFg(tc, want);
+            if (tc != null) { setLabelFg(tc, want); tablerTabIcons(tc, iconTone); }
         }
+    }
+
+    /** Tabler-swap the chrome icon on a tab's custom component (JLabel), tone-aware. A stored original
+     *  (client prop "jdp.tabOrig") means the light/dark flip on selection always re-tints from JD's
+     *  original glyph, never from an already-tinted icon (no unbounded re-tint / churn). */
+    private static void tablerTabIcons(Component c, Color tone) {
+        if (c instanceof javax.swing.JLabel) {
+            javax.swing.JLabel l = (javax.swing.JLabel) c;
+            javax.swing.Icon o = (javax.swing.Icon) l.getClientProperty("jdp.tabOrig");
+            if (o == null) {
+                javax.swing.Icon cur = l.getIcon();
+                if (cur != null && iconKey(cur) != null) { o = cur; l.putClientProperty("jdp.tabOrig", o); }
+            }
+            if (o != null) { javax.swing.Icon nw = tablerIcon(o, tone, l); if (l.getIcon() != nw) l.setIcon(nw); }
+        }
+        if (c instanceof Container) for (Component ch : ((Container) c).getComponents()) tablerTabIcons(ch, tone);
     }
 
     private static final String TAB_HOVER_WIRED = "jdp.tabHoverWired";
