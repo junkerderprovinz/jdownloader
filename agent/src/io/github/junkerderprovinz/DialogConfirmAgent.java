@@ -1296,6 +1296,19 @@ public class DialogConfirmAgent {
     private static boolean SIDEBAR_DIAG_DONE = false;   // one-time renderer dump (round 14)
 
     /**
+     * Append a diagnostic line to /config/hl-diag.txt. Tick-time System.out is swallowed once JD
+     * redirects it (the round-14 diag never reached docker logs OR JD's log files), so a file is
+     * the only reliable channel from tick code back to a CI probe (which cats it). Best-effort.
+     */
+    private static void writeDiag(String line) {
+        try {
+            java.nio.file.Files.write(java.nio.file.Paths.get("/config/hl-diag.txt"),
+                    ("[hl-diag] " + line + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                    java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+        } catch (Throwable ignore) { }
+    }
+
+    /**
      * Raise the Settings sidebar's row height. JD gives every entry a fixed size from a
      * shared public-static Dimension on the list's cell renderer
      * (jd...settings.sidebar.TreeRenderer.DIMENSION = new Dimension(0, 35)); there is no
@@ -1321,39 +1334,11 @@ public class DialogConfirmAgent {
                 javax.swing.ListCellRenderer<?> r =
                         (cur == wrap && wrap != null) ? asRenderer(list.getClientProperty(SB_ORIG_RENDERER)) : cur;
                 if (r != null && r.getClass().getName().endsWith("sidebar.TreeRenderer")) {
-                    // Center the icon+text vertically in the taller row — JD's renderer top-aligns,
-                    // which looks off at 66px. Round-11 set verticalTextPosition=CENTER (wrong: that
-                    // stacks text ON the icon) and it never took anyway (block still measured
-                    // top-stuck, ~13-16px empty below), so: correct the layout (text UNDER icon,
-                    // block centered) AND emit a one-time diagnostic of the real renderer so, if it
-                    // is not a JLabel, the boot log shows what it actually is.
-                    try {
-                        boolean isLabel = (r instanceof javax.swing.JLabel);
-                        if (isLabel) {
-                            javax.swing.JLabel jl = (javax.swing.JLabel) r;
-                            jl.setVerticalAlignment(javax.swing.SwingConstants.CENTER);
-                            jl.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
-                            jl.setVerticalTextPosition(javax.swing.SwingConstants.BOTTOM);
-                            jl.setHorizontalTextPosition(javax.swing.SwingConstants.CENTER);
-                        }
-                        if (!SIDEBAR_DIAG_DONE) {
-                            SIDEBAR_DIAG_DONE = true;
-                            String txt = ""; int prefH = -1; Object vAl = "n/a", vTp = "n/a", brd = "n/a";
-                            if (isLabel) {
-                                javax.swing.JLabel jl = (javax.swing.JLabel) r;
-                                txt = String.valueOf(jl.getText());
-                                if (txt.length() > 40) txt = txt.substring(0, 40);
-                                vAl = jl.getVerticalAlignment(); vTp = jl.getVerticalTextPosition();
-                                brd = String.valueOf(jl.getBorder());
-                                Dimension ps = jl.getPreferredSize();
-                                prefH = (ps == null) ? -1 : ps.height;
-                            }
-                            System.out.println("[jd-dialog-agent] HL sidebar-diag: rClass=" + r.getClass().getName()
-                                    + " isJLabel=" + isLabel + " vAlign=" + vAl + " vTextPos=" + vTp
-                                    + " prefH=" + prefH + " border=" + brd
-                                    + " text=\"" + txt.replaceAll("\\s+", " ") + "\"");
-                        }
-                    } catch (Throwable ignore) { }
+                    // Icon+label vertical centering is done in the accent-hover wrapper below
+                    // (installSidebarAccentHover). It MUST run downstream of JD's per-cell
+                    // configuration: JD's TreeRenderer.getListCellRendererComponent reconfigures the
+                    // shared component every call, so any alignment set on the renderer instance here
+                    // is overwritten before each paint (that is why round 14 was a no-op).
                     // Roomier rows: bump the shared static DIMENSION height. Idempotent (the
                     // < guard stops once it reaches SIDEBAR_ROW_PX), so it survives sidebar rebuilds.
                     try {
@@ -1409,6 +1394,30 @@ public class DialogConfirmAgent {
                 public Component getListCellRendererComponent(javax.swing.JList l, Object v, int idx, boolean sel, boolean foc) {
                     javax.swing.ListCellRenderer real = (javax.swing.ListCellRenderer) l.getClientProperty(SB_ORIG_RENDERER);
                     Component comp = real.getListCellRendererComponent(l, v, idx, sel, foc);
+                    // Vertically center the icon+label block in the tall (66px) row. Runs here,
+                    // AFTER JD configured the component for this cell, so it actually sticks.
+                    if (comp instanceof javax.swing.JLabel) {
+                        javax.swing.JLabel jl = (javax.swing.JLabel) comp;
+                        jl.setVerticalAlignment(javax.swing.SwingConstants.CENTER);
+                        jl.setVerticalTextPosition(javax.swing.SwingConstants.BOTTOM);
+                        jl.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
+                        jl.setHorizontalTextPosition(javax.swing.SwingConstants.CENTER);
+                    }
+                    if (!SIDEBAR_DIAG_DONE) {
+                        SIDEBAR_DIAG_DONE = true;
+                        String kids = "";
+                        if (comp instanceof Container) {
+                            Component[] cc = ((Container) comp).getComponents();
+                            StringBuilder kb = new StringBuilder();
+                            for (int i = 0; i < Math.min(cc.length, 6); i++) kb.append(cc[i].getClass().getSimpleName()).append(",");
+                            kids = " kids[" + cc.length + "]=" + kb;
+                        }
+                        writeDiag("sidebar comp=" + comp.getClass().getName()
+                                + " isJLabel=" + (comp instanceof javax.swing.JLabel)
+                                + " layout=" + (comp instanceof Container && ((Container) comp).getLayout() != null
+                                        ? ((Container) comp).getLayout().getClass().getSimpleName() : "-")
+                                + kids);
+                    }
                     Object h = l.getClientProperty(SB_HOVER_ROW);
                     int hoverRow = (h instanceof Integer) ? ((Integer) h).intValue() : -1;
                     if (!sel && idx == hoverRow && comp instanceof javax.swing.JComponent) {

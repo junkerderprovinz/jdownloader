@@ -98,6 +98,8 @@ jobs:
             done' > out/jd-logs-all.txt 2>/dev/null || true
           echo "=== HL sidebar-diag / table-diag from JD logs ==="
           grep -aE "HL sidebar-diag|HL table-diag|settings sidebar row height" out/jd-logs-all.txt | tail -30 || echo "(none in JD logs)"
+          echo "=== agent hl-diag file (reliable channel: /config/hl-diag.txt) ==="
+          docker exec jd sh -c 'cat /config/hl-diag.txt 2>/dev/null' | tee out/hl-diag.txt || echo "(no hl-diag.txt)"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
