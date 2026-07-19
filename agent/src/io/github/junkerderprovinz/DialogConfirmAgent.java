@@ -251,6 +251,7 @@ public class DialogConfirmAgent {
             styleSidebar();
             stripSectionUnderlines();
             recolorMainTabs();
+            monoChromeIcons();
             cardSettingsSections();
             borderlessConfigTables();
             recolorDialogs();
@@ -1375,6 +1376,40 @@ public class DialogConfirmAgent {
             synchronized (cache) { cache.put(orig, ti); }
             return ti;
         } catch (Throwable t) { return orig; }
+    }
+
+    /**
+     * Mono the visible chrome icons that the sidebar wrapper does not cover — the toolbar buttons.
+     * JD caches its icons, so (like the sidebar) the only thing that renders mono is replacing the
+     * Icon on the component itself. Set a light mono icon + a dark rollover, so the glyph stays
+     * visible both on the dark toolbar and on the accent hover fill. Tracked via a client property
+     * so it is set once and only re-applied if JD resets the icon (never compounds).
+     */
+    private static void monoChromeIcons() {
+        for (Window w : Window.getWindows()) {
+            if (w.isShowing()) monoChromeIn(w, false);
+        }
+    }
+
+    private static void monoChromeIn(Container c, boolean inToolbar) {
+        boolean tb = inToolbar || (c instanceof javax.swing.JToolBar);
+        for (Component child : c.getComponents()) {
+            if (tb && child instanceof javax.swing.AbstractButton) monoButtonIcon((javax.swing.AbstractButton) child);
+            if (child instanceof Container) monoChromeIn((Container) child, tb);
+        }
+    }
+
+    private static void monoButtonIcon(javax.swing.AbstractButton b) {
+        try {
+            javax.swing.Icon cur = b.getIcon();
+            if (cur == null) return;
+            if (cur == b.getClientProperty("jdp.monoBtn")) return;   // already our mono icon
+            javax.swing.Icon mono = tintIcon(cur, SIDEBAR_TEXT, b);
+            if (mono == cur) return;
+            b.setIcon(mono);
+            b.putClientProperty("jdp.monoBtn", mono);
+            b.setRolloverIcon(tintIcon(cur, accentFg(), b));         // dark glyph for the accent hover fill
+        } catch (Throwable ignore) { }
     }
 
     /**
