@@ -115,6 +115,10 @@ jobs:
           docker exec jd sh -c 'ls -d /config/JDownloader/themes/my-flat-mono-* 2>/dev/null; grep -aoE "\"iconsetid\":[^,]*" /config/JDownloader/cfg/laf/*.json 2>/dev/null | head -1' || true
           echo "=== config-sidebar-ish icon files (svg or png?) ==="
           docker exec jd sh -c 'find /config/JDownloader/themes/flat -type f 2>/dev/null | grep -iE "setting|reconnect|account|plugin|captcha|general|advanced|notif|premium|myjd" | head -25' || true
+          echo "=== raw colour format of a still-colourful sidebar icon (mono set copy) ==="
+          docker exec jd sh -c 'head -c 1400 /config/JDownloader/themes/my-flat-mono-light/org/jdownloader/images/reconnect.svg 2>/dev/null' || true
+          echo "--- and settings.svg ---"
+          docker exec jd sh -c 'grep -aoE "fill[:=][^;\"> ]{0,20}|rgb\([^)]*\)|stop-color[:=][^;\"> ]{0,20}|url\(#[^)]*\)" /config/JDownloader/themes/my-flat-mono-light/org/jdownloader/images/settings.svg 2>/dev/null | sort | uniq -c | head' || true
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
