@@ -1394,14 +1394,28 @@ public class DialogConfirmAgent {
                 public Component getListCellRendererComponent(javax.swing.JList l, Object v, int idx, boolean sel, boolean foc) {
                     javax.swing.ListCellRenderer real = (javax.swing.ListCellRenderer) l.getClientProperty(SB_ORIG_RENDERER);
                     Component comp = real.getListCellRendererComponent(l, v, idx, sel, foc);
-                    // Vertically center the icon+label block in the tall (66px) row. Runs here,
-                    // AFTER JD configured the component for this cell, so it actually sticks.
-                    if (comp instanceof javax.swing.JLabel) {
-                        javax.swing.JLabel jl = (javax.swing.JLabel) comp;
-                        jl.setVerticalAlignment(javax.swing.SwingConstants.CENTER);
-                        jl.setVerticalTextPosition(javax.swing.SwingConstants.BOTTOM);
-                        jl.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
-                        jl.setHorizontalTextPosition(javax.swing.SwingConstants.CENTER);
+                    // Vertically center the icon+label in the tall (66px) row. JD's TreeRenderer is
+                    // a MigLayout panel wrapping a single RenderLabel that MigLayout top-aligns
+                    // (diag: comp=...TreeRenderer isJLabel=false layout=MigLayout kids=[RenderLabel]);
+                    // that is why every JLabel-alignment attempt was a no-op. Center the child via a
+                    // MigLayout component constraint (reflected into JD's classloader) + center the
+                    // RenderLabel's own icon/text. Guarded per panel instance so it applies once and
+                    // survives sidebar rebuilds (a rebuild yields a fresh, unmarked panel).
+                    if (comp instanceof javax.swing.JComponent
+                            && !Boolean.TRUE.equals(((javax.swing.JComponent) comp).getClientProperty("jdp.centered"))) {
+                        try {
+                            Container panel = (Container) comp;
+                            java.awt.LayoutManager lm = panel.getLayout();
+                            Component[] kids = panel.getComponents();
+                            if (lm != null && lm.getClass().getName().contains("MigLayout") && kids.length >= 1) {
+                                lm.getClass().getMethod("setComponentConstraints", Component.class, Object.class)
+                                  .invoke(lm, kids[0], "aligny center");
+                                if (kids[0] instanceof javax.swing.JLabel)
+                                    ((javax.swing.JLabel) kids[0]).setVerticalAlignment(javax.swing.SwingConstants.CENTER);
+                                panel.revalidate();
+                                ((javax.swing.JComponent) comp).putClientProperty("jdp.centered", Boolean.TRUE);
+                            }
+                        } catch (Throwable ignore) { }
                     }
                     if (!SIDEBAR_DIAG_DONE) {
                         SIDEBAR_DIAG_DONE = true;
