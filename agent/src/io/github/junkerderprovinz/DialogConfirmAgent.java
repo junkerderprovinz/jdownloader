@@ -252,6 +252,7 @@ public class DialogConfirmAgent {
             stripSectionUnderlines();
             recolorMainTabs();
             cardSettingsSections();
+            borderlessConfigTables();
             recolorDialogs();
             dimModalBackdrops();
         }
@@ -1007,6 +1008,100 @@ public class DialogConfirmAgent {
         }
     }
 
+    // ------------------------------------------------------ borderless config tables (round 14)
+
+    private static final java.util.Set<Integer> LOGGED_TABLES = new java.util.HashSet<>();
+
+    /**
+     * The AppWork ExtTables inside Settings config panels ignore FlatLaf's Table.* / TableHeader.*
+     * keys (which only theme the LAF's own JTables and JD's download/linkgrabber link tables via
+     * colorfor*). They paint their own lighter-grey header band, column separators and an outer
+     * frame, and the scroll viewport sits as a darker inset inside the card — the "still many
+     * lines" that the .properties never reached. Flatten each config-panel table at the instance
+     * level: kill the grid, blend the header into the card colour, drop the scrollpane frame, and
+     * accent the boolean checkmarks. A one-time diagnostic dumps the real runtime structure so any
+     * bit that resists (e.g. a hard-coded header-renderer colour) shows up in the boot log.
+     */
+    private static void borderlessConfigTables() {
+        for (Window w : Window.getWindows()) {
+            if (w.isShowing()) borderlessTablesIn(w, false);
+        }
+    }
+
+    private static void borderlessTablesIn(Container c, boolean inConfig) {
+        boolean nowConfig = inConfig || (c instanceof JComponent && isConfigPanel(c.getClass()));
+        for (Component child : c.getComponents()) {
+            if (nowConfig && child instanceof JTable) flattenConfigTable((JTable) child);
+            if (child instanceof Container) borderlessTablesIn((Container) child, nowConfig);
+        }
+    }
+
+    private static void flattenConfigTable(JTable t) {
+        try {
+            t.setShowGrid(false);
+            t.setIntercellSpacing(new Dimension(0, 0));
+            if (!BG.equals(t.getGridColor())) t.setGridColor(BG);
+
+            javax.swing.table.JTableHeader h = t.getTableHeader();
+            if (h != null) {
+                if (!DIALOG_BG.equals(h.getBackground())) h.setBackground(DIALOG_BG);
+                h.setBorder(javax.swing.BorderFactory.createEmptyBorder());
+                javax.swing.table.TableCellRenderer dr = h.getDefaultRenderer();
+                if (dr instanceof JComponent) {
+                    ((JComponent) dr).setBackground(DIALOG_BG);
+                    ((JComponent) dr).setBorder(javax.swing.BorderFactory.createEmptyBorder());
+                }
+            }
+            Container sp = SwingUtilities.getAncestorOfClass(javax.swing.JScrollPane.class, t);
+            if (sp instanceof javax.swing.JScrollPane) {
+                javax.swing.JScrollPane s = (javax.swing.JScrollPane) sp;
+                s.setBorder(javax.swing.BorderFactory.createEmptyBorder());
+                s.setViewportBorder(javax.swing.BorderFactory.createEmptyBorder());
+            }
+            accentTableCheckmarks(t);
+            logTableStructureOnce(t, h, sp);
+        } catch (Throwable ignore) { }
+    }
+
+    /** Best-effort accent on boolean-column checkmarks (+ the diagnostic reveals the real renderer). */
+    private static void accentTableCheckmarks(JTable t) {
+        try {
+            Color acc = accentColor();
+            if (acc == null) return;
+            javax.swing.table.TableColumnModel cm = t.getColumnModel();
+            for (int i = 0; i < cm.getColumnCount(); i++) {
+                javax.swing.table.TableCellRenderer r = cm.getColumn(i).getCellRenderer();
+                if (r instanceof javax.swing.JCheckBox) ((javax.swing.JCheckBox) r).setForeground(acc);
+            }
+        } catch (Throwable ignore) { }
+    }
+
+    private static void logTableStructureOnce(JTable t, javax.swing.table.JTableHeader h, Container sp) {
+        try {
+            int id = System.identityHashCode(t);
+            synchronized (LOGGED_TABLES) { if (!LOGGED_TABLES.add(id)) return; }
+            StringBuilder sb = new StringBuilder("[jd-dialog-agent] HL table-diag: ");
+            sb.append(t.getClass().getName())
+              .append(" grid=").append(t.getShowHorizontalLines()).append("/").append(t.getShowVerticalLines());
+            if (h != null) {
+                sb.append(" hdr=").append(h.getClass().getSimpleName())
+                  .append(" hdrBg=").append(h.getBackground())
+                  .append(" hdrDef=").append(h.getDefaultRenderer() == null ? "-" : h.getDefaultRenderer().getClass().getSimpleName());
+            }
+            if (sp instanceof javax.swing.JScrollPane)
+                sb.append(" spBorder=").append(String.valueOf(((javax.swing.JScrollPane) sp).getBorder()));
+            javax.swing.table.TableColumnModel cm = t.getColumnModel();
+            for (int i = 0; i < Math.min(cm.getColumnCount(), 6); i++) {
+                javax.swing.table.TableColumn col = cm.getColumn(i);
+                javax.swing.table.TableCellRenderer cr = col.getCellRenderer();
+                javax.swing.table.TableCellRenderer hr = col.getHeaderRenderer();
+                sb.append(" c").append(i).append("=").append(cr == null ? "-" : cr.getClass().getSimpleName());
+                if (hr != null) sb.append("/h:").append(hr.getClass().getSimpleName());
+            }
+            System.out.println(sb);
+        } catch (Throwable ignore) { }
+    }
+
     // ---------------------------------------------------------------- chrome
 
     /**
@@ -1198,6 +1293,7 @@ public class DialogConfirmAgent {
     }
 
     private static final int SIDEBAR_ROW_PX = 66;   // native is ~53 in this JD build; must exceed it
+    private static boolean SIDEBAR_DIAG_DONE = false;   // one-time renderer dump (round 14)
 
     /**
      * Raise the Settings sidebar's row height. JD gives every entry a fixed size from a
@@ -1226,11 +1322,36 @@ public class DialogConfirmAgent {
                         (cur == wrap && wrap != null) ? asRenderer(list.getClientProperty(SB_ORIG_RENDERER)) : cur;
                 if (r != null && r.getClass().getName().endsWith("sidebar.TreeRenderer")) {
                     // Center the icon+text vertically in the taller row — JD's renderer top-aligns,
-                    // which looks off at 66px. Works if TreeRenderer is JLabel-based; no-op otherwise.
+                    // which looks off at 66px. Round-11 set verticalTextPosition=CENTER (wrong: that
+                    // stacks text ON the icon) and it never took anyway (block still measured
+                    // top-stuck, ~13-16px empty below), so: correct the layout (text UNDER icon,
+                    // block centered) AND emit a one-time diagnostic of the real renderer so, if it
+                    // is not a JLabel, the boot log shows what it actually is.
                     try {
-                        if (r instanceof javax.swing.JLabel) {
-                            ((javax.swing.JLabel) r).setVerticalAlignment(javax.swing.SwingConstants.CENTER);
-                            ((javax.swing.JLabel) r).setVerticalTextPosition(javax.swing.SwingConstants.CENTER);
+                        boolean isLabel = (r instanceof javax.swing.JLabel);
+                        if (isLabel) {
+                            javax.swing.JLabel jl = (javax.swing.JLabel) r;
+                            jl.setVerticalAlignment(javax.swing.SwingConstants.CENTER);
+                            jl.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
+                            jl.setVerticalTextPosition(javax.swing.SwingConstants.BOTTOM);
+                            jl.setHorizontalTextPosition(javax.swing.SwingConstants.CENTER);
+                        }
+                        if (!SIDEBAR_DIAG_DONE) {
+                            SIDEBAR_DIAG_DONE = true;
+                            String txt = ""; int prefH = -1; Object vAl = "n/a", vTp = "n/a", brd = "n/a";
+                            if (isLabel) {
+                                javax.swing.JLabel jl = (javax.swing.JLabel) r;
+                                txt = String.valueOf(jl.getText());
+                                if (txt.length() > 40) txt = txt.substring(0, 40);
+                                vAl = jl.getVerticalAlignment(); vTp = jl.getVerticalTextPosition();
+                                brd = String.valueOf(jl.getBorder());
+                                Dimension ps = jl.getPreferredSize();
+                                prefH = (ps == null) ? -1 : ps.height;
+                            }
+                            System.out.println("[jd-dialog-agent] HL sidebar-diag: rClass=" + r.getClass().getName()
+                                    + " isJLabel=" + isLabel + " vAlign=" + vAl + " vTextPos=" + vTp
+                                    + " prefH=" + prefH + " border=" + brd
+                                    + " text=\"" + txt.replaceAll("\\s+", " ") + "\"");
                         }
                     } catch (Throwable ignore) { }
                     // Roomier rows: bump the shared static DIMENSION height. Idempotent (the

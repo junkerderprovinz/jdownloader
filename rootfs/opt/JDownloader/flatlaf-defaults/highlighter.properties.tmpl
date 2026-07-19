@@ -115,5 +115,13 @@ TableHeader.showTrailingVerticalLine = false
 ScrollPane.border                    = 0,0,0,0
 List.border                          = 0,0,0,0
 Tree.border                          = 0,0,0,0
+# scrollbar thumb neutral: JD's content scrollbars use colorforscrollbars* (#393939), but the
+# settings SIDEBAR uses a FlatLaf-painted JScrollBar with no such override and was rendering the
+# thumb in an un-themed bright colour. Pin it to the same neutral grey so nothing off-accent shows.
+ScrollBar.thumb                      = #393939
+ScrollBar.hoverThumbColor            = #525252
+ScrollBar.pressedThumbColor          = #525252
+ScrollBar.track                      = #161616
+ScrollBar.hoverTrackColor            = #161616
 SplitPane.background                 = #161616
 SplitPaneDivider.draggingColor       = #161616
