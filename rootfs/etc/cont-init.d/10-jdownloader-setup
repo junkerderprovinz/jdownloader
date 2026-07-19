@@ -161,6 +161,19 @@ if [[ ! -f "${FFPROBE_CFG}" && -x /usr/bin/ffprobe ]]; then
     log "seeded ffprobe path: /usr/bin/ffprobe"
 fi
 
+# Downloads-table default columns (jd-highlighter house style): hide "Save to"
+# (DownloadFolderColumn) + "Comment" (CommentColumn) and widen "Progress"
+# (ProgressColumn). AppWork ExtTable reads per-column VISABLE_COL_/WIDTH_COL_
+# keys (note JD's "VISABLE" spelling) and falls back to each column's default
+# for keys we don't set, so a partial seed is enough. Seed ONLY when absent —
+# JD rewrites the full config on shutdown, so once present it is the user's own
+# column layout and must be preserved.
+DLTABLE_CFG="${JD_CFG}/ExtTable_downloadstable3.json"
+if [ ! -f "${DLTABLE_CFG}" ]; then
+    printf '%s' '{"VISABLE_COL_ExtTextColumn.org.jdownloader.gui.views.downloads.columns.DownloadFolderColumn":false,"VISABLE_COL_ExtTextAreaColumn.org.jdownloader.gui.views.components.packagetable.columns.CommentColumn":false,"WIDTH_COL_ExtProgressColumn.org.jdownloader.gui.views.downloads.columns.ProgressColumn":260}' > "${DLTABLE_CFG}"
+    log "seeded downloads-table columns: hide Save-to + Comment, Progress width 260"
+fi
+
 # Disable system tray extension — not supported in containers, would otherwise
 # trigger an error popup on every start.
 python3 /usr/local/bin/disable-tray.py "${JD_CFG}" 2>/dev/null || \

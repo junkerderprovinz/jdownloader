@@ -1434,17 +1434,25 @@ public class DialogConfirmAgent {
                     }
                     Object h = l.getClientProperty(SB_HOVER_ROW);
                     int hoverRow = (h instanceof Integer) ? ((Integer) h).intValue() : -1;
-                    if (!sel && idx == hoverRow && comp instanceof javax.swing.JComponent) {
+                    // Hover recolour + child-label foreground. The TreeRenderer (and its child
+                    // RenderLabel that holds the text) is SHARED across cells and JD does NOT reset
+                    // the child's foreground per cell, so set it on EVERY row — else the dark hover
+                    // colour bleeds onto rows painted after the hovered one (dark text on dark =
+                    // invisible labels). Read JD's per-row foreground first (light for normal, its
+                    // own for selected), override to the dark accent-fg only for the hovered row.
+                    Color rowFg = comp.getForeground();
+                    if (!sel && idx == hoverRow) {
                         Color acc = accentColor();
-                        if (acc != null) {
+                        if (acc != null && comp instanceof javax.swing.JComponent) {
                             comp.setBackground(acc);
-                            comp.setForeground(accentFg());
                             ((javax.swing.JComponent) comp).setOpaque(true);
-                            // The label text lives in the child RenderLabel; JD sets its colour per
-                            // cell, so recolour the children too or the text stays light on the accent.
-                            if (comp instanceof Container)
-                                for (Component k : ((Container) comp).getComponents()) k.setForeground(accentFg());
+                            rowFg = accentFg();
                         }
+                    }
+                    if (rowFg != null) {
+                        comp.setForeground(rowFg);
+                        if (comp instanceof Container)
+                            for (Component k : ((Container) comp).getComponents()) k.setForeground(rowFg);
                     }
                     return comp;
                 }
