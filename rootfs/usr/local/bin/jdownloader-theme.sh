@@ -108,10 +108,13 @@ if os.path.isdir(dst):
     shutil.rmtree(dst)
 shutil.copytree(src, dst)
 
-fill_re = re.compile(r'((?:fill|stop-color)\s*[:=]\s*["\']?)(#[0-9a-fA-F]{3,6})')
+fill_re = re.compile(r'((?:fill|stroke|stop-color)\s*[:=]\s*["\']?)(#[0-9a-fA-F]{3,6})')
 def sub(m):
-    # near-white knockouts -> transparent so the glyph reads on any surface;
-    # every other fill (incl. gradient stop-colors) -> the single mono colour.
+    # strokes are the visible outline (icons8 draws most glyphs with stroke=) -> always the
+    # mono colour, never a knockout. for fills: near-white knockouts -> transparent so the
+    # glyph reads on any surface; every other fill (incl. gradient stop-colors) -> mono.
+    if 'stroke' in m.group(1):
+        return m.group(1) + mono
     return m.group(1) + ('none' if lum(m.group(2)) >= 0.82 else mono)
 
 changed = 0
