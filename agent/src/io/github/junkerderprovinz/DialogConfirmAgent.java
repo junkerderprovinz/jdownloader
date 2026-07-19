@@ -1339,16 +1339,22 @@ public class DialogConfirmAgent {
         } catch (Throwable ignore) { }
     }
 
-    private static final java.util.Map<javax.swing.Icon, javax.swing.Icon> DARK_ICON_CACHE = new java.util.WeakHashMap<>();
+    private static final java.util.Map<javax.swing.Icon, javax.swing.Icon> TINT_LIGHT = new java.util.WeakHashMap<>();
+    private static final java.util.Map<javax.swing.Icon, javax.swing.Icon> TINT_DARK  = new java.util.WeakHashMap<>();
     /**
-     * A dark silhouette of an icon (every opaque pixel -> accentFg, alpha kept), cached by source
-     * icon. Used to flip a light mono sidebar glyph dark on the accent hover row so it stays visible
-     * on the light accent. Falls back to the original icon on any error.
+     * A single-tone silhouette of an icon (every opaque pixel -> tint, alpha kept), cached by source
+     * icon + tone. In the render path (the sidebar cell wrapper) this forces JD's colourful icons to
+     * render MONO regardless of JD's icon cache — the file-level SVG recolour can never win because JD
+     * reads its icons once at install and caches the Icon objects. Light tone = the normal mono glyph;
+     * dark tone (accentFg) = the flip on the accent hover row so it stays visible on the light accent.
      */
-    private static javax.swing.Icon darkIcon(javax.swing.Icon orig, Component c) {
+    private static javax.swing.Icon tintIcon(javax.swing.Icon orig, Color tint, Component c) {
         try {
-            synchronized (DARK_ICON_CACHE) {
-                javax.swing.Icon cached = DARK_ICON_CACHE.get(orig);
+            if (tint == null) return orig;
+            java.util.Map<javax.swing.Icon, javax.swing.Icon> cache =
+                    (tint.getRGB() == SIDEBAR_TEXT.getRGB()) ? TINT_LIGHT : TINT_DARK;
+            synchronized (cache) {
+                javax.swing.Icon cached = cache.get(orig);
                 if (cached != null) return cached;
             }
             int w = orig.getIconWidth(), h = orig.getIconHeight();
@@ -1357,8 +1363,7 @@ public class DialogConfirmAgent {
             java.awt.Graphics2D g = img.createGraphics();
             orig.paintIcon(c, g, 0, 0);
             g.dispose();
-            Color d = accentFg();
-            int rgb = (d.getRed() << 16) | (d.getGreen() << 8) | d.getBlue();
+            int rgb = (tint.getRed() << 16) | (tint.getGreen() << 8) | tint.getBlue();
             for (int y = 0; y < h; y++) {
                 for (int x = 0; x < w; x++) {
                     int argb = img.getRGB(x, y);
@@ -1366,9 +1371,9 @@ public class DialogConfirmAgent {
                     if (a != 0) img.setRGB(x, y, (a << 24) | rgb);
                 }
             }
-            javax.swing.Icon di = new javax.swing.ImageIcon(img);
-            synchronized (DARK_ICON_CACHE) { DARK_ICON_CACHE.put(orig, di); }
-            return di;
+            javax.swing.Icon ti = new javax.swing.ImageIcon(img);
+            synchronized (cache) { cache.put(orig, ti); }
+            return ti;
         } catch (Throwable t) { return orig; }
     }
 
@@ -1523,14 +1528,15 @@ public class DialogConfirmAgent {
                     if (comp instanceof Container) {
                         for (Component k : ((Container) comp).getComponents()) {
                             k.setForeground(rowFg);
-                            // Icon flip on the accent hover row: dark-tint the icon so a light mono
-                            // glyph stays visible on the light accent. Done in the render path (this
-                            // wrapper), so it survives JD's live repaints. JD re-sets the light icon
-                            // every cell, so non-hover rows are untouched and there is no leak.
-                            if (hovAcc && k instanceof javax.swing.JLabel) {
+                            // Mono the sidebar icon in the render path (this wrapper) so it renders
+                            // single-tone regardless of JD's icon cache (the file-level SVG recolour
+                            // can't win — JD caches its icons). Light tone normally; dark tone (the
+                            // flip) on the accent hover row so it stays visible on the light accent.
+                            // JD re-sets the original icon every cell, so this never compounds/leaks.
+                            if (k instanceof javax.swing.JLabel) {
                                 javax.swing.JLabel kl = (javax.swing.JLabel) k;
                                 javax.swing.Icon ic = kl.getIcon();
-                                if (ic != null) kl.setIcon(darkIcon(ic, kl));
+                                if (ic != null) kl.setIcon(tintIcon(ic, hovAcc ? accentFg() : SIDEBAR_TEXT, kl));
                             }
                         }
                     }
