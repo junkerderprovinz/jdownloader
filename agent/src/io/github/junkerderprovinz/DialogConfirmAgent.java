@@ -1184,6 +1184,19 @@ public class DialogConfirmAgent {
         return accentCache;
     }
 
+    /** Dark-on-accent text colour (matches the tabs' selected foreground). */
+    private static Color accentFg() {
+        Color sel = UIManager.getColor("TabbedPane.selectedForeground"); // = @@ACCENT_FG@@ at render time
+        if (sel != null) return new Color(sel.getRGB());
+        Color a = accentColor();
+        double lum = 0.299 * a.getRed() + 0.587 * a.getGreen() + 0.114 * a.getBlue();
+        return lum > 140 ? new Color(0x16, 0x16, 0x16) : new Color(0xf4, 0xf4, 0xf4);
+    }
+
+    private static javax.swing.ListCellRenderer<?> asRenderer(Object o) {
+        return (o instanceof javax.swing.ListCellRenderer) ? (javax.swing.ListCellRenderer<?>) o : null;
+    }
+
     private static final int SIDEBAR_ROW_PX = 66;   // native is ~53 in this JD build; must exceed it
 
     /**
@@ -1204,7 +1217,13 @@ public class DialogConfirmAgent {
         for (Component child : c.getComponents()) {
             if (child instanceof javax.swing.JList) {
                 javax.swing.JList<?> list = (javax.swing.JList<?>) child;
-                javax.swing.ListCellRenderer<?> r = list.getCellRenderer();
+                // Resolve the REAL JD renderer, whether or not our accent-hover wrapper is installed:
+                // if the live renderer is our wrapper, the JD one is stashed; otherwise it's live
+                // (fresh, or JD reset it on a sidebar rebuild).
+                javax.swing.ListCellRenderer<?> cur  = list.getCellRenderer();
+                javax.swing.ListCellRenderer<?> wrap = asRenderer(list.getClientProperty(SB_WRAP));
+                javax.swing.ListCellRenderer<?> r =
+                        (cur == wrap && wrap != null) ? asRenderer(list.getClientProperty(SB_ORIG_RENDERER)) : cur;
                 if (r != null && r.getClass().getName().endsWith("sidebar.TreeRenderer")) {
                     // Center the icon+text vertically in the taller row — JD's renderer top-aligns,
                     // which looks off at 66px. Works if TreeRenderer is JLabel-based; no-op otherwise.
@@ -1234,20 +1253,80 @@ public class DialogConfirmAgent {
                     } catch (Throwable t) {
                         System.out.println("[jd-dialog-agent] sidebar height bump failed: " + t);
                     }
-                    // Accent hover: ConfigSidebar paints the hovered row as a 10%-alpha fill of
-                    // the list FOREGROUND; the TreeRenderer sets its own text colour, so tinting
-                    // the list foreground accents only the hover overlay. Re-applied per instance
-                    // (not one-shot) so a rebuilt sidebar keeps the accent hover.
-                    try {
-                        Color acc = accentColor();
-                        if (acc != null && !acc.equals(list.getForeground())) list.setForeground(acc);
-                    } catch (Throwable ignore) { }
+                    // Accent hover: JD's own sidebar overlay is only a faint ~10% tint. Wrap the
+                    // renderer so the hovered (non-selected) row paints FULLY in the accent, matching
+                    // the table row-hover. Idempotent + survives sidebar rebuilds.
+                    installSidebarAccentHover(list, r);
                     return true;
                 }
             }
             if (child instanceof Container && styleSidebarIn((Container) child)) return true;
         }
         return false;
+    }
+
+    private static final String SB_ORIG_RENDERER = "jdp.sbOrigRenderer";
+    private static final String SB_WRAP          = "jdp.sbWrap";
+    private static final String SB_HOVER_ROW     = "jdp.sbHoverRow";
+    private static final String SB_LISTENERS     = "jdp.sbListeners";
+
+    /**
+     * Paint the hovered (non-selected) settings-sidebar row fully in the accent, matching the
+     * table row-hover. JD's built-in sidebar overlay is only a ~10% tint, so instead we wrap the
+     * JD cell renderer and recolour just the hovered row. Own hover tracking via a MouseMotion
+     * listener + a client-property row index. All state hangs off the JList so it is idempotent
+     * and a rebuilt sidebar (fresh JList) simply re-installs. JD reconfigures the shared renderer
+     * component on every call, so overriding the hovered row never leaks to the other rows.
+     */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static void installSidebarAccentHover(final javax.swing.JList list, javax.swing.ListCellRenderer jdRenderer) {
+        // Always (re)stash the live JD renderer so the wrapper delegates to the current one.
+        list.putClientProperty(SB_ORIG_RENDERER, jdRenderer);
+        javax.swing.ListCellRenderer wrap = (javax.swing.ListCellRenderer) list.getClientProperty(SB_WRAP);
+        if (wrap == null) {
+            wrap = new javax.swing.ListCellRenderer() {
+                public Component getListCellRendererComponent(javax.swing.JList l, Object v, int idx, boolean sel, boolean foc) {
+                    javax.swing.ListCellRenderer real = (javax.swing.ListCellRenderer) l.getClientProperty(SB_ORIG_RENDERER);
+                    Component comp = real.getListCellRendererComponent(l, v, idx, sel, foc);
+                    Object h = l.getClientProperty(SB_HOVER_ROW);
+                    int hoverRow = (h instanceof Integer) ? ((Integer) h).intValue() : -1;
+                    if (!sel && idx == hoverRow && comp instanceof javax.swing.JComponent) {
+                        Color acc = accentColor();
+                        if (acc != null) {
+                            comp.setBackground(acc);
+                            comp.setForeground(accentFg());
+                            ((javax.swing.JComponent) comp).setOpaque(true);
+                        }
+                    }
+                    return comp;
+                }
+            };
+            list.putClientProperty(SB_WRAP, wrap);
+        }
+        if (list.getCellRenderer() != wrap) list.setCellRenderer(wrap);
+        if (list.getClientProperty(SB_LISTENERS) == null) {
+            list.addMouseMotionListener(new java.awt.event.MouseMotionAdapter() {
+                public void mouseMoved(java.awt.event.MouseEvent e) {
+                    int idx = list.locationToIndex(e.getPoint());
+                    try {
+                        if (idx >= 0) {
+                            java.awt.Rectangle b = list.getCellBounds(idx, idx);
+                            if (b == null || !b.contains(e.getPoint())) idx = -1;
+                        }
+                    } catch (Throwable ignore) { idx = -1; }
+                    Object cur = list.getClientProperty(SB_HOVER_ROW);
+                    int prev = (cur instanceof Integer) ? ((Integer) cur).intValue() : -1;
+                    if (prev != idx) { list.putClientProperty(SB_HOVER_ROW, Integer.valueOf(idx)); list.repaint(); }
+                }
+            });
+            list.addMouseListener(new java.awt.event.MouseAdapter() {
+                public void mouseExited(java.awt.event.MouseEvent e) {
+                    list.putClientProperty(SB_HOVER_ROW, Integer.valueOf(-1));
+                    list.repaint();
+                }
+            });
+            list.putClientProperty(SB_LISTENERS, Boolean.TRUE);
+        }
     }
 
     /**

@@ -78,6 +78,7 @@ jobs:
           shot 01-main
           xd mousemove 250 95;  sleep 1; shot 02-tab-hover      # hover the LinkGrabber tab (accent hover)
           xd key ctrl+p;        sleep 6; shot 03-settings        # open Settings (cards/sidebar/fields)
+          xd mousemove 70 210;  sleep 1; shot 05-sidebar-hover   # hover a sidebar row (accent hover)
           xd key F10; sleep 1; xd key Down; sleep 1; shot 04-menu; xd key Escape
           ls -la out/*.png 2>/dev/null || echo "no shots"
 
