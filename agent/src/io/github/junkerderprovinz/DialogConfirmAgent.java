@@ -2311,31 +2311,56 @@ public class DialogConfirmAgent {
     }
 
     // --- pop-up dialogs: lighter content + dimmed backdrop -------------------
-    // (1) recolour each shown dialog's panels to #262626 so it lifts off the #161616 chrome
-    //     by shade (buttons/fields keep @componentBackground and read as raised pills on top).
-    private static final java.util.Set<Window> DIALOG_TINTED =
-            java.util.Collections.newSetFromMap(new java.util.WeakHashMap<Window, Boolean>());
+    // (1) recolour each shown dialog to the #242424 surface (styleDialogContent) so it lifts off the
+    //     #161616 chrome by shade; inputs/buttons get the same unified fills as the settings cards.
     private static final Color DIALOG_BG = new Color(0x24, 0x24, 0x24);   // surface (matches cards)
 
     private static void recolorDialogs() {
         for (Window w : Window.getWindows()) {
-            if (!(w instanceof Dialog) || !w.isShowing() || ((Dialog) w).getOwner() == null) continue;
-            if (!DIALOG_TINTED.add(w)) continue;   // once per dialog
+            if (!(w instanceof Dialog) || !w.isShowing()) continue;
             try {
                 if (w instanceof javax.swing.RootPaneContainer)
-                    tintPanels(((javax.swing.RootPaneContainer) w).getContentPane());
+                    styleDialogContent(((javax.swing.RootPaneContainer) w).getContentPane());
             } catch (Throwable ignore) { }
         }
     }
 
-    private static void tintPanels(Container c) {
+    /** Make EVERY AppWork dialog read like the rest of the theme: dark surface, one recessed fill for
+     *  inputs, one raised fill for buttons, and the decorative "framed/etched" borders removed (the
+     *  "eckig mit Rahmen, unterschiedliche Farben" complaint). Run every tick, fully idempotent
+     *  (guarded on value), so late-built dialog content is caught too. Icons are mono'd by the
+     *  monoChrome sweep which already walks dialog windows. */
+    private static void styleDialogContent(Container c) {
         for (Component ch : c.getComponents()) {
-            if (ch instanceof javax.swing.JPanel || ch instanceof javax.swing.JOptionPane
-                    || ch instanceof javax.swing.Box) {
-                if (!DIALOG_BG.equals(ch.getBackground())) ch.setBackground(DIALOG_BG);
-            }
-            if (ch instanceof Container) tintPanels((Container) ch);
+            try {
+                if (ch instanceof javax.swing.JPanel || ch instanceof javax.swing.JOptionPane
+                        || ch instanceof javax.swing.Box || ch instanceof javax.swing.JScrollPane) {
+                    if (!DIALOG_BG.equals(ch.getBackground())) ch.setBackground(DIALOG_BG);
+                    stripFramingBorder((JComponent) ch);
+                } else if (ch instanceof javax.swing.text.JTextComponent || ch instanceof javax.swing.JComboBox
+                        || ch instanceof javax.swing.JSpinner) {
+                    if (!FIELD_BG.equals(ch.getBackground())) {
+                        ch.setBackground(FIELD_BG);
+                        if (ch instanceof JComponent) ((JComponent) ch).setOpaque(true);
+                    }
+                } else if (ch instanceof javax.swing.AbstractButton && !isCheckLike(ch)) {
+                    if (!BTN_CFG_BG.equals(ch.getBackground())) ch.setBackground(BTN_CFG_BG);
+                } else if (ch instanceof JComponent) {
+                    stripFramingBorder((JComponent) ch);
+                }
+            } catch (Throwable ignore) { }
+            if (ch instanceof Container) styleDialogContent((Container) ch);
         }
+    }
+
+    /** Remove a decorative frame (Titled/Etched/Line/Bevel/Matte) so the dialog reads by shade, not
+     *  by lines; leave EmptyBorder/compound padding intact. */
+    private static void stripFramingBorder(JComponent jc) {
+        javax.swing.border.Border b = jc.getBorder();
+        if (b instanceof javax.swing.border.TitledBorder || b instanceof javax.swing.border.EtchedBorder
+                || b instanceof javax.swing.border.LineBorder || b instanceof javax.swing.border.BevelBorder
+                || b instanceof javax.swing.border.MatteBorder)
+            jc.setBorder(javax.swing.BorderFactory.createEmptyBorder());
     }
 
     // (2) dim the OWNER window behind a modal pop-up so it stands out (no lines/blur). A
