@@ -1294,6 +1294,7 @@ public class DialogConfirmAgent {
 
     private static final int SIDEBAR_ROW_PX = 66;   // native is ~53 in this JD build; must exceed it
     private static final int SIDEBAR_TOP_PAD = 6;   // top inset on the RenderLabel to center it in the row
+    private static final Color SIDEBAR_TEXT = new Color(0xf4, 0xf4, 0xf4);  // normal sidebar label colour
     private static boolean SIDEBAR_DIAG_DONE = false;   // one-time renderer dump (round 14)
 
     /**
@@ -1440,20 +1441,24 @@ public class DialogConfirmAgent {
                     // colour bleeds onto rows painted after the hovered one (dark text on dark =
                     // invisible labels). Read JD's per-row foreground first (light for normal, its
                     // own for selected), override to the dark accent-fg only for the hovered row.
-                    Color rowFg = comp.getForeground();
+                    // Set the row foreground on EVERY row. JD resets neither the panel's nor the
+                    // child RenderLabel's foreground per cell, so reading comp.getForeground() just
+                    // returns our own leaked value (round 19's mistake). Use a FIXED light colour for
+                    // normal + selected rows, the dark accent-fg only on the hovered non-selected row.
+                    Color rowFg;
                     if (!sel && idx == hoverRow) {
                         Color acc = accentColor();
                         if (acc != null && comp instanceof javax.swing.JComponent) {
                             comp.setBackground(acc);
                             ((javax.swing.JComponent) comp).setOpaque(true);
-                            rowFg = accentFg();
                         }
+                        rowFg = accentFg();
+                    } else {
+                        rowFg = SIDEBAR_TEXT;
                     }
-                    if (rowFg != null) {
-                        comp.setForeground(rowFg);
-                        if (comp instanceof Container)
-                            for (Component k : ((Container) comp).getComponents()) k.setForeground(rowFg);
-                    }
+                    comp.setForeground(rowFg);
+                    if (comp instanceof Container)
+                        for (Component k : ((Container) comp).getComponents()) k.setForeground(rowFg);
                     return comp;
                 }
             };
