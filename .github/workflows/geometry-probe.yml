@@ -78,6 +78,8 @@ jobs:
           shot 01-main
           xd mousemove 250 95;  sleep 1; shot 02-tab-hover      # hover the LinkGrabber tab (accent hover)
           xd key ctrl+p;        sleep 6; shot 03-settings        # open Settings (cards/sidebar/fields/scrollbar)
+          xd mousemove 935 265; sleep 1; shot 08-btn-hover       # hover the Browse button -> blue frame? accent fill?
+          xd mousemove 570 265; xd click 1; sleep 1; shot 09-field-focus  # focus the path field -> blue frame?
           xd mousemove 70 210;  sleep 1; shot 05-sidebar-hover   # hover a sidebar row (accent hover)
           # navigate to a page WITH an ExtTable (User Interface -> address-display table): verifies
           # borderless table + accent checkmarks (round 14) + fires the HL table-diag log line.

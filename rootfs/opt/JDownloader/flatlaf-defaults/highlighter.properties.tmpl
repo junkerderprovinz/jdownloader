@@ -36,6 +36,11 @@ Component.disabledBorderColor = #1e1e1e
 Component.focusWidth          = 0
 Component.innerFocusWidth     = 0
 Component.focusColor          = @@ACCENT@@
+# kill the blue focus/hover FRAME on inputs + buttons: recolour every focused/hover border to the
+# accent (FlatRoundBorder/FlatButtonBorder honour these, and JD's AppWork inputs use those borders)
+Component.focusedBorderColor  = @@ACCENT@@
+Button.focusedBorderColor     = @@ACCENT@@
+Button.hoverBorderColor       = @@ACCENT@@
 Button.hoverBackground        = @@ACCENT@@
 Button.focusedBackground      = @@ACCENT@@
 Spinner.buttonBackground      = #1e1e1e

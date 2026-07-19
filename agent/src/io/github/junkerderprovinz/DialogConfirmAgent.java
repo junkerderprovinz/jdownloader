@@ -254,6 +254,7 @@ public class DialogConfirmAgent {
             monoChromeIcons();
             cardSettingsSections();
             borderlessConfigTables();
+            unifyConfigFields();
             recolorDialogs();
             dimModalBackdrops();
         }
@@ -1516,6 +1517,41 @@ public class DialogConfirmAgent {
         } catch (Throwable ignore) { }
     }
 
+    // Unify the config-panel input backgrounds. The round-32 diagnostic showed JD's AppWork inputs
+    // ignore @componentBackground and carry mixed fills (#121212 / #1e1e1e / #161616) — the "mal
+    // heller mal dunkler als die card" inconsistency. Force ONE recessed fill for text/combo/spinner
+    // and ONE raised fill for real buttons, so a card reads as: field #1a1a1a < card #242424 < button
+    // #2a2a2a. Checkboxes/radios keep their transparent fill. Guarded on value so it is a no-op once set.
+    private static final Color FIELD_BG   = new Color(0x1a, 0x1a, 0x1a);
+    private static final Color BTN_CFG_BG = new Color(0x2a, 0x2a, 0x2a);
+    private static void unifyConfigFields() {
+        for (Window w : Window.getWindows()) if (w.isShowing()) unifyFieldsIn(w, false);
+    }
+    private static void unifyFieldsIn(Container c, boolean inCfg) {
+        boolean cfg = inCfg || (c instanceof JComponent && isConfigPanel(c.getClass()));
+        for (Component ch : c.getComponents()) {
+            if (cfg) {
+                try {
+                    if (ch instanceof javax.swing.text.JTextComponent || ch instanceof javax.swing.JComboBox
+                            || ch instanceof javax.swing.JSpinner) {
+                        if (!FIELD_BG.equals(ch.getBackground())) {
+                            ch.setBackground(FIELD_BG);
+                            if (ch instanceof JComponent) ((JComponent) ch).setOpaque(true);
+                        }
+                    } else if (ch instanceof javax.swing.AbstractButton && !isCheckLike(ch)) {
+                        if (!BTN_CFG_BG.equals(ch.getBackground())) ch.setBackground(BTN_CFG_BG);
+                    }
+                } catch (Throwable ignore) { }
+            }
+            if (ch instanceof Container) unifyFieldsIn((Container) ch, cfg);
+        }
+    }
+    private static boolean isCheckLike(Component ch) {
+        if (ch instanceof javax.swing.JCheckBox || ch instanceof javax.swing.JRadioButton) return true;
+        String n = ch.getClass().getSimpleName().toLowerCase();
+        return n.contains("check") || n.contains("radio") || n.contains("toggle");
+    }
+
     private static void monoLabelIcon(javax.swing.JLabel l, boolean cfg) {
         try {
             javax.swing.Icon cur = l.getIcon();
@@ -1937,6 +1973,7 @@ public class DialogConfirmAgent {
      *  JD's custom tab components bypass FlatLaf's hover/selectedForeground, so we own it. */
     private static void applyTabForegrounds(javax.swing.JTabbedPane tp, Color selFg, Color norFg, int hover) {
         int sel = tp.getSelectedIndex();
+        boolean tabsPadded = false;
         for (int i = 0; i < tp.getTabCount(); i++) {
             boolean accentBg = (i == sel || i == hover);
             Color want = new Color((accentBg ? selFg : norFg).getRGB());  // plain Color: app-set, honoured
@@ -1953,22 +1990,27 @@ public class DialogConfirmAgent {
             if (tc != null) {
                 setLabelFg(tc, want);
                 tablerTabIcons(tc, iconTone);
-                padTab(tc);   // breathing room so the tabs stop "sticking together"
+                if (padTab(tc)) tabsPadded = true;   // breathing room so tabs stop "sticking together"
             }
         }
+        // The border grows each tab's preferred width; JD caches tab widths, so recompute once when
+        // we actually added padding — else the label paints into the old (too-narrow) cell and clips.
+        if (tabsPadded) { tp.revalidate(); tp.repaint(); }
     }
 
-    private static final int TAB_GAP = 12;   // horizontal breathing room added inside each tab
+    private static final int TAB_GAP = 8;   // horizontal breathing room added inside each tab
     /** JD's custom tab components ignore FlatLaf's TabbedPane.tabInsets, so widen each one directly.
-     *  Idempotent via a client property; compounds onto (does not replace) JD's own border. */
-    private static void padTab(Component tc) {
-        if (!(tc instanceof javax.swing.JComponent)) return;
+     *  Idempotent via a client property; compounds onto (does not replace) JD's own border. Returns
+     *  true only on the pass that actually adds the padding. */
+    private static boolean padTab(Component tc) {
+        if (!(tc instanceof javax.swing.JComponent)) return false;
         javax.swing.JComponent tj = (javax.swing.JComponent) tc;
-        if (tj.getClientProperty("jdp.tabPad") != null) return;
+        if (tj.getClientProperty("jdp.tabPad") != null) return false;
         tj.setBorder(javax.swing.BorderFactory.createCompoundBorder(
                 javax.swing.BorderFactory.createEmptyBorder(2, TAB_GAP, 2, TAB_GAP), tj.getBorder()));
         tj.putClientProperty("jdp.tabPad", Boolean.TRUE);
         tj.revalidate();
+        return true;
     }
 
     /** Tabler-swap the chrome icon on a tab's custom component (JLabel), tone-aware. A stored original
