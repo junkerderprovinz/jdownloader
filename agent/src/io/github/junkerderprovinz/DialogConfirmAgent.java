@@ -1098,7 +1098,9 @@ public class DialogConfirmAgent {
                 sb.append(" c").append(i).append("=").append(cr == null ? "-" : cr.getClass().getSimpleName());
                 if (hr != null) sb.append("/h:").append(hr.getClass().getSimpleName());
             }
-            System.out.println(sb);
+            javax.swing.table.TableCellRenderer hdrDef = (h != null) ? h.getDefaultRenderer() : null;
+            if (hdrDef != null) sb.append(" hdrDefRend=").append(hdrDef.getClass().getName());
+            writeDiag(sb.toString());   // System.out is swallowed after JD's redirect; use the file channel
         } catch (Throwable ignore) { }
     }
 
@@ -1310,6 +1312,39 @@ public class DialogConfirmAgent {
         } catch (Throwable ignore) { }
     }
 
+    private static final java.util.Map<javax.swing.Icon, javax.swing.Icon> DARK_ICON_CACHE = new java.util.WeakHashMap<>();
+    /**
+     * A dark silhouette of an icon (every opaque pixel -> accentFg, alpha kept), cached by source
+     * icon. Used to flip a light mono sidebar glyph dark on the accent hover row so it stays visible
+     * on the light accent. Falls back to the original icon on any error.
+     */
+    private static javax.swing.Icon darkIcon(javax.swing.Icon orig, Component c) {
+        try {
+            synchronized (DARK_ICON_CACHE) {
+                javax.swing.Icon cached = DARK_ICON_CACHE.get(orig);
+                if (cached != null) return cached;
+            }
+            int w = orig.getIconWidth(), h = orig.getIconHeight();
+            if (w <= 0 || h <= 0) return orig;
+            java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+            java.awt.Graphics2D g = img.createGraphics();
+            orig.paintIcon(c, g, 0, 0);
+            g.dispose();
+            Color d = accentFg();
+            int rgb = (d.getRed() << 16) | (d.getGreen() << 8) | d.getBlue();
+            for (int y = 0; y < h; y++) {
+                for (int x = 0; x < w; x++) {
+                    int argb = img.getRGB(x, y);
+                    int a = argb >>> 24;
+                    if (a != 0) img.setRGB(x, y, (a << 24) | rgb);
+                }
+            }
+            javax.swing.Icon di = new javax.swing.ImageIcon(img);
+            synchronized (DARK_ICON_CACHE) { DARK_ICON_CACHE.put(orig, di); }
+            return di;
+        } catch (Throwable t) { return orig; }
+    }
+
     /**
      * Raise the Settings sidebar's row height. JD gives every entry a fixed size from a
      * shared public-static Dimension on the list's cell renderer
@@ -1457,8 +1492,21 @@ public class DialogConfirmAgent {
                         rowFg = SIDEBAR_TEXT;
                     }
                     comp.setForeground(rowFg);
-                    if (comp instanceof Container)
-                        for (Component k : ((Container) comp).getComponents()) k.setForeground(rowFg);
+                    boolean hovAcc = (!sel && idx == hoverRow);
+                    if (comp instanceof Container) {
+                        for (Component k : ((Container) comp).getComponents()) {
+                            k.setForeground(rowFg);
+                            // Icon flip on the accent hover row: dark-tint the icon so a light mono
+                            // glyph stays visible on the light accent. Done in the render path (this
+                            // wrapper), so it survives JD's live repaints. JD re-sets the light icon
+                            // every cell, so non-hover rows are untouched and there is no leak.
+                            if (hovAcc && k instanceof javax.swing.JLabel) {
+                                javax.swing.JLabel kl = (javax.swing.JLabel) k;
+                                javax.swing.Icon ic = kl.getIcon();
+                                if (ic != null) kl.setIcon(darkIcon(ic, kl));
+                            }
+                        }
+                    }
                     return comp;
                 }
             };
