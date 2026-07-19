@@ -119,6 +119,13 @@ jobs:
           docker exec jd sh -c 'head -c 1400 /config/JDownloader/themes/my-flat-mono-light/org/jdownloader/images/reconnect.svg 2>/dev/null' || true
           echo "--- and settings.svg ---"
           docker exec jd sh -c 'grep -aoE "fill[:=][^;\"> ]{0,20}|rgb\([^)]*\)|stop-color[:=][^;\"> ]{0,20}|url\(#[^)]*\)" /config/JDownloader/themes/my-flat-mono-light/org/jdownloader/images/settings.svg 2>/dev/null | sort | uniq -c | head' || true
+          echo "=== round 25: is the MONO reconnect.svg actually mono now (stroke recoloured)? ==="
+          docker exec jd sh -c 'grep -aoE "stroke=\"[^\"]*\"|fill=\"[^\"]*\"|fill:#[0-9a-fA-F]*|stroke:#[0-9a-fA-F]*" /config/JDownloader/themes/my-flat-mono-light/org/jdownloader/images/reconnect.svg 2>/dev/null | sort | uniq -c' || true
+          echo "=== how does JD pick the iconset? which cfg files mention iconset/mono/flat ==="
+          docker exec jd sh -c 'grep -rlaiE "iconset|my-flat-mono" /config/JDownloader/cfg/ 2>/dev/null | head' || true
+          docker exec jd sh -c 'grep -aohE "\"[a-zA-Z]*[Ii]conset[a-zA-Z]*\"[^,}]{0,40}|my-flat-mono[a-z-]*" /config/JDownloader/cfg/*.json /config/JDownloader/cfg/laf/*.json 2>/dev/null | sort -u | head' || true
+          echo "=== does JD render from the flat set or the mono set? (which dir was read most recently) ==="
+          docker exec jd sh -c 'ls -la --time-style=+%H:%M:%S /config/JDownloader/themes/flat/org/jdownloader/images/reconnect.svg /config/JDownloader/themes/my-flat-mono-light/org/jdownloader/images/reconnect.svg 2>/dev/null' || true
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
