@@ -89,8 +89,15 @@ jobs:
       - name: Re-collect agent log after navigation (HL round-14 diagnostics)
         run: |
           docker logs jd > out/full-after.log 2>&1 || true
-          echo "=== HL diagnostics (table + sidebar renderer structure) ==="
-          grep -aE "HL table-diag|HL sidebar-diag" out/full-after.log | tail -30 || echo "(no HL diag lines)"
+          echo "=== HL diagnostics from docker logs (early agent lines only) ==="
+          grep -aE "HL table-diag|HL sidebar-diag" out/full-after.log | tail -30 || echo "(none in docker logs)"
+          echo "=== JD redirects System.out after startup -> tick logs land in JD's own log files ==="
+          docker exec jd sh -c 'ls -R /config/JDownloader/logs 2>/dev/null | head -40' || true
+          docker exec jd sh -c 'for f in $(find /config/JDownloader/logs -type f 2>/dev/null); do
+              case "$f" in *.gz) zcat "$f" 2>/dev/null;; *) cat "$f" 2>/dev/null;; esac
+            done' > out/jd-logs-all.txt 2>/dev/null || true
+          echo "=== HL sidebar-diag / table-diag from JD logs ==="
+          grep -aE "HL sidebar-diag|HL table-diag|settings sidebar row height" out/jd-logs-all.txt | tail -30 || echo "(none in JD logs)"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
