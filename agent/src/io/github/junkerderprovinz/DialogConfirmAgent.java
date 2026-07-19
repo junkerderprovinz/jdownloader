@@ -1526,40 +1526,54 @@ public class DialogConfirmAgent {
         }
     }
 
+    // Toolbar TOGGLE buttons carry a name-less ExtMergedIcon (base glyph + a state badge), so map the
+    // button's Action class (descriptive + not localized) to a JD icon key that HAS a Tabler PNG.
+    private static final java.util.Map<String, String> ACTION_ICON = new java.util.HashMap<>();
+    static {
+        ACTION_ICON.put("PauseDownloadsAction",          "media-playback-pause");
+        ACTION_ICON.put("ClipBoardToggleAction",         "clipboard");
+        ACTION_ICON.put("AutoReconnectToggleAction",     "reconnect");
+        ACTION_ICON.put("GlobalPremiumSwitchToggleAction", "premium");
+        ACTION_ICON.put("SilentModeToggleAction",        "silentmode");
+    }
+
     private static void monoButtonIcon(javax.swing.AbstractButton b) {
         try {
             javax.swing.Icon cur = b.getIcon();
             if (cur == null) return;
             if (cur == b.getClientProperty("jdp.monoBtn")) return;   // already our mono icon
-            if (ICON_SEEN.size() <= 400 && iconKey(cur) == null && b.getSelectedIcon() != null) {
-                // round-35: the toggle ICON is a name-less ExtMergedIcon, so identify the BUTTON instead
-                // (Action class name is descriptive + not localized) to map it to a Tabler glyph.
-                javax.swing.Action act = b.getAction();
-                String bid = "BTN2|" + b.getName() + "|" + b.getActionCommand() + "|" + b.getToolTipText();
-                if (ICON_SEEN.add(bid))
-                    writeDiag("BTN2 name=" + b.getName() + " action=" + b.getActionCommand()
-                            + " tip=" + b.getToolTipText()
-                            + " actClass=" + (act != null ? act.getClass().getName() : "-")
-                            + " actName=" + (act != null ? String.valueOf(act.getValue(javax.swing.Action.NAME)) : "-")
-                            + " btnClass=" + b.getClass().getName());
-            }
-            javax.swing.Icon mono = tablerIcon(cur, SIDEBAR_TEXT, b);
+            javax.swing.Icon mono = tablerForButton(b, cur, SIDEBAR_TEXT);
             if (mono == cur) return;
             b.setIcon(mono);
             b.putClientProperty("jdp.monoBtn", mono);
-            b.setRolloverIcon(tablerIcon(cur, accentFg(), b));       // dark glyph for the accent hover fill
-            // Toggle toolbar buttons (clipboard-observer, auto-reconnect, ...) keep a distinct, often
-            // colourful icon per state; mono each from its OWN glyph. This block only runs on the
-            // (re)mono pass (the getIcon()==jdp.monoBtn guard returns early otherwise), so no churn.
+            b.setRolloverIcon(tablerForButton(b, cur, accentFg()));  // dark glyph for the accent hover fill
+            // Toggle buttons keep a distinct icon per state; swap each. Only runs on the (re)mono pass
+            // (the getIcon()==jdp.monoBtn guard returns early otherwise), so no churn.
             javax.swing.Icon si = b.getSelectedIcon();
-            if (si != null && si != mono) b.setSelectedIcon(tablerIcon(si, SIDEBAR_TEXT, b));
+            if (si != null && si != mono) b.setSelectedIcon(tablerForButton(b, si, SIDEBAR_TEXT));
             javax.swing.Icon rsi = b.getRolloverSelectedIcon();
-            if (rsi != null && rsi != mono) b.setRolloverSelectedIcon(tablerIcon(rsi, accentFg(), b));
+            if (rsi != null && rsi != mono) b.setRolloverSelectedIcon(tablerForButton(b, rsi, accentFg()));
             javax.swing.Icon pi = b.getPressedIcon();
-            if (pi != null && pi != mono) b.setPressedIcon(tablerIcon(pi, SIDEBAR_TEXT, b));
+            if (pi != null && pi != mono) b.setPressedIcon(tablerForButton(b, pi, SIDEBAR_TEXT));
             // Leave disabledIcon null so Swing derives a grey version of our mono icon (avoids a third
             // tone colliding with the accent tone in tintIcon's two-bucket cache).
         } catch (Throwable ignore) { }
+    }
+
+    /** Like tablerIcon, but for a button: when the icon carries no name (a merged toggle glyph), pick
+     *  the Tabler glyph from the button's Action class instead of monoing a rough merged blob. */
+    private static javax.swing.Icon tablerForButton(javax.swing.AbstractButton b, javax.swing.Icon icon, Color tone) {
+        if (iconKey(icon) == null) {
+            javax.swing.Action act = b.getAction();
+            if (act != null) {
+                String jk = ACTION_ICON.get(act.getClass().getSimpleName());
+                if (jk != null) {
+                    javax.swing.Icon base = tablerBase(jk, icon.getIconWidth(), icon.getIconHeight());
+                    if (base != null) return tintIcon(base, tone, b);
+                }
+            }
+        }
+        return tablerIcon(icon, tone, b);
     }
 
     // Unify the config-panel input backgrounds. The round-32 diagnostic showed JD's AppWork inputs
@@ -1603,8 +1617,6 @@ public class DialogConfirmAgent {
             if (cur == null) return;
             if (cur == l.getClientProperty("jdp.monoLbl")) return;
             if (l.getClientProperty("jdp.tabOrig") != null) return;   // tab labels are owned by recolorMainTabs (tone-aware)
-            if (cfg && ICON_SEEN.size() <= 400 && ICON_SEEN.add("CFGLBL" + cur.getClass().getName()))
-                writeDiag("CFGLBL key=" + iconKey(cur) + " " + iconId(cur));   // round-34: recover section-header icon names
             // Inside a config panel we mono every label icon (section headers etc.). OUTSIDE one, only
             // touch KNOWN chrome icons (those with a mapped Tabler asset) — this reaches the main-tab
             // row and status-bar chrome without recolouring content icons (hoster favicons, file-type
@@ -1679,17 +1691,6 @@ public class DialogConfirmAgent {
                         if (!fieldHeader) { writeDiag("=== CONFIG FIELDS (round 32) ==="); fieldHeader = true; }
                         writeDiag(rec);
                     }
-                } catch (Throwable ignore) { }
-            } else if (cfg && !(ch instanceof javax.swing.JLabel)) {
-                // round-34b: find the section-HEADER component (it is not a plain JLabel, so it never
-                // showed up as CFGLBL). Any config component exposing a non-null getIcon() is a candidate.
-                try {
-                    java.lang.reflect.Method gi = ch.getClass().getMethod("getIcon");
-                    Object icv = gi.invoke(ch);
-                    if (icv instanceof javax.swing.Icon && ((javax.swing.Icon) icv).getIconWidth() > 0
-                            && FIELD_SEEN.add("HDR" + ch.getClass().getName()))
-                        writeDiag("HDRICON " + ch.getClass().getName() + " key=" + iconKey((javax.swing.Icon) icv)
-                                + " " + iconId((javax.swing.Icon) icv));
                 } catch (Throwable ignore) { }
             }
             if (ch instanceof Container) logFieldsIn((Container) ch, cfg);
