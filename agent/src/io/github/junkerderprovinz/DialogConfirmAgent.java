@@ -261,7 +261,7 @@ public class DialogConfirmAgent {
             lafTick = 0;
             writeLafMarker();
             if (GEO_DEBUG) dumpGeometry();
-            if (isHighlighter()) logHlPolish();   // ground-truth what the polish sweep finds
+            if (isHighlighter()) { logHlPolish(); logIconInventory(); }   // ground-truth the polish sweep + icon names
         }
     }
 
@@ -1425,6 +1425,73 @@ public class DialogConfirmAgent {
         } catch (Throwable ignore) { }
     }
 
+    // ---- ROUND 30 DIAGNOSTIC: can we read a JD icon's NAME at render time? -----------------
+    // To swap JD's icons for a clean Tabler set we must know, per rendered component, WHICH JD
+    // icon it is showing (the file name, e.g. "reconnect"). AppWork icons usually implement
+    // org.appwork.swing.components.IDIcon (getIdentifier() -> IconIdentifier with a key), and JD
+    // ImageIcons often carry the resource path in getDescription(). Dump whatever is present so we
+    // know which handle to key the Tabler lookup on. Reflective + fully defensive: never throws.
+    private static String iconId(javax.swing.Icon ic) {
+        if (ic == null) return "null";
+        StringBuilder sb = new StringBuilder(ic.getClass().getName());
+        try {
+            if (ic instanceof javax.swing.ImageIcon) {
+                Object d = ((javax.swing.ImageIcon) ic).getDescription();
+                if (d != null) sb.append(" desc=").append(d);
+            }
+        } catch (Throwable ignore) { }
+        for (String mn : new String[] { "getIdentifier", "getKey", "getName", "getPath", "getResource" }) {
+            try {
+                java.lang.reflect.Method m = ic.getClass().getMethod(mn);
+                Object r = m.invoke(ic);
+                if (r != null) {
+                    sb.append(' ').append(mn).append('=').append(r);
+                    try {   // IconIdentifier itself may carry the key
+                        java.lang.reflect.Method gk = r.getClass().getMethod("getKey");
+                        sb.append("(key=").append(gk.invoke(r)).append(')');
+                    } catch (Throwable ignore) { }
+                }
+            } catch (Throwable ignore) { }
+        }
+        sb.append(' ').append(ic.getIconWidth()).append('x').append(ic.getIconHeight());
+        return sb.toString();
+    }
+
+    private static boolean iconInvHeader = false;
+    private static final java.util.Set<String> ICON_SEEN = new java.util.HashSet<>();
+    /** Walk every showing window and dump each button/label icon's identity to hl-diag. Runs on the
+     *  5s cadence (not once) so it captures the main toolbar early AND the config-panel icons after
+     *  Settings opens; ICON_SEEN dedups and caps the volume. */
+    private static void logIconInventory() {
+        if (ICON_SEEN.size() > 400) return;
+        try {
+            if (!iconInvHeader) { writeDiag("=== ICON INVENTORY (round 30 name-detection) ==="); iconInvHeader = true; }
+            for (Window w : Window.getWindows()) if (w.isShowing()) logIconInvIn(w);
+        } catch (Throwable ignore) { }
+    }
+
+    private static void logIconInvIn(Container c) {
+        for (Component child : c.getComponents()) {
+            try {
+                javax.swing.Icon ic = null; String txt = null;
+                if (child instanceof javax.swing.AbstractButton) {
+                    javax.swing.AbstractButton b = (javax.swing.AbstractButton) child;
+                    ic = b.getClientProperty("jdp.monoBtn") == b.getIcon() ? null : b.getIcon();
+                    txt = b.getText(); if (txt == null || txt.isEmpty()) txt = b.getToolTipText();
+                } else if (child instanceof javax.swing.JLabel) {
+                    javax.swing.JLabel l = (javax.swing.JLabel) child;
+                    ic = l.getClientProperty("jdp.monoLbl") == l.getIcon() ? null : l.getIcon();
+                    txt = l.getText();
+                }
+                if (ic != null) {
+                    String id = iconId(ic);
+                    if (ICON_SEEN.add(id)) writeDiag("ICON [" + (txt == null ? "" : txt) + "] " + id);
+                }
+            } catch (Throwable ignore) { }
+            if (child instanceof Container) logIconInvIn((Container) child);
+        }
+    }
+
     /**
      * Raise the Settings sidebar's row height. JD gives every entry a fixed size from a
      * shared public-static Dimension on the list's cell renderer
@@ -1584,7 +1651,13 @@ public class DialogConfirmAgent {
                             if (k instanceof javax.swing.JLabel) {
                                 javax.swing.JLabel kl = (javax.swing.JLabel) k;
                                 javax.swing.Icon ic = kl.getIcon();
-                                if (ic != null) kl.setIcon(tintIcon(ic, hovAcc ? accentFg() : SIDEBAR_TEXT, kl));
+                                if (ic != null) {
+                                    if (ICON_SEEN.size() <= 400) {   // round-30 name detection for the sidebar cells
+                                        String sid = "SIDEBAR[" + (kl.getText() == null ? "" : kl.getText()) + "] " + iconId(ic);
+                                        if (ICON_SEEN.add(sid)) writeDiag(sid);
+                                    }
+                                    kl.setIcon(tintIcon(ic, hovAcc ? accentFg() : SIDEBAR_TEXT, kl));
+                                }
                             }
                         }
                     }
