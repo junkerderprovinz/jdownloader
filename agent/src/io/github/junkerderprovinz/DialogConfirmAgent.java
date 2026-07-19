@@ -2314,8 +2314,19 @@ public class DialogConfirmAgent {
         for (Window w : Window.getWindows()) {
             if (!(w instanceof Dialog) || !w.isShowing()) continue;
             try {
-                if (w instanceof javax.swing.RootPaneContainer)
-                    styleDialogContent(((javax.swing.RootPaneContainer) w).getContentPane());
+                if (w instanceof javax.swing.RootPaneContainer) {
+                    javax.swing.RootPaneContainer rpc = (javax.swing.RootPaneContainer) w;
+                    // The grey rectangle around the pop-up is a border on the content pane / root pane
+                    // itself (my walk only iterated their CHILDREN), so strip those directly too.
+                    Container cp = rpc.getContentPane();
+                    if (cp instanceof JComponent) {
+                        stripFramingBorder((JComponent) cp);
+                        if (!DIALOG_BG.equals(cp.getBackground())) cp.setBackground(DIALOG_BG);
+                    }
+                    javax.swing.JRootPane rp = rpc.getRootPane();
+                    if (rp != null) { stripFramingBorder(rp); if (rp.getLayeredPane() != null) stripFramingBorder(rp.getLayeredPane()); }
+                    styleDialogContent(cp);
+                }
             } catch (Throwable ignore) { }
         }
     }
@@ -2340,6 +2351,14 @@ public class DialogConfirmAgent {
                     }
                 } else if (ch instanceof javax.swing.AbstractButton && !isCheckLike(ch)) {
                     if (!BTN_CFG_BG.equals(ch.getBackground())) ch.setBackground(BTN_CFG_BG);
+                } else if (ch instanceof javax.swing.JLabel && ((javax.swing.JLabel) ch).getIcon() != null) {
+                    // mono EVERY dialog label icon (e.g. the colourful archive/extract glyph) — dialogs
+                    // are chrome, not content, so this never touches a hoster favicon or file thumbnail.
+                    javax.swing.JLabel l = (javax.swing.JLabel) ch;
+                    if (l.getClientProperty("jdp.monoLbl") != l.getIcon()) {
+                        javax.swing.Icon m = tablerIcon(l.getIcon(), SIDEBAR_TEXT, l);
+                        if (m != l.getIcon()) { l.setIcon(m); l.putClientProperty("jdp.monoLbl", m); }
+                    }
                 } else if (ch instanceof JComponent) {
                     stripFramingBorder((JComponent) ch);
                 }
