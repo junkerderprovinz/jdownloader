@@ -261,7 +261,7 @@ public class DialogConfirmAgent {
             lafTick = 0;
             writeLafMarker();
             if (GEO_DEBUG) dumpGeometry();
-            if (isHighlighter()) { logHlPolish(); logIconInventory(); }   // ground-truth the polish sweep + icon names
+            if (isHighlighter()) { logHlPolish(); logIconInventory(); logConfigFields(); }   // polish + icon names + config fields
         }
     }
 
@@ -1567,6 +1567,41 @@ public class DialogConfirmAgent {
         return sb.toString();
     }
 
+    // ---- ROUND 32 DIAGNOSTIC: which config-panel fields/buttons ignore the FlatLaf keys? ----------
+    // Standard FlatLaf inputs already honour @componentBackground=#1e1e1e + focusWidth=0. The
+    // "fields mal heller mal dunkler" + "blue focus frame" come from AppWork CUSTOM inputs that
+    // bypass those keys. Dump every input in a config panel (class, bg, border class) so we know
+    // which types + borders to fix in the render path next round.
+    private static final java.util.Set<String> FIELD_SEEN = new java.util.HashSet<>();
+    private static boolean fieldHeader = false;
+    private static void logConfigFields() {
+        if (FIELD_SEEN.size() > 200) return;
+        try {
+            for (Window w : Window.getWindows()) if (w.isShowing()) logFieldsIn(w, false);
+        } catch (Throwable ignore) { }
+    }
+    private static void logFieldsIn(Container c, boolean inCfg) {
+        boolean cfg = inCfg || (c instanceof JComponent && isConfigPanel(c.getClass()));
+        for (Component ch : c.getComponents()) {
+            if (cfg && (ch instanceof javax.swing.text.JTextComponent || ch instanceof javax.swing.JComboBox
+                    || ch instanceof javax.swing.JSpinner || ch instanceof javax.swing.AbstractButton)) {
+                try {
+                    Color bg = ch.getBackground();
+                    javax.swing.border.Border b = (ch instanceof JComponent) ? ((JComponent) ch).getBorder() : null;
+                    String rec = "FIELD " + ch.getClass().getName()
+                            + " bg=" + (bg == null ? "null" : Integer.toHexString(bg.getRGB() & 0xffffff))
+                            + " opaque=" + (ch instanceof JComponent && ((JComponent) ch).isOpaque())
+                            + " border=" + (b == null ? "null" : b.getClass().getName());
+                    if (FIELD_SEEN.add(ch.getClass().getName() + "|" + rec.hashCode())) {
+                        if (!fieldHeader) { writeDiag("=== CONFIG FIELDS (round 32) ==="); fieldHeader = true; }
+                        writeDiag(rec);
+                    }
+                } catch (Throwable ignore) { }
+            }
+            if (ch instanceof Container) logFieldsIn((Container) ch, cfg);
+        }
+    }
+
     private static boolean iconInvHeader = false;
     private static final java.util.Set<String> ICON_SEEN = new java.util.HashSet<>();
     /** Walk every showing window and dump each button/label icon's identity to hl-diag. Runs on the
@@ -1669,6 +1704,40 @@ public class DialogConfirmAgent {
     private static final String SB_WRAP          = "jdp.sbWrap";
     private static final String SB_HOVER_ROW     = "jdp.sbHoverRow";
     private static final String SB_LISTENERS     = "jdp.sbListeners";
+    private static final String SB_BTN           = "jdp.sbButton";
+    private static final Color  SB_BASE          = new Color(0x16, 0x16, 0x16);  // deep sidebar base the tiles float on
+    private static final Color  SB_BTN_BG        = new Color(0x24, 0x24, 0x24);  // button tile on the #161616 sidebar
+    private static final int    SB_BTN_GAP_V = 3, SB_BTN_GAP_H = 8, SB_BTN_ARC = 12;
+
+    /** CC-style: each sidebar row is a rounded button tile floating on the dark sidebar, not a
+     *  continuous bar. One reused instance wraps JD's (reconfigured) cell component each render; it
+     *  paints the tile behind the transparent content. Selected/hovered = accent fill, else a subtle
+     *  #242424 tile. Reused, so no per-cell allocation. */
+    private static final class SidebarButton extends JComponent {
+        private Component content;
+        private Color fill;
+        SidebarButton() {
+            setLayout(new java.awt.BorderLayout());
+            setOpaque(false);
+            setBorder(javax.swing.BorderFactory.createEmptyBorder(SB_BTN_GAP_V, SB_BTN_GAP_H, SB_BTN_GAP_V, SB_BTN_GAP_H));
+        }
+        void set(Component c, Color f) {
+            if (content != c) { removeAll(); content = c; add(c, java.awt.BorderLayout.CENTER); }
+            fill = f;
+        }
+        protected void paintComponent(Graphics g) {
+            if (fill != null) {
+                java.awt.Graphics2D g2 = (java.awt.Graphics2D) g.create();
+                g2.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
+                java.awt.Insets in = getInsets();
+                g2.setColor(fill);
+                g2.fillRoundRect(in.left, in.top, getWidth() - in.left - in.right,
+                        getHeight() - in.top - in.bottom, SB_BTN_ARC, SB_BTN_ARC);
+                g2.dispose();
+            }
+            super.paintComponent(g);
+        }
+    }
 
     /**
      * Paint the hovered (non-selected) settings-sidebar row fully in the accent, matching the
@@ -1737,19 +1806,13 @@ public class DialogConfirmAgent {
                     // child RenderLabel's foreground per cell, so reading comp.getForeground() just
                     // returns our own leaked value (round 19's mistake). Use a FIXED light colour for
                     // normal + selected rows, the dark accent-fg only on the hovered non-selected row.
-                    Color rowFg;
-                    if (!sel && idx == hoverRow) {
-                        Color acc = accentColor();
-                        if (acc != null && comp instanceof javax.swing.JComponent) {
-                            comp.setBackground(acc);
-                            ((javax.swing.JComponent) comp).setOpaque(true);
-                        }
-                        rowFg = accentFg();
-                    } else {
-                        rowFg = SIDEBAR_TEXT;
-                    }
+                    // Selected OR hovered -> accent tile (dark glyph/text); otherwise a subtle #242424
+                    // tile with light text. comp is made non-opaque so the SidebarButton tile shows.
+                    boolean accentBg = sel || idx == hoverRow;
+                    Color rowFg = accentBg ? accentFg() : SIDEBAR_TEXT;
+                    if (comp instanceof javax.swing.JComponent) ((javax.swing.JComponent) comp).setOpaque(false);
                     comp.setForeground(rowFg);
-                    boolean hovAcc = (!sel && idx == hoverRow);
+                    boolean hovAcc = accentBg;
                     if (comp instanceof Container) {
                         for (Component k : ((Container) comp).getComponents()) {
                             k.setForeground(rowFg);
@@ -1771,12 +1834,20 @@ public class DialogConfirmAgent {
                             }
                         }
                     }
-                    return comp;
+                    // Wrap JD's (now transparent) cell in the reused rounded tile so the sidebar reads
+                    // as CC-style stacked buttons, not a continuous bar. Accent fill on selected/hover,
+                    // subtle #242424 tile otherwise.
+                    SidebarButton btn = (SidebarButton) l.getClientProperty(SB_BTN);
+                    if (btn == null) { btn = new SidebarButton(); l.putClientProperty(SB_BTN, btn); }
+                    Color acc = accentColor();
+                    btn.set(comp, accentBg && acc != null ? acc : SB_BTN_BG);
+                    return btn;
                 }
             };
             list.putClientProperty(SB_WRAP, wrap);
         }
         if (list.getCellRenderer() != wrap) list.setCellRenderer(wrap);
+        if (!SB_BASE.equals(list.getBackground())) { list.setBackground(SB_BASE); list.setOpaque(true); }
         if (list.getClientProperty(SB_LISTENERS) == null) {
             list.addMouseMotionListener(new java.awt.event.MouseMotionAdapter() {
                 public void mouseMoved(java.awt.event.MouseEvent e) {
@@ -1879,8 +1950,25 @@ public class DialogConfirmAgent {
                 if (o != null) { javax.swing.Icon nw = tablerIcon(o, iconTone, tp); if (nw != tp.getIconAt(i)) tp.setIconAt(i, nw); }
             }
             Component tc = tp.getTabComponentAt(i);   // custom tab component (JLabel etc.)
-            if (tc != null) { setLabelFg(tc, want); tablerTabIcons(tc, iconTone); }
+            if (tc != null) {
+                setLabelFg(tc, want);
+                tablerTabIcons(tc, iconTone);
+                padTab(tc);   // breathing room so the tabs stop "sticking together"
+            }
         }
+    }
+
+    private static final int TAB_GAP = 12;   // horizontal breathing room added inside each tab
+    /** JD's custom tab components ignore FlatLaf's TabbedPane.tabInsets, so widen each one directly.
+     *  Idempotent via a client property; compounds onto (does not replace) JD's own border. */
+    private static void padTab(Component tc) {
+        if (!(tc instanceof javax.swing.JComponent)) return;
+        javax.swing.JComponent tj = (javax.swing.JComponent) tc;
+        if (tj.getClientProperty("jdp.tabPad") != null) return;
+        tj.setBorder(javax.swing.BorderFactory.createCompoundBorder(
+                javax.swing.BorderFactory.createEmptyBorder(2, TAB_GAP, 2, TAB_GAP), tj.getBorder()));
+        tj.putClientProperty("jdp.tabPad", Boolean.TRUE);
+        tj.revalidate();
     }
 
     /** Tabler-swap the chrome icon on a tab's custom component (JLabel), tone-aware. A stored original
@@ -2102,9 +2190,14 @@ public class DialogConfirmAgent {
             if (rp == null) return;
             if (modal && !has) {
                 Component saved = rp.getGlassPane();
+                // Frosted backdrop: snapshot the frame content NOW (it is frozen behind the modal),
+                // box-blur it, and paint the blur + a dark veil. Snapshot is one-shot (modal open),
+                // never per-tick. Falls back to a flat dark fill if the snapshot/blur fails.
+                final java.awt.image.BufferedImage blur = frostSnapshot(rp);
                 JComponent dim = new JComponent() {
                     protected void paintComponent(Graphics g) {
-                        g.setColor(new Color(0, 0, 0, 140));   // ~55% black backdrop
+                        if (blur != null) g.drawImage(blur, 0, 0, getWidth(), getHeight(), null);
+                        g.setColor(new Color(0, 0, 0, blur != null ? 150 : 175));   // darker veil over the blur
                         g.fillRect(0, 0, getWidth(), getHeight());
                     }
                 };
@@ -2112,13 +2205,59 @@ public class DialogConfirmAgent {
                 rp.setGlassPane(dim);
                 dim.setVisible(true);
                 DIMMED.put(main, saved);
-                System.out.println("[jd-dialog-agent] jd-highlighter: dimmed main window behind modal dialog");
+                System.out.println("[jd-dialog-agent] jd-highlighter: frosted+dimmed main window behind modal dialog");
             } else if (!modal && has) {
                 Component saved = DIMMED.remove(main);
                 if (saved != null) { rp.setGlassPane(saved); saved.setVisible(false); }
                 else rp.getGlassPane().setVisible(false);
             }
         } catch (Throwable ignore) { }
+    }
+
+    /** Paint the root pane's layered content (everything below the glass) to an image and box-blur it
+     *  at half resolution, so the modal backdrop reads as frosted glass. One-shot per modal open. */
+    private static java.awt.image.BufferedImage frostSnapshot(javax.swing.JRootPane rp) {
+        try {
+            int w = rp.getWidth(), h = rp.getHeight();
+            if (w <= 0 || h <= 0) return null;
+            int sw = Math.max(1, w / 2), sh = Math.max(1, h / 2);   // half-res: cheaper + blurrier
+            java.awt.image.BufferedImage snap = new java.awt.image.BufferedImage(sw, sh, java.awt.image.BufferedImage.TYPE_INT_RGB);
+            java.awt.Graphics2D g = snap.createGraphics();
+            g.scale(sw / (double) w, sh / (double) h);
+            rp.getLayeredPane().printAll(g);   // content below the glass pane (no recursion)
+            g.dispose();
+            return boxBlur(boxBlur(snap, 4), 4);   // two passes ~= a soft gaussian
+        } catch (Throwable t) { return null; }
+    }
+
+    /** Separable box blur (horizontal then vertical), radius r, on an INT_RGB image. */
+    private static java.awt.image.BufferedImage boxBlur(java.awt.image.BufferedImage src, int r) {
+        int w = src.getWidth(), h = src.getHeight();
+        int[] in = src.getRGB(0, 0, w, h, null, 0, w);
+        int[] tmp = new int[in.length];
+        blurPass(in, tmp, w, h, r);   // horizontal
+        blurPass(tmp, in, h, w, r);   // vertical (transposed dims)
+        java.awt.image.BufferedImage out = new java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        out.setRGB(0, 0, w, h, in, 0, w);
+        return out;
+    }
+
+    /** One separable pass writing transposed, so calling it twice blurs both axes. */
+    private static void blurPass(int[] src, int[] dst, int w, int h, int r) {
+        int div = 2 * r + 1;
+        for (int y = 0; y < h; y++) {
+            int base = y * w;
+            for (int x = 0; x < w; x++) {
+                int rs = 0, gs = 0, bs = 0, n = 0;
+                int lo = Math.max(0, x - r), hi = Math.min(w - 1, x + r);
+                for (int k = lo; k <= hi; k++) {
+                    int p = src[base + k];
+                    rs += (p >> 16) & 0xff; gs += (p >> 8) & 0xff; bs += p & 0xff; n++;
+                }
+                int rr = rs / n, gg = gs / n, bb = bs / n;
+                dst[x * h + y] = (rr << 16) | (gg << 8) | bb;   // transpose: [x*h + y]
+            }
+        }
     }
 
     // --- diagnostics: what does the jd-highlighter sweep actually find? ------
