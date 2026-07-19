@@ -78,7 +78,9 @@ jobs:
           shot 01-main
           # open the "Add New Links" dialog (a MODAL) -> verifies the frosted+dimmed backdrop
           xd mousemove 78 734; xd click 1; sleep 3; shot 10-modal-blur
-          xd key Escape; sleep 1
+          xd key Escape; sleep 1                     # close the "you should know" info popup on top
+          xd mousemove 802 488; xd click 1; sleep 1  # click Cancel to dismiss the Add Links dialog
+          xd key Escape; sleep 1                      # belt + braces so nothing lingers over later shots
           xd mousemove 250 95;  sleep 1; shot 02-tab-hover      # hover the LinkGrabber tab (accent hover)
           xd key ctrl+p;        sleep 6; shot 03-settings        # open Settings (cards/sidebar/fields/scrollbar)
           xd mousemove 935 265; sleep 1; shot 08-btn-hover       # hover the Browse button -> blue frame? accent fill?

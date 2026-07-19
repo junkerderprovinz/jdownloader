@@ -1531,11 +1531,18 @@ public class DialogConfirmAgent {
             javax.swing.Icon cur = b.getIcon();
             if (cur == null) return;
             if (cur == b.getClientProperty("jdp.monoBtn")) return;   // already our mono icon
-            if (ICON_SEEN.size() <= 400 && (b.getSelectedIcon() != null || b.getPressedIcon() != null)
-                    && ICON_SEEN.add("BTNSEL" + cur.getClass().getName()))   // round-34: recover toggle icon names
-                writeDiag("BTNSEL base=(" + iconKey(cur) + ")" + iconId(cur)
-                        + " sel=(" + iconKey(b.getSelectedIcon()) + ")" + iconId(b.getSelectedIcon())
-                        + " prs=(" + iconKey(b.getPressedIcon()) + ")" + iconId(b.getPressedIcon()));
+            if (ICON_SEEN.size() <= 400 && iconKey(cur) == null && b.getSelectedIcon() != null) {
+                // round-35: the toggle ICON is a name-less ExtMergedIcon, so identify the BUTTON instead
+                // (Action class name is descriptive + not localized) to map it to a Tabler glyph.
+                javax.swing.Action act = b.getAction();
+                String bid = "BTN2|" + b.getName() + "|" + b.getActionCommand() + "|" + b.getToolTipText();
+                if (ICON_SEEN.add(bid))
+                    writeDiag("BTN2 name=" + b.getName() + " action=" + b.getActionCommand()
+                            + " tip=" + b.getToolTipText()
+                            + " actClass=" + (act != null ? act.getClass().getName() : "-")
+                            + " actName=" + (act != null ? String.valueOf(act.getValue(javax.swing.Action.NAME)) : "-")
+                            + " btnClass=" + b.getClass().getName());
+            }
             javax.swing.Icon mono = tablerIcon(cur, SIDEBAR_TEXT, b);
             if (mono == cur) return;
             b.setIcon(mono);
