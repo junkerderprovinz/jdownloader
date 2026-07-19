@@ -1557,7 +1557,32 @@ public class DialogConfirmAgent {
             if (pi != null && pi != mono) b.setPressedIcon(tablerForButton(b, pi, SIDEBAR_TEXT));
             // Leave disabledIcon null so Swing derives a grey version of our mono icon (avoids a third
             // tone colliding with the accent tone in tintIcon's two-bucket cache).
+            installAccentHover(b);
         } catch (Throwable ignore) { }
+    }
+
+    /** AppWork toolbar buttons ignore FlatLaf's hoverBackground, so the accent fill never appears and
+     *  the dark rollover glyph lands on the plain dark toolbar (looks like nothing happens / the icon
+     *  vanishes on mouseover). Paint the accent fill ourselves on rollover, restoring the original
+     *  paint on exit. Once per button. FlatLaf buttons already hover-accent, so they are skipped. */
+    private static void installAccentHover(final javax.swing.AbstractButton b) {
+        if (!b.getClass().getName().startsWith("org.appwork")) return;
+        if (b.getClientProperty("jdp.accentHover") != null) return;
+        b.putClientProperty("jdp.accentHover", Boolean.TRUE);
+        final Color origBg = b.getBackground();
+        final boolean origOpaque = b.isOpaque();
+        final boolean origFilled = b.isContentAreaFilled();
+        b.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override public void mouseEntered(java.awt.event.MouseEvent e) {
+                if (!b.isEnabled()) return;
+                Color acc = accentColor();
+                if (acc == null) return;
+                b.setContentAreaFilled(true); b.setOpaque(true); b.setBackground(acc); b.repaint();
+            }
+            @Override public void mouseExited(java.awt.event.MouseEvent e) {
+                b.setBackground(origBg); b.setOpaque(origOpaque); b.setContentAreaFilled(origFilled); b.repaint();
+            }
+        });
     }
 
     /** Like tablerIcon, but for a button: when the icon carries no name (a merged toggle glyph), pick
@@ -1787,12 +1812,30 @@ public class DialogConfirmAgent {
                     // renderer so the hovered (non-selected) row paints FULLY in the accent, matching
                     // the table row-hover. Idempotent + survives sidebar rebuilds.
                     installSidebarAccentHover(list, r);
+                    clearSidebarBorders(list);   // drop the long vertical line at the sidebar's edge
                     return true;
                 }
             }
             if (child instanceof Container && styleSidebarIn((Container) child)) return true;
         }
         return false;
+    }
+
+    /** Remove the border that draws a long vertical line down the settings sidebar's edge: clear the
+     *  enclosing JScrollPane's border + viewport border, and any 1px-wide MatteBorder on the ancestors
+     *  between the list and that scroll pane (JD draws the divider there). Idempotent. */
+    private static void clearSidebarBorders(Component list) {
+        for (Component p = list.getParent(); p != null; p = p.getParent()) {
+            if (p instanceof JComponent) {
+                JComponent jc = (JComponent) p;
+                if (jc.getBorder() != null) jc.setBorder(javax.swing.BorderFactory.createEmptyBorder());
+            }
+            if (p instanceof javax.swing.JScrollPane) {
+                javax.swing.JScrollPane sp = (javax.swing.JScrollPane) p;
+                if (sp.getViewportBorder() != null) sp.setViewportBorder(null);
+                break;   // the scroll pane is the sidebar's outer edge; stop here
+            }
+        }
     }
 
     private static final String SB_ORIG_RENDERER = "jdp.sbOrigRenderer";
@@ -2048,7 +2091,47 @@ public class DialogConfirmAgent {
             if (tc != null) {
                 setLabelFg(tc, want);
                 tablerTabIcons(tc, iconTone);
+                // Install the inset accent-pill border once; it grows the tab, so revalidate the pane.
+                if (tc instanceof javax.swing.JComponent
+                        && !(((javax.swing.JComponent) tc).getBorder() instanceof PillBorder)) {
+                    ((javax.swing.JComponent) tc).setBorder(new PillBorder());
+                    tp.revalidate();
+                    tp.repaint();
+                }
             }
+        }
+    }
+
+    /** The main-tab pill: an inset rounded accent fill painted behind the tab's content, only when
+     *  THIS tab is selected or hovered. Self-determining (finds its own tab index + the pane's
+     *  selected/hover state each paint), so it is correct on the very first paint — no 400ms flash.
+     *  paintBorder runs after the component background and BEFORE the children, so the icon+text sit
+     *  on top of the pill. Its insets pad the content inside the pill; the FlatLaf tabInsets margin
+     *  around this component then reads as the dark gap between pills. */
+    private static final class PillBorder implements javax.swing.border.Border {
+        private static final int PAD_V = 4, PAD_H = 12, ARC = 14;
+        public boolean isBorderOpaque() { return false; }
+        public java.awt.Insets getBorderInsets(Component c) { return new java.awt.Insets(PAD_V, PAD_H, PAD_V, PAD_H); }
+        public void paintBorder(Component c, Graphics g, int x, int y, int w, int h) {
+            try {
+                javax.swing.JTabbedPane tp = null;
+                for (Component p = c.getParent(); p != null; p = p.getParent())
+                    if (p instanceof javax.swing.JTabbedPane) { tp = (javax.swing.JTabbedPane) p; break; }
+                if (tp == null) return;
+                int idx = -1;
+                for (int i = 0; i < tp.getTabCount(); i++) if (tp.getTabComponentAt(i) == c) { idx = i; break; }
+                if (idx < 0) return;
+                Object hv = tp.getClientProperty(TAB_HOVER_IDX);
+                int hover = (hv instanceof Integer) ? ((Integer) hv).intValue() : -1;
+                if (idx != tp.getSelectedIndex() && idx != hover) return;
+                Color acc = accentColor();
+                if (acc == null) return;
+                java.awt.Graphics2D g2 = (java.awt.Graphics2D) g.create();
+                g2.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(acc);
+                g2.fillRoundRect(x, y, w, h, ARC, ARC);
+                g2.dispose();
+            } catch (Throwable ignore) { }
         }
     }
 
@@ -2076,12 +2159,15 @@ public class DialogConfirmAgent {
         MouseAdapter h = new MouseAdapter() {
             @Override public void mouseMoved(MouseEvent e) {
                 int idx = tp.indexAtLocation(e.getX(), e.getY());
+                Object prev = tp.getClientProperty(TAB_HOVER_IDX);
                 tp.putClientProperty(TAB_HOVER_IDX, Integer.valueOf(idx));   // so the tick keeps it dark
                 applyTabForegrounds(tp, selFg, norFg, idx);
+                if (!Integer.valueOf(idx).equals(prev)) tp.repaint();        // repaint the pills on hover change
             }
             @Override public void mouseExited(MouseEvent e) {
                 tp.putClientProperty(TAB_HOVER_IDX, Integer.valueOf(-1));
                 applyTabForegrounds(tp, selFg, norFg, -1);
+                tp.repaint();
             }
         };
         tp.addMouseMotionListener(h);

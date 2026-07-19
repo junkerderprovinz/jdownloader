@@ -13,8 +13,12 @@
 # --- accent (the one knob) ---
 @accentColor                    = @@ACCENT@@
 ToggleButton.selectedBackground = @@ACCENT@@
-Button.default.foreground       = @@ACCENT_FG@@
-Button.default.background        = @@ACCENT@@
+# every button looks the SAME: a #2a2a2a raised button, accent only on hover. The "default"
+# button (Save & Restart etc.) is NOT permanently accent-filled — that was the inconsistency.
+Button.default.foreground       = #f4f4f4
+Button.default.background        = #2a2a2a
+Button.default.focusedBackground = @@ACCENT@@
+Button.default.hoverBackground  = @@ACCENT@@
 CheckBox.icon.checkmarkColor     = @@ACCENT@@
 RadioButton.icon.centerColor     = @@ACCENT@@
 # the UNCHECKED box was a near-invisible dark square on dark chrome: give it a visible grey
@@ -44,8 +48,10 @@ ProgressBar.selectionBackground = #f4f4f4
 # differentiated by fill not by a rahmen. borderColor is matched to the fill too as
 # belt-and-suspenders (any line on a #1e1e1e fill would show as a hairline).
 Component.borderWidth         = 0
-Component.borderColor         = #1e1e1e
-Component.disabledBorderColor = #1e1e1e
+# match the border colour to the unified field fill (#1a1a1a) so inputs/dropdowns read as flat
+# pills differentiated by shade, with NO visible frame line (the "Felder haben noch Rahmen" fix)
+Component.borderColor         = #1a1a1a
+Component.disabledBorderColor = #1a1a1a
 Component.focusWidth          = 0
 Component.innerFocusWidth     = 0
 Component.focusColor          = @@ACCENT@@
@@ -86,19 +92,20 @@ List.selectionArc       = 6
 OptionPane.background = #242424
 RootPane.background   = #242424
 
-# --- main tabs: the selected tab is an accent BUTTON (pill), not an underline ---
-# Bigger insets = more breathing room around each tab label and more space between tabs.
-TabbedPane.selectedBackground = @@ACCENT@@
+# --- main tabs: the selected/hovered tab is an INSET accent pill with a real dark gap ---
+# FlatLaf lays tabs adjacent and fills the whole tab, so there is no native gap. We therefore make
+# FlatLaf's own fill invisible (= base #161616) and let the agent paint an INSET rounded pill inside
+# each tab (org...maintab.TabHeader) via a border; the tabInsets margin then shows as a dark gap
+# between pills. selectedForeground stays the dark accent-fg (agent paints the pill behind the text).
+TabbedPane.selectedBackground = #161616
 TabbedPane.selectedForeground = @@ACCENT_FG@@
 TabbedPane.tabSelectionHeight = 0
-TabbedPane.hoverColor         = @@ACCENT@@
+TabbedPane.hoverColor         = #161616
 TabbedPane.hoverForeground    = @@ACCENT_FG@@
+TabbedPane.background         = #161616
 TabbedPane.tabArc             = 10
 TabbedPane.cardTabArc         = 10
-# snug pills: the content is ~94px, so 26px side-insets bloated each tab to 146px and left the
-# label looking lost + the pills butting as one bar. 14px hugs the content so each pill reads as
-# its own rounded button (FlatLaf lays tabs adjacent; there is no native dark gap between them).
-TabbedPane.tabInsets          = 6,14,6,14
+TabbedPane.tabInsets          = 5,10,5,10
 TabbedPane.tabAreaInsets      = 2,10,2,10
 
 # --- toolbar + menu: accent background on hover / selection ---
