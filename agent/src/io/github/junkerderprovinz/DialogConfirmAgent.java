@@ -1293,6 +1293,7 @@ public class DialogConfirmAgent {
     }
 
     private static final int SIDEBAR_ROW_PX = 66;   // native is ~53 in this JD build; must exceed it
+    private static final int SIDEBAR_TOP_PAD = 6;   // top inset on the RenderLabel to center it in the row
     private static boolean SIDEBAR_DIAG_DONE = false;   // one-time renderer dump (round 14)
 
     /**
@@ -1394,26 +1395,25 @@ public class DialogConfirmAgent {
                 public Component getListCellRendererComponent(javax.swing.JList l, Object v, int idx, boolean sel, boolean foc) {
                     javax.swing.ListCellRenderer real = (javax.swing.ListCellRenderer) l.getClientProperty(SB_ORIG_RENDERER);
                     Component comp = real.getListCellRendererComponent(l, v, idx, sel, foc);
-                    // Vertically center the icon+label in the tall (66px) row. JD's TreeRenderer is
-                    // a MigLayout panel wrapping a single RenderLabel that MigLayout top-aligns
-                    // (diag: comp=...TreeRenderer isJLabel=false layout=MigLayout kids=[RenderLabel]);
-                    // that is why every JLabel-alignment attempt was a no-op. Center the child via a
-                    // MigLayout component constraint (reflected into JD's classloader) + center the
-                    // RenderLabel's own icon/text. Guarded per panel instance so it applies once and
-                    // survives sidebar rebuilds (a rebuild yields a fresh, unmarked panel).
-                    if (comp instanceof javax.swing.JComponent
-                            && !Boolean.TRUE.equals(((javax.swing.JComponent) comp).getClientProperty("jdp.centered"))) {
+                    // Vertically center the icon+label in the tall (66px) row. JD's TreeRenderer is a
+                    // MigLayout panel wrapping a single RenderLabel that MigLayout top-anchors
+                    // (diag). A MigLayout "aligny center" constraint (round 16) did NOT move the grid
+                    // (measured still ~6px top-biased). Instead push the RenderLabel's content down
+                    // with a top inset: measured ~3px above / ~14px below, so a SIDEBAR_TOP_PAD top
+                    // border re-centers it — a JLabel's preferred size includes its border, so
+                    // MigLayout re-lays the (now taller) label lower. Applied each call but only when
+                    // not already set, so it survives any per-cell border reset by JD.
+                    if (comp instanceof Container) {
                         try {
-                            Container panel = (Container) comp;
-                            java.awt.LayoutManager lm = panel.getLayout();
-                            Component[] kids = panel.getComponents();
-                            if (lm != null && lm.getClass().getName().contains("MigLayout") && kids.length >= 1) {
-                                lm.getClass().getMethod("setComponentConstraints", Component.class, Object.class)
-                                  .invoke(lm, kids[0], "aligny center");
-                                if (kids[0] instanceof javax.swing.JLabel)
-                                    ((javax.swing.JLabel) kids[0]).setVerticalAlignment(javax.swing.SwingConstants.CENTER);
-                                panel.revalidate();
-                                ((javax.swing.JComponent) comp).putClientProperty("jdp.centered", Boolean.TRUE);
+                            Component[] kids = ((Container) comp).getComponents();
+                            if (kids.length >= 1 && kids[0] instanceof javax.swing.JComponent) {
+                                javax.swing.JComponent rl = (javax.swing.JComponent) kids[0];
+                                boolean ok = (rl.getBorder() instanceof javax.swing.border.EmptyBorder)
+                                        && ((javax.swing.border.EmptyBorder) rl.getBorder()).getBorderInsets().top == SIDEBAR_TOP_PAD;
+                                if (!ok) {
+                                    rl.setBorder(javax.swing.BorderFactory.createEmptyBorder(SIDEBAR_TOP_PAD, 0, 0, 0));
+                                    ((Container) comp).revalidate();
+                                }
                             }
                         } catch (Throwable ignore) { }
                     }
