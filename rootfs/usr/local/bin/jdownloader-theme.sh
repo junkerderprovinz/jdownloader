@@ -64,7 +64,14 @@ log "Theme=${THEME} -> lookandfeeltheme=${LAF}"
 #   mono       = tone AUTO-follows the LAF (dark theme -> light glyphs) — back-compat
 #   mono-light = always light (#f4f4f4)  ]  FIXED tone: icons/logo never flip when the
 #   mono-dark  = always dark  (#161616)  ]  user toggles themes.
-ICONS="${JD_ICONS:-color}"
+# jd-highlighter is a clean, elegant, monochrome theme by design, so its icons default to
+# MONO (single-tone glyphs) — not JD's colourful flat set. Any theme can still be forced
+# with JD_ICONS=color|mono|mono-light|mono-dark; only the DEFAULT differs per theme.
+if [ "${THEME}" = "jd-highlighter" ]; then
+    ICONS="${JD_ICONS:-mono}"
+else
+    ICONS="${JD_ICONS:-color}"
+fi
 ICONSET="flat"
 TONE=""
 case "${ICONS,,}" in
