@@ -100,6 +100,10 @@ jobs:
           grep -aE "HL sidebar-diag|HL table-diag|settings sidebar row height" out/jd-logs-all.txt | tail -30 || echo "(none in JD logs)"
           echo "=== agent hl-diag file (reliable channel: /config/hl-diag.txt) ==="
           docker exec jd sh -c 'cat /config/hl-diag.txt 2>/dev/null' | tee out/hl-diag.txt || echo "(no hl-diag.txt)"
+          echo "=== round 18: discover the downloads-table column config (keys for savetofolder/comment/progress) ==="
+          docker exec jd sh -c 'ls -1 /config/JDownloader/cfg/ 2>/dev/null | grep -iE "table|download"' || true
+          docker exec jd sh -c 'for f in $(grep -rliE "colwidth|columns|visible|colVisible|savetofolder" /config/JDownloader/cfg/ 2>/dev/null | grep -iE "download|table"); do echo "==== $f ===="; cat "$f"; echo; done' > out/coldump.txt 2>/dev/null || true
+          echo "--- coldump (first 4k) ---"; head -c 4000 out/coldump.txt 2>/dev/null || echo "(empty)"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7

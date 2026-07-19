@@ -1440,6 +1440,10 @@ public class DialogConfirmAgent {
                             comp.setBackground(acc);
                             comp.setForeground(accentFg());
                             ((javax.swing.JComponent) comp).setOpaque(true);
+                            // The label text lives in the child RenderLabel; JD sets its colour per
+                            // cell, so recolour the children too or the text stays light on the accent.
+                            if (comp instanceof Container)
+                                for (Component k : ((Container) comp).getComponents()) k.setForeground(accentFg());
                         }
                     }
                     return comp;
