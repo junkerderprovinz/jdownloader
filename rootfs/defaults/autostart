@@ -418,6 +418,19 @@ while true; do
     # reset cfg/laf/FlatDarkLaf.json, and this runs only in cont-init otherwise.
     /usr/local/bin/jdownloader-theme.sh "${JD_THEME:-Dark}" "${JD_ACCENT:-#ffee00}" >/dev/null 2>&1 || true
 
+    # JD RESETS themes/flat to its own COLOURFUL icons during its (first-run) install — AFTER the
+    # theme hook above — so the mono recolour just done is wiped and the icons render colourful.
+    # When mono is active, run a short BACKGROUND loop that re-recolours flat for ~2.5 min, catching
+    # JD's late reset. jd-mono-icons.py is idempotent (marker), so it only ever touches freshly-reset
+    # colourful SVGs; JD re-reads the SVG on repaint, so the sidebar goes mono without a restart.
+    if [ -s /tmp/.jd-mono-hex ]; then
+        ( _hex="$(cat /tmp/.jd-mono-hex 2>/dev/null)"
+          for _i in $(seq 1 30); do
+              sleep 5
+              python3 /usr/local/bin/jd-mono-icons.py "${JD_DIR}/themes/flat" "${_hex}" >/dev/null 2>&1 || true
+          done ) &
+    fi
+
     # Remove SystemTrayExtension JAR if JD's bootstrap installed it. The popup
     # 'tray isn't supported' is triggered by the extension's startup probe; if
     # the JAR is renamed, JD's extension loader skips it and the probe never runs.

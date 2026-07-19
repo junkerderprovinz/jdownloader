@@ -86,60 +86,19 @@ if [ -n "${TONE}" ]; then
     MONO="#f4f4f4"; [ "${TONE}" = "dark" ] && MONO="#161616"
     [ "${LAF}" = "FLATLAF_DARK" ] && [ "${TONE}" = "dark" ] && \
         log "note: mono-dark on the dark theme -> glyphs only readable on the accent fill"
-    ICONSET="my-flat-mono-${TONE}"           # per-tone dir: switching tone never reuses a stale set
-    ICON_SRC="${JD_DIR}/themes/flat"
-    ICON_DST="${JD_DIR}/themes/${ICONSET}"
-    if [ -d "${ICON_SRC}" ] && [ ! -d "${ICON_DST}" ]; then
-        python3 - "${ICON_SRC}" "${ICON_DST}" "${MONO}" <<'PYEOF'
-import os, re, shutil, sys
-src, dst, mono = sys.argv[1], sys.argv[2], sys.argv[3]
-
-def lum(h):
-    h = h.lstrip('#')
-    if len(h) == 3:
-        h = ''.join(c * 2 for c in h)
-    r, g, b = (int(h[i:i + 2], 16) for i in (0, 2, 4))
-    def lin(c):
-        c /= 255.0
-        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
-    return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
-
-if os.path.isdir(dst):
-    shutil.rmtree(dst)
-shutil.copytree(src, dst)
-
-fill_re = re.compile(r'((?:fill|stroke|stop-color)\s*[:=]\s*["\']?)(#[0-9a-fA-F]{3,6})')
-def sub(m):
-    # strokes are the visible outline (icons8 draws most glyphs with stroke=) -> always the
-    # mono colour, never a knockout. for fills: near-white knockouts -> transparent so the
-    # glyph reads on any surface; every other fill (incl. gradient stop-colors) -> mono.
-    if 'stroke' in m.group(1):
-        return m.group(1) + mono
-    return m.group(1) + ('none' if lum(m.group(2)) >= 0.82 else mono)
-
-changed = 0
-for root, _, files in os.walk(dst):
-    parts = root.replace(os.sep, '/').lower().split('/')
-    if 'flags' in parts or 'logo' in parts:   # keep country flags + JD logo in colour
-        continue
-    for fn in files:
-        if not fn.lower().endswith('.svg'):
-            continue
-        p = os.path.join(root, fn)
-        with open(p, 'r', encoding='utf-8', errors='ignore') as fh:
-            svg = fh.read()
-        new = fill_re.sub(sub, svg)
-        if new != svg:
-            with open(p, 'w', encoding='utf-8') as fh:
-                fh.write(new)
-            changed += 1
-print("[jdownloader-theme] mono icons: recoloured %d svgs -> %s (mono=%s)" % (changed, dst, mono))
-PYEOF
+    # Recolour JD's registered "flat" set IN PLACE. JD renders "flat" directly and ignores a
+    # custom iconsetid, and it re-extracts flat at GUI start — so a separate mono copy never shows;
+    # only recolouring flat itself sticks. The recolour is idempotent (marker comment), and
+    # autostart re-runs it after launch to catch JD's late extraction. JD keeps iconsetid=flat.
+    ICONSET="flat"
+    printf '%s' "${MONO}" > /tmp/.jd-mono-hex 2>/dev/null || true   # autostart's post-extraction loop reads this
+    if [ -d "${JD_DIR}/themes/flat" ]; then
+        python3 /usr/local/bin/jd-mono-icons.py "${JD_DIR}/themes/flat" "${MONO}" || log "mono icon recolour failed"
     fi
-    # never point JD at a set that isn't there (e.g. flat not seeded yet)
-    [ -d "${ICON_DST}" ] || { ICONSET="flat"; log "mono icon set unavailable — falling back to flat"; }
+else
+    rm -f /tmp/.jd-mono-hex 2>/dev/null || true                     # colour mode: no re-recolour loop
 fi
-log "icons=${ICONS} -> iconsetid=${ICONSET}"
+log "icons=${ICONS} -> iconsetid=${ICONSET} (mono tone=${TONE:-none})"
 
 # 1) Look-and-Feel (window chrome / Swing) — GraphicalUserInterfaceSettings
 python3 - "${JD_CFG}/org.jdownloader.settings.GraphicalUserInterfaceSettings.json" "${LAF}" <<'PYEOF'
