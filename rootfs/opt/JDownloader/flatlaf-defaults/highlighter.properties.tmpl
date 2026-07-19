@@ -95,7 +95,10 @@ TabbedPane.hoverColor         = @@ACCENT@@
 TabbedPane.hoverForeground    = @@ACCENT_FG@@
 TabbedPane.tabArc             = 10
 TabbedPane.cardTabArc         = 10
-TabbedPane.tabInsets          = 6,26,6,26
+# snug pills: the content is ~94px, so 26px side-insets bloated each tab to 146px and left the
+# label looking lost + the pills butting as one bar. 14px hugs the content so each pill reads as
+# its own rounded button (FlatLaf lays tabs adjacent; there is no native dark gap between them).
+TabbedPane.tabInsets          = 6,14,6,14
 TabbedPane.tabAreaInsets      = 2,10,2,10
 
 # --- toolbar + menu: accent background on hover / selection ---

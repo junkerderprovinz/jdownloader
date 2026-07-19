@@ -2049,39 +2049,7 @@ public class DialogConfirmAgent {
                 setLabelFg(tc, want);
                 tablerTabIcons(tc, iconTone);
             }
-            logTabStructOnce(tp, i, tc);   // diagnose the tab geometry so spacing/placement is a precise fix
         }
-    }
-
-    // ROUND 37 DIAGNOSTIC: dump the main-tab geometry once. The previous padding approach clipped the
-    // label ("Downloads"->"Download"), so before touching it again we need the true structure: the
-    // JTabbedPane UI, each tab's painted bounds vs its component's preferred size (why it clips), the
-    // tab component's layout/children/text (how to place text + add a real gap between tabs).
-    private static boolean tabStructLogged = false;
-    private static void logTabStructOnce(javax.swing.JTabbedPane tp, int i, Component tc) {
-        if (tabStructLogged) return;
-        try {
-            if (i == 0)
-                writeDiag("TAB pane=" + tp.getClass().getName() + " ui=" + tp.getUI().getClass().getName()
-                        + " count=" + tp.getTabCount() + " size=" + tp.getSize());
-            java.awt.Rectangle b = tp.getBoundsAt(i);
-            StringBuilder kids = new StringBuilder();
-            if (tc instanceof Container) {
-                Container cc = (Container) tc;
-                for (Component k : cc.getComponents())
-                    kids.append(k.getClass().getSimpleName())
-                        .append(k instanceof javax.swing.JLabel ? "[" + ((javax.swing.JLabel) k).getText() + "]" : "")
-                        .append(" sz=").append(k.getSize()).append(" pref=").append(k.getPreferredSize()).append("; ");
-            }
-            writeDiag("TAB[" + i + "] tabBounds=" + b + " tc=" + tc.getClass().getName()
-                    + " tcSize=" + tc.getSize() + " tcPref=" + tc.getPreferredSize()
-                    + " tcBorder=" + (tc instanceof JComponent && ((JComponent) tc).getBorder() != null
-                            ? ((JComponent) tc).getBorder().getClass().getSimpleName() : "null")
-                    + " layout=" + (tc instanceof Container && ((Container) tc).getLayout() != null
-                            ? ((Container) tc).getLayout().getClass().getSimpleName() : "-")
-                    + " kids=" + kids);
-            if (i == tp.getTabCount() - 1) tabStructLogged = true;
-        } catch (Throwable ignore) { }
     }
 
     /** Tabler-swap the chrome icon on a tab's custom component (JLabel), tone-aware. A stored original
@@ -2118,6 +2086,15 @@ public class DialogConfirmAgent {
         };
         tp.addMouseMotionListener(h);
         tp.addMouseListener(h);
+        // Colour on selection change too, so clicking a tab flips its text/icon to the dark accent
+        // tone IMMEDIATELY instead of on the next 400ms tick (that lag was the "dark text only renders
+        // on click / render problem"). Keeps the current hover so a hovered tab does not reset.
+        tp.addChangeListener(new javax.swing.event.ChangeListener() {
+            public void stateChanged(javax.swing.event.ChangeEvent e) {
+                Object hv = tp.getClientProperty(TAB_HOVER_IDX);
+                applyTabForegrounds(tp, selFg, norFg, (hv instanceof Integer) ? (Integer) hv : -1);
+            }
+        });
     }
 
     private static void setLabelFg(Component c, Color fg) {
