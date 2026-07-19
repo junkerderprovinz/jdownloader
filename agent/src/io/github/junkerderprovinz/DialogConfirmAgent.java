@@ -1036,11 +1036,32 @@ public class DialogConfirmAgent {
         }
     }
 
+    /**
+     * Flat dark header renderer. Diag showed the config table's columns use a per-column
+     * ExtTableHeaderRenderer that paints its own grey band regardless of the header background, so
+     * we replace it. This runs in the render path (getTableCellRendererComponent per paint), so JD's
+     * live repaints can't override it (a tick-based header.setBackground did — CI caught it, live not).
+     */
+    private static final javax.swing.table.TableCellRenderer DARK_HEADER = new javax.swing.table.TableCellRenderer() {
+        private final javax.swing.table.DefaultTableCellRenderer base = new javax.swing.table.DefaultTableCellRenderer();
+        public Component getTableCellRendererComponent(JTable tbl, Object v, boolean s, boolean f, int r, int col) {
+            Component c = base.getTableCellRendererComponent(tbl, v, s, f, r, col);
+            c.setBackground(DIALOG_BG);
+            c.setForeground(SIDEBAR_TEXT);
+            if (c instanceof JComponent) {
+                ((JComponent) c).setOpaque(true);
+                ((JComponent) c).setBorder(javax.swing.BorderFactory.createEmptyBorder(5, 8, 5, 8));
+            }
+            return c;
+        }
+    };
+
     private static void flattenConfigTable(JTable t) {
         try {
             t.setShowGrid(false);
             t.setIntercellSpacing(new Dimension(0, 0));
-            if (!BG.equals(t.getGridColor())) t.setGridColor(BG);
+            // UrlOrderTable forces showHorizontalLines=true; blend the line into the card so it vanishes.
+            if (!DIALOG_BG.equals(t.getGridColor())) t.setGridColor(DIALOG_BG);
 
             javax.swing.table.JTableHeader h = t.getTableHeader();
             if (h != null) {
@@ -1051,6 +1072,12 @@ public class DialogConfirmAgent {
                     ((JComponent) dr).setBackground(DIALOG_BG);
                     ((JComponent) dr).setBorder(javax.swing.BorderFactory.createEmptyBorder());
                 }
+            }
+            // Replace the per-column ExtTableHeaderRenderer with the flat dark one.
+            javax.swing.table.TableColumnModel hcm = t.getColumnModel();
+            for (int i = 0; i < hcm.getColumnCount(); i++) {
+                javax.swing.table.TableColumn col = hcm.getColumn(i);
+                if (col.getHeaderRenderer() != DARK_HEADER) col.setHeaderRenderer(DARK_HEADER);
             }
             Container sp = SwingUtilities.getAncestorOfClass(javax.swing.JScrollPane.class, t);
             if (sp instanceof javax.swing.JScrollPane) {
