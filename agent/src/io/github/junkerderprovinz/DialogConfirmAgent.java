@@ -1378,6 +1378,81 @@ public class DialogConfirmAgent {
         } catch (Throwable t) { return orig; }
     }
 
+    // ---- Tabler chrome-icon replacement (render path) ------------------------------------------
+    // The theme swaps JD's built-in chrome glyphs for a single clean line-art set (Tabler Icons,
+    // MIT). JD icons expose their name via getIdentifier().getKey() (proven round 30: works for
+    // both org.jdownloader.images.AbstractIcon and IdentifierWrapperIcon; the plain getKey() is
+    // absent on wrapper icons, so ALWAYS go through getIdentifier().getKey()). The matching Tabler
+    // PNG is shipped in the image at /opt/jd-tabler/png/<key>-<size>.png (white #f4f4f4 line art at
+    // 16/18/20/24/32). We load the nearest size, then reuse tintIcon() so the light tone is exact and
+    // the accent hover flip works unchanged. Icons with no name (HighDPIIcon, bare ImageIcon) or no
+    // mapping fall back to a mono tint of JD's own glyph — nothing ever renders colourful.
+    private static final String TABLER_DIR = "/opt/jd-tabler/png";
+    private static final int[] TABLER_SIZES = { 16, 18, 20, 24, 32 };
+    private static final Object TABLER_NONE = new Object();
+    private static final java.util.Map<String, Object> TABLER_CACHE = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** The JD icon's short name (e.g. "reconnect", "logo/myjdownloader") or null if it carries none. */
+    private static String iconKey(javax.swing.Icon ic) {
+        if (ic == null) return null;
+        try {
+            java.lang.reflect.Method m = ic.getClass().getMethod("getIdentifier");
+            Object id = m.invoke(ic);
+            if (id != null) {
+                java.lang.reflect.Method gk = id.getClass().getMethod("getKey");
+                Object k = gk.invoke(id);
+                if (k != null) { String s = k.toString(); if (!s.isEmpty()) return s; }
+            }
+        } catch (Throwable ignore) { }
+        return null;
+    }
+
+    /** White Tabler base icon for a JD key at exactly w x h (nearest shipped size, scaled), cached. */
+    private static javax.swing.Icon tablerBase(String key, int w, int h) {
+        if (key == null || w <= 0 || h <= 0) return null;
+        int want = Math.max(w, h);
+        String safe = key.replace('/', '_').replace('\\', '_');
+        String ck = safe + "@" + w + "x" + h;
+        Object cached = TABLER_CACHE.get(ck);
+        if (cached == TABLER_NONE) return null;
+        if (cached instanceof javax.swing.Icon) return (javax.swing.Icon) cached;
+        try {
+            int best = TABLER_SIZES[0];
+            for (int s : TABLER_SIZES) if (Math.abs(s - want) < Math.abs(best - want)) best = s;
+            java.io.File f = new java.io.File(TABLER_DIR, safe + "-" + best + ".png");
+            if (!f.isFile()) { TABLER_CACHE.put(ck, TABLER_NONE); return null; }
+            java.awt.image.BufferedImage src = javax.imageio.ImageIO.read(f);
+            if (src == null) { TABLER_CACHE.put(ck, TABLER_NONE); return null; }
+            javax.swing.Icon icon;
+            if (src.getWidth() == w && src.getHeight() == h) {
+                icon = new javax.swing.ImageIcon(src);
+            } else {
+                java.awt.image.BufferedImage dst = new java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+                java.awt.Graphics2D g = dst.createGraphics();
+                g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+                g.setRenderingHint(java.awt.RenderingHints.KEY_RENDERING, java.awt.RenderingHints.VALUE_RENDER_QUALITY);
+                g.drawImage(src, 0, 0, w, h, null);
+                g.dispose();
+                icon = new javax.swing.ImageIcon(dst);
+            }
+            TABLER_CACHE.put(ck, icon);
+            return icon;
+        } catch (Throwable t) { TABLER_CACHE.put(ck, TABLER_NONE); return null; }
+    }
+
+    /**
+     * The chrome-icon render primitive used at every sweep site: swap JD's glyph for the mapped
+     * Tabler icon (tinted to the given tone), or, when there is no name / no mapped asset, mono-tint
+     * JD's own glyph. Same signature as tintIcon() so the call sites are a drop-in.
+     */
+    private static javax.swing.Icon tablerIcon(javax.swing.Icon orig, Color tint, Component c) {
+        try {
+            javax.swing.Icon base = tablerBase(iconKey(orig), orig.getIconWidth(), orig.getIconHeight());
+            if (base != null) return tintIcon(base, tint, c);
+        } catch (Throwable ignore) { }
+        return tintIcon(orig, tint, c);
+    }
+
     /**
      * Mono the visible chrome icons that the sidebar wrapper does not cover — the toolbar buttons.
      * JD caches its icons, so (like the sidebar) the only thing that renders mono is replacing the
@@ -1407,11 +1482,11 @@ public class DialogConfirmAgent {
             javax.swing.Icon cur = b.getIcon();
             if (cur == null) return;
             if (cur == b.getClientProperty("jdp.monoBtn")) return;   // already our mono icon
-            javax.swing.Icon mono = tintIcon(cur, SIDEBAR_TEXT, b);
+            javax.swing.Icon mono = tablerIcon(cur, SIDEBAR_TEXT, b);
             if (mono == cur) return;
             b.setIcon(mono);
             b.putClientProperty("jdp.monoBtn", mono);
-            b.setRolloverIcon(tintIcon(cur, accentFg(), b));         // dark glyph for the accent hover fill
+            b.setRolloverIcon(tablerIcon(cur, accentFg(), b));       // dark glyph for the accent hover fill
         } catch (Throwable ignore) { }
     }
 
@@ -1420,7 +1495,7 @@ public class DialogConfirmAgent {
             javax.swing.Icon cur = l.getIcon();
             if (cur == null) return;
             if (cur == l.getClientProperty("jdp.monoLbl")) return;
-            javax.swing.Icon mono = tintIcon(cur, SIDEBAR_TEXT, l);
+            javax.swing.Icon mono = tablerIcon(cur, SIDEBAR_TEXT, l);
             if (mono != cur) { l.setIcon(mono); l.putClientProperty("jdp.monoLbl", mono); }
         } catch (Throwable ignore) { }
     }
@@ -1656,7 +1731,7 @@ public class DialogConfirmAgent {
                                         String sid = "SIDEBAR[" + (kl.getText() == null ? "" : kl.getText()) + "] " + iconId(ic);
                                         if (ICON_SEEN.add(sid)) writeDiag(sid);
                                     }
-                                    kl.setIcon(tintIcon(ic, hovAcc ? accentFg() : SIDEBAR_TEXT, kl));
+                                    kl.setIcon(tablerIcon(ic, hovAcc ? accentFg() : SIDEBAR_TEXT, kl));
                                 }
                             }
                         }
