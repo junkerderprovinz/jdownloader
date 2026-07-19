@@ -1498,6 +1498,11 @@ public class DialogConfirmAgent {
             javax.swing.Icon cur = b.getIcon();
             if (cur == null) return;
             if (cur == b.getClientProperty("jdp.monoBtn")) return;   // already our mono icon
+            if (ICON_SEEN.size() <= 400 && (b.getSelectedIcon() != null || b.getPressedIcon() != null)
+                    && ICON_SEEN.add("BTNSEL" + cur.getClass().getName()))   // round-34: recover toggle icon names
+                writeDiag("BTNSEL base=(" + iconKey(cur) + ")" + iconId(cur)
+                        + " sel=(" + iconKey(b.getSelectedIcon()) + ")" + iconId(b.getSelectedIcon())
+                        + " prs=(" + iconKey(b.getPressedIcon()) + ")" + iconId(b.getPressedIcon()));
             javax.swing.Icon mono = tablerIcon(cur, SIDEBAR_TEXT, b);
             if (mono == cur) return;
             b.setIcon(mono);
@@ -1558,6 +1563,8 @@ public class DialogConfirmAgent {
             if (cur == null) return;
             if (cur == l.getClientProperty("jdp.monoLbl")) return;
             if (l.getClientProperty("jdp.tabOrig") != null) return;   // tab labels are owned by recolorMainTabs (tone-aware)
+            if (cfg && ICON_SEEN.size() <= 400 && ICON_SEEN.add("CFGLBL" + cur.getClass().getName()))
+                writeDiag("CFGLBL key=" + iconKey(cur) + " " + iconId(cur));   // round-34: recover section-header icon names
             // Inside a config panel we mono every label icon (section headers etc.). OUTSIDE one, only
             // touch KNOWN chrome icons (those with a mapped Tabler asset) — this reaches the main-tab
             // row and status-bar chrome without recolouring content icons (hoster favicons, file-type
