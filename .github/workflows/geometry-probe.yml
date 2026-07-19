@@ -105,6 +105,17 @@ jobs:
           docker exec jd sh -c 'for f in $(grep -rliE "colwidth|columns|visible|colVisible|savetofolder" /config/JDownloader/cfg/ 2>/dev/null | grep -iE "download|table"); do echo "==== $f ===="; cat "$f"; echo; done' > out/coldump.txt 2>/dev/null || true
           echo "--- coldump (first 4k) ---"; head -c 4000 out/coldump.txt 2>/dev/null || echo "(empty)"
 
+      - name: Icon-set inventory (mono coverage)
+        run: |
+          echo "=== mono recolour log ==="
+          docker logs jd 2>&1 | grep -a "mono icons:" | tail -2 || echo "(no mono log — icons not mono'd!)"
+          echo "=== themes/flat file types (svg vs png etc.) ==="
+          docker exec jd sh -c 'find /config/JDownloader/themes/flat -type f 2>/dev/null | sed "s/.*\.//" | sort | uniq -c' || true
+          echo "=== active iconsetid + mono dir present? ==="
+          docker exec jd sh -c 'ls -d /config/JDownloader/themes/my-flat-mono-* 2>/dev/null; grep -aoE "\"iconsetid\":[^,]*" /config/JDownloader/cfg/laf/*.json 2>/dev/null | head -1' || true
+          echo "=== config-sidebar-ish icon files (svg or png?) ==="
+          docker exec jd sh -c 'find /config/JDownloader/themes/flat -type f 2>/dev/null | grep -iE "setting|reconnect|account|plugin|captcha|general|advanced|notif|premium|myjd" | head -25' || true
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
         with:

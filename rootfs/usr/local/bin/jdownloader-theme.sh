@@ -67,8 +67,8 @@ log "Theme=${THEME} -> lookandfeeltheme=${LAF}"
 # jd-highlighter is a clean, elegant, monochrome theme by design, so its icons default to
 # MONO (single-tone glyphs) — not JD's colourful flat set. Any theme can still be forced
 # with JD_ICONS=color|mono|mono-light|mono-dark; only the DEFAULT differs per theme.
-if [ "${THEME}" = "jd-highlighter" ]; then
-    ICONS="${JD_ICONS:-mono}"
+if [ "${HL}" = "1" ]; then
+    ICONS="${JD_ICONS:-mono}"     # clean/elegant theme -> mono icons by default (HL flag = any highlighter theme name)
 else
     ICONS="${JD_ICONS:-color}"
 fi
@@ -108,10 +108,10 @@ if os.path.isdir(dst):
     shutil.rmtree(dst)
 shutil.copytree(src, dst)
 
-fill_re = re.compile(r'(fill\s*[:=]\s*["\']?)(#[0-9a-fA-F]{3,6})')
+fill_re = re.compile(r'((?:fill|stop-color)\s*[:=]\s*["\']?)(#[0-9a-fA-F]{3,6})')
 def sub(m):
     # near-white knockouts -> transparent so the glyph reads on any surface;
-    # every other fill -> the single mono colour.
+    # every other fill (incl. gradient stop-colors) -> the single mono colour.
     return m.group(1) + ('none' if lum(m.group(2)) >= 0.82 else mono)
 
 changed = 0
