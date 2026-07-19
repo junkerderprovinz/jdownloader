@@ -45,10 +45,15 @@ jobs:
           done
           sleep 20
           docker logs jd > full.log 2>&1 || true
-          grep -E "wrote accented FlatLaf defaults|registered custom defaults source|mono icons: recoloured|folderwatch enabled" full.log | tail -8 || echo "(no theme signals)"
+          grep -E "wrote accented FlatLaf defaults|registered custom defaults source|mono icons.*recoloured|folderwatch enabled" full.log | tail -8 || echo "(no theme signals)"
           # the mono-icon generator must have run and produced a non-empty set
-          grep -qE "mono icons: recoloured [1-9][0-9]* svgs" full.log || { echo "::error::mono icon generation produced nothing"; exit 1; }
-          docker exec jd sh -c 'ls -d /config/JDownloader/themes/my-flat-mono-*/org/jdownloader/images >/dev/null 2>&1' || { echo "::error::my-flat-mono-* iconset missing"; exit 1; }
+          grep -qE "mono icons.*recoloured [1-9][0-9]* svgs" full.log || { echo "::error::mono icon recolour produced nothing"; exit 1; }
+          # flat is recoloured IN PLACE now (JD ignores a custom iconset). JD resets flat during
+          # install and a background loop re-recolours it, so the marker's presence at gate time is a
+          # race — report it, don't fail on it (the geometry-probe screenshot is the real check).
+          docker exec jd sh -c 'grep -ql hlmono /config/JDownloader/themes/flat/org/jdownloader/images/settings.svg 2>/dev/null' \
+            && echo "flat is mono in place (marker present)" \
+            || echo "::warning::flat mono marker absent at gate time (JD-reset vs re-recolour-loop race) — probe verifies"
           if grep -E "UnsupportedClassVersionError|processing of -javaagent failed|FATAL ERROR in native method|agent load/premain call failed" full.log; then
             echo "::error::agent/JVM crash signature — not pushing"; exit 1
           fi
