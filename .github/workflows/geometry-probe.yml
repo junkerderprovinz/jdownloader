@@ -86,6 +86,12 @@ jobs:
           xd key F10; sleep 1; xd key Down; sleep 1; shot 04-menu; xd key Escape
           ls -la out/*.png 2>/dev/null || echo "no shots"
 
+      - name: Re-collect agent log after navigation (HL round-14 diagnostics)
+        run: |
+          docker logs jd > out/full-after.log 2>&1 || true
+          echo "=== HL diagnostics (table + sidebar renderer structure) ==="
+          grep -aE "HL table-diag|HL sidebar-diag" out/full-after.log | tail -30 || echo "(no HL diag lines)"
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
         with:
