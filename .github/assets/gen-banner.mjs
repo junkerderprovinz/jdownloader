@@ -1,7 +1,12 @@
 /**
- * Generates the JDownloader README banner (house banner convention):
- *   jdownloader-banner.svg / .png : white 1600x500 - the Carbon globe logo on
- *                                   the left, "JDOWNLOADER" + a cheeky claim.
+ * Generates the JDownloader README banners (house banner convention, theme-adaptive pair):
+ *   jdownloader-banner.svg / .png      : light 1600x500 - the Carbon globe logo on
+ *                                        the left, "JDownloader" + a cheeky claim.
+ *   jdownloader-banner-dark.svg / .png : same layout on GitHub-dark #0d1117 with
+ *                                        light text. The README serves the pair via
+ *                                        <picture> (prefers-color-scheme).
+ * The globe logo is embedded VERBATIM in BOTH themes (BombVault pattern) - its
+ * coloured artwork reads on either background; only bg/text colours flip.
  *
  * Brand font: the wordmark is set in Bree Serif - OUR house wordmark face (same as
  * BombVault / ShipLog) - instead of JDownloader's official Arial Black. Arial reads
@@ -35,8 +40,12 @@ const __dir = dirname(fileURLToPath(import.meta.url));
 // ---- content + styling -----------------------------------------------------
 const NAME = "JDownloader"; // mixed-case brand wordmark (Bree Serif)
 const CLAIM = "Grab it. All of it. In the dark.";
-const NAME_FILL = "#161616"; // Carbon - the logo circle + our dark-mode brand
-const CLAIM_FILL = "#5a5d5e"; // house claim grey
+// Theme pair (house rule): light keeps the Carbon wordmark; dark flips to
+// GitHub-dark bg + light text. Same logo in both (see header comment).
+const THEMES = [
+  { suffix: "",      bg: "#ffffff", name: "#161616", claim: "#5a5d5e" }, // Carbon on white
+  { suffix: "-dark", bg: "#0d1117", name: "#e6edf3", claim: "#9aa4ad" },
+];
 const W = 1600, H = 500;
 const LH = 360; // logo height (icon.svg is square, 48x48 units)
 const LW = LH;  // square logo
@@ -136,17 +145,19 @@ logo = logo.replace(
   `<svg x="${LX.toFixed(1)}" y="${LY.toFixed(1)}" width="${LW}" height="${LH}" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">`,
 );
 
-const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="JDownloader">
-  <rect width="${W}" height="${H}" fill="#ffffff"/>
-  ${logo}
-  <path d="${namePath}" fill="${NAME_FILL}"/>
-  <path d="${claimPath}" fill="${CLAIM_FILL}"/>
-</svg>
-`;
-writeFileSync(join(__dir, "jdownloader-banner.svg"), svg);
-
 // Load the native rasterizer now (after all opentype path work) - see note at top.
 const { Resvg } = require(`${gRoot}/@resvg/resvg-js`);
-const png = new Resvg(svg, { fitTo: { mode: "width", value: W }, background: "white" }).render().asPng();
-writeFileSync(join(__dir, "jdownloader-banner.png"), png);
-console.log(`wrote jdownloader-banner.svg + .png (name ${Math.round(nameW)}px @ ${nameSize}, claim ${Math.round(claimW)}px, group ${Math.round(groupW)}px)`);
+
+for (const t of THEMES) {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="JDownloader">
+  <rect width="${W}" height="${H}" fill="${t.bg}"/>
+  ${logo}
+  <path d="${namePath}" fill="${t.name}"/>
+  <path d="${claimPath}" fill="${t.claim}"/>
+</svg>
+`;
+  writeFileSync(join(__dir, `jdownloader-banner${t.suffix}.svg`), svg);
+  const png = new Resvg(svg, { fitTo: { mode: "width", value: W }, background: t.bg }).render().asPng();
+  writeFileSync(join(__dir, `jdownloader-banner${t.suffix}.png`), png);
+  console.log(`wrote jdownloader-banner${t.suffix}.svg + .png (name ${Math.round(nameW)}px @ ${nameSize}, claim ${Math.round(claimW)}px, group ${Math.round(groupW)}px)`);
+}
