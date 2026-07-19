@@ -1391,11 +1391,14 @@ public class DialogConfirmAgent {
         }
     }
 
-    private static void monoChromeIn(Container c, boolean inToolbar) {
-        boolean tb = inToolbar || (c instanceof javax.swing.JToolBar);
+    private static void monoChromeIn(Container c, boolean inConfig) {
+        boolean cfg = inConfig || (c instanceof JComponent && isConfigPanel(c.getClass()));
         for (Component child : c.getComponents()) {
-            if (tb && child instanceof javax.swing.AbstractButton) monoButtonIcon((javax.swing.AbstractButton) child);
-            if (child instanceof Container) monoChromeIn((Container) child, tb);
+            // ALL buttons (JD's toolbar is not a JToolBar, so scoping to JToolBar missed the play
+            // button) + section-header labels inside config panels (the coloured section icons).
+            if (child instanceof javax.swing.AbstractButton) monoButtonIcon((javax.swing.AbstractButton) child);
+            else if (cfg && child instanceof javax.swing.JLabel) monoLabelIcon((javax.swing.JLabel) child);
+            if (child instanceof Container) monoChromeIn((Container) child, cfg);
         }
     }
 
@@ -1409,6 +1412,16 @@ public class DialogConfirmAgent {
             b.setIcon(mono);
             b.putClientProperty("jdp.monoBtn", mono);
             b.setRolloverIcon(tintIcon(cur, accentFg(), b));         // dark glyph for the accent hover fill
+        } catch (Throwable ignore) { }
+    }
+
+    private static void monoLabelIcon(javax.swing.JLabel l) {
+        try {
+            javax.swing.Icon cur = l.getIcon();
+            if (cur == null) return;
+            if (cur == l.getClientProperty("jdp.monoLbl")) return;
+            javax.swing.Icon mono = tintIcon(cur, SIDEBAR_TEXT, l);
+            if (mono != cur) { l.setIcon(mono); l.putClientProperty("jdp.monoLbl", mono); }
         } catch (Throwable ignore) { }
     }
 

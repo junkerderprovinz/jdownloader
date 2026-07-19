@@ -126,6 +126,9 @@ jobs:
           docker exec jd sh -c 'grep -aohE "\"[a-zA-Z]*[Ii]conset[a-zA-Z]*\"[^,}]{0,40}|my-flat-mono[a-z-]*" /config/JDownloader/cfg/*.json /config/JDownloader/cfg/laf/*.json 2>/dev/null | sort -u | head' || true
           echo "=== does JD render from the flat set or the mono set? (which dir was read most recently) ==="
           docker exec jd sh -c 'ls -la --time-style=+%H:%M:%S /config/JDownloader/themes/flat/org/jdownloader/images/reconnect.svg /config/JDownloader/themes/my-flat-mono-light/org/jdownloader/images/reconnect.svg 2>/dev/null' || true
+          echo "=== extract the top-level chrome icon SVGs (for the user to view/redesign) ==="
+          docker exec jd sh -c 'cd /config/JDownloader/themes/flat/org/jdownloader/images 2>/dev/null && tar cf - --exclude="*/logo/*" $(ls *.svg 2>/dev/null | grep -v "\.icons8")' > out/jd-chrome-icons.tar 2>/dev/null || true
+          echo "  tar bytes: $(wc -c < out/jd-chrome-icons.tar 2>/dev/null)"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
