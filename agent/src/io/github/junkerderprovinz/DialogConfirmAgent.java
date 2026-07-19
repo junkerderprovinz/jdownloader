@@ -2032,7 +2032,6 @@ public class DialogConfirmAgent {
      *  JD's custom tab components bypass FlatLaf's hover/selectedForeground, so we own it. */
     private static void applyTabForegrounds(javax.swing.JTabbedPane tp, Color selFg, Color norFg, int hover) {
         int sel = tp.getSelectedIndex();
-        boolean tabsPadded = false;
         for (int i = 0; i < tp.getTabCount(); i++) {
             boolean accentBg = (i == sel || i == hover);
             Color want = new Color((accentBg ? selFg : norFg).getRGB());  // plain Color: app-set, honoured
@@ -2049,27 +2048,40 @@ public class DialogConfirmAgent {
             if (tc != null) {
                 setLabelFg(tc, want);
                 tablerTabIcons(tc, iconTone);
-                if (padTab(tc)) tabsPadded = true;   // breathing room so tabs stop "sticking together"
             }
+            logTabStructOnce(tp, i, tc);   // diagnose the tab geometry so spacing/placement is a precise fix
         }
-        // The border grows each tab's preferred width; JD caches tab widths, so recompute once when
-        // we actually added padding — else the label paints into the old (too-narrow) cell and clips.
-        if (tabsPadded) { tp.revalidate(); tp.repaint(); }
     }
 
-    private static final int TAB_GAP = 8;   // horizontal breathing room added inside each tab
-    /** JD's custom tab components ignore FlatLaf's TabbedPane.tabInsets, so widen each one directly.
-     *  Idempotent via a client property; compounds onto (does not replace) JD's own border. Returns
-     *  true only on the pass that actually adds the padding. */
-    private static boolean padTab(Component tc) {
-        if (!(tc instanceof javax.swing.JComponent)) return false;
-        javax.swing.JComponent tj = (javax.swing.JComponent) tc;
-        if (tj.getClientProperty("jdp.tabPad") != null) return false;
-        tj.setBorder(javax.swing.BorderFactory.createCompoundBorder(
-                javax.swing.BorderFactory.createEmptyBorder(2, TAB_GAP, 2, TAB_GAP), tj.getBorder()));
-        tj.putClientProperty("jdp.tabPad", Boolean.TRUE);
-        tj.revalidate();
-        return true;
+    // ROUND 37 DIAGNOSTIC: dump the main-tab geometry once. The previous padding approach clipped the
+    // label ("Downloads"->"Download"), so before touching it again we need the true structure: the
+    // JTabbedPane UI, each tab's painted bounds vs its component's preferred size (why it clips), the
+    // tab component's layout/children/text (how to place text + add a real gap between tabs).
+    private static boolean tabStructLogged = false;
+    private static void logTabStructOnce(javax.swing.JTabbedPane tp, int i, Component tc) {
+        if (tabStructLogged) return;
+        try {
+            if (i == 0)
+                writeDiag("TAB pane=" + tp.getClass().getName() + " ui=" + tp.getUI().getClass().getName()
+                        + " count=" + tp.getTabCount() + " size=" + tp.getSize());
+            java.awt.Rectangle b = tp.getBoundsAt(i);
+            StringBuilder kids = new StringBuilder();
+            if (tc instanceof Container) {
+                Container cc = (Container) tc;
+                for (Component k : cc.getComponents())
+                    kids.append(k.getClass().getSimpleName())
+                        .append(k instanceof javax.swing.JLabel ? "[" + ((javax.swing.JLabel) k).getText() + "]" : "")
+                        .append(" sz=").append(k.getSize()).append(" pref=").append(k.getPreferredSize()).append("; ");
+            }
+            writeDiag("TAB[" + i + "] tabBounds=" + b + " tc=" + tc.getClass().getName()
+                    + " tcSize=" + tc.getSize() + " tcPref=" + tc.getPreferredSize()
+                    + " tcBorder=" + (tc instanceof JComponent && ((JComponent) tc).getBorder() != null
+                            ? ((JComponent) tc).getBorder().getClass().getSimpleName() : "null")
+                    + " layout=" + (tc instanceof Container && ((Container) tc).getLayout() != null
+                            ? ((Container) tc).getLayout().getClass().getSimpleName() : "-")
+                    + " kids=" + kids);
+            if (i == tp.getTabCount() - 1) tabStructLogged = true;
+        } catch (Throwable ignore) { }
     }
 
     /** Tabler-swap the chrome icon on a tab's custom component (JLabel), tone-aware. A stored original
