@@ -2366,9 +2366,30 @@ public class DialogConfirmAgent {
                     javax.swing.JRootPane rp = rpc.getRootPane();
                     if (rp != null) { stripFramingBorder(rp); if (rp.getLayeredPane() != null) stripFramingBorder(rp.getLayeredPane()); }
                     styleDialogContent(cp);
+                    roundDialogWindow(w);
                 }
             } catch (Throwable ignore) { }
         }
+    }
+
+    // Round the dialog WINDOW corners (the dialog is a separate undecorated top-level window, not an
+    // internal panel), so pop-ups match the tabs/cards. Uses Window.setShape — an X11 SHAPE clip that
+    // works in the container with NO compositor (unlike FlatLaf's translucent rounding, which would
+    // paint black corners without one). The clip is 1-bit so corners are very slightly aliased.
+    // Re-applied only when the window's size changes (the shape is pinned to the size at set-time).
+    private static final java.util.Map<Window, java.awt.Dimension> SHAPED =
+            new java.util.WeakHashMap<Window, java.awt.Dimension>();
+    private static final int DIALOG_ARC = 16;   // corner radius; a touch larger than the 12px controls
+
+    private static void roundDialogWindow(Window w) {
+        try {
+            int ww = w.getWidth(), wh = w.getHeight();
+            if (ww <= 40 || wh <= 40) return;                 // ignore not-yet-laid-out / tiny windows
+            java.awt.Dimension last = SHAPED.get(w);
+            if (last != null && last.width == ww && last.height == wh) return;   // already shaped at this size
+            w.setShape(new java.awt.geom.RoundRectangle2D.Float(0, 0, ww, wh, DIALOG_ARC, DIALOG_ARC));
+            SHAPED.put(w, new java.awt.Dimension(ww, wh));
+        } catch (Throwable ignore) { }
     }
 
     /** Make EVERY AppWork dialog read like the rest of the theme: dark surface, one recessed fill for
@@ -2418,7 +2439,10 @@ public class DialogConfirmAgent {
         if (b instanceof javax.swing.border.TitledBorder || b instanceof javax.swing.border.EtchedBorder
                 || b instanceof javax.swing.border.LineBorder || b instanceof javax.swing.border.BevelBorder
                 || b instanceof javax.swing.border.MatteBorder
-                || cn.startsWith("org.appwork") || cn.contains("LineBorder") || cn.contains("Etched"))
+                || cn.startsWith("org.appwork") || cn.contains("LineBorder") || cn.contains("Etched")
+                // FlatLaf's own line/scrollpane borders draw the faint frame around a pop-up; margin
+                // borders (padding, like EmptyBorder) are intentionally NOT matched here.
+                || cn.contains("FlatLineBorder") || cn.contains("FlatScrollPaneBorder"))
             jc.setBorder(javax.swing.BorderFactory.createEmptyBorder());
     }
 
