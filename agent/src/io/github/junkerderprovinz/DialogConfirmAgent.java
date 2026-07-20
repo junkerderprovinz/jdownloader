@@ -2159,10 +2159,22 @@ public class DialogConfirmAgent {
                                 // untouched. Centre the collapsed glyph; on reveal switch to LEADING so
                                 // the icon+name read left-to-right.
                                 boolean reveal = (idx == hoverRow);
+                                // Collapsed: icon-only, big + centred in the tile. On hover: the icon
+                                // shifts UP and the name appears BELOW it (vertical icon-over-text
+                                // stack), per the user's request. horizontalTextPosition=CENTER puts the
+                                // text under the icon; verticalTextPosition=BOTTOM stacks it below;
+                                // the whole block is centre-aligned so the icon rises to make room.
                                 if (!reveal && kl.getText() != null && kl.getText().length() > 0) kl.setText("");
-                                int wantAlign = reveal ? javax.swing.SwingConstants.LEADING
-                                                       : javax.swing.SwingConstants.CENTER;
-                                if (kl.getHorizontalAlignment() != wantAlign) kl.setHorizontalAlignment(wantAlign);
+                                if (kl.getHorizontalAlignment() != javax.swing.SwingConstants.CENTER)
+                                    kl.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
+                                if (kl.getHorizontalTextPosition() != javax.swing.SwingConstants.CENTER)
+                                    kl.setHorizontalTextPosition(javax.swing.SwingConstants.CENTER);
+                                int wantVpos = reveal ? javax.swing.SwingConstants.BOTTOM
+                                                      : javax.swing.SwingConstants.CENTER;
+                                if (kl.getVerticalTextPosition() != wantVpos) kl.setVerticalTextPosition(wantVpos);
+                                if (kl.getVerticalAlignment() != javax.swing.SwingConstants.CENTER)
+                                    kl.setVerticalAlignment(javax.swing.SwingConstants.CENTER);
+                                kl.setIconTextGap(2);
                             }
                         }
                     }
@@ -2288,20 +2300,51 @@ public class DialogConfirmAgent {
         }
     }
 
-    /** Tabler-swap the chrome icon on a tab's custom component (JLabel), tone-aware. A stored original
-     *  (client prop "jdp.tabOrig") means the light/dark flip on selection always re-tints from JD's
-     *  original glyph, never from an already-tinted icon (no unbounded re-tint / churn). */
+    /** Tabler-swap the chrome icon on a tab's custom component (JLabel). pt4 render-race fix: a
+     *  pre-tinted icon set on the 400ms tick did NOT stick — JD swaps the tab icon back between ticks,
+     *  so the selected tab's glyph stayed light on the yellow pill. Instead install a TabIcon WRAPPER
+     *  that decides its tone at PAINT time from the label's foreground (which applyTabForegrounds
+     *  flips to accentFg on the selected tab and JD does NOT override), plus a "icon" property listener
+     *  that re-wraps the instant JD swaps the icon. `tone` is now unused (the wrapper self-picks). */
     private static void tablerTabIcons(Component c, Color tone) {
-        if (c instanceof javax.swing.JLabel) {
-            javax.swing.JLabel l = (javax.swing.JLabel) c;
-            javax.swing.Icon o = (javax.swing.Icon) l.getClientProperty("jdp.tabOrig");
-            if (o == null) {
-                javax.swing.Icon cur = l.getIcon();
-                if (cur != null && iconKey(cur) != null) { o = cur; l.putClientProperty("jdp.tabOrig", o); }
-            }
-            if (o != null) { javax.swing.Icon nw = tablerIcon(o, tone, l); if (l.getIcon() != nw) l.setIcon(nw); }
-        }
+        if (c instanceof javax.swing.JLabel) installTabIconWrap((javax.swing.JLabel) c);
         if (c instanceof Container) for (Component ch : ((Container) c).getComponents()) tablerTabIcons(ch, tone);
+    }
+
+    private static void installTabIconWrap(final javax.swing.JLabel l) {
+        javax.swing.Icon cur = l.getIcon();
+        if (cur instanceof TabIcon) { ensureTabIconListener(l); return; }   // already wrapped
+        if (cur == null || iconKey(cur) == null) return;                    // not a nameable chrome glyph
+        javax.swing.Icon light = tablerIcon(cur, SIDEBAR_TEXT, l);
+        javax.swing.Icon dark  = tablerIcon(cur, accentFg(), l);
+        if (light == cur) return;                                           // couldn't mono -> leave it
+        l.putClientProperty("jdp.tabOrig", cur);
+        l.setIcon(new TabIcon(light, dark));
+        ensureTabIconListener(l);
+    }
+
+    private static void ensureTabIconListener(final javax.swing.JLabel l) {
+        if (l.getClientProperty("jdp.tabIconL") != null) return;
+        l.putClientProperty("jdp.tabIconL", Boolean.TRUE);
+        l.addPropertyChangeListener("icon", new java.beans.PropertyChangeListener() {
+            public void propertyChange(java.beans.PropertyChangeEvent e) {
+                if (!(l.getIcon() instanceof TabIcon)) installTabIconWrap(l);   // JD swapped it -> re-wrap now
+            }
+        });
+    }
+
+    /** Paint-time tinting icon: the selected tab's label foreground is accentFg (dark) and JD does not
+     *  override the foreground, so read it when painting and pick the dark or light glyph accordingly.
+     *  Immune to JD's between-tick icon repaints — the tone is decided per paint, not per tick. */
+    private static final class TabIcon implements javax.swing.Icon {
+        private final javax.swing.Icon light, dark;
+        TabIcon(javax.swing.Icon light, javax.swing.Icon dark) { this.light = light; this.dark = dark; }
+        private javax.swing.Icon pick(Component c) {
+            return (c != null && accentFg().equals(c.getForeground())) ? dark : light;
+        }
+        public void paintIcon(Component c, Graphics g, int x, int y) { pick(c).paintIcon(c, g, x, y); }
+        public int getIconWidth() { return light.getIconWidth(); }
+        public int getIconHeight() { return light.getIconHeight(); }
     }
 
     private static final String TAB_HOVER_WIRED = "jdp.tabHoverWired";
@@ -2629,6 +2672,15 @@ public class DialogConfirmAgent {
                 // borders (padding, like EmptyBorder) are intentionally NOT matched here.
                 || cn.contains("FlatLineBorder") || cn.contains("FlatScrollPaneBorder"))
             jc.setBorder(javax.swing.BorderFactory.createEmptyBorder());
+        // JD's custom AbstractConfigPanel controls (ComboBox/Spinner/text field/buttons) carry a
+        // FlatRoundBorder/FlatButtonBorder that draws a VISIBLE rectangular frame which Component.
+        // borderWidth=0 does NOT zero on them (that was the "Felder haben noch Rahmen" live bug).
+        // Strip the line but KEEP the padding (an EmptyBorder with the same insets) so the field/
+        // button fill doesn't collapse. Idempotent: next tick sees an EmptyBorder and returns early.
+        else if (cn.contains("FlatRoundBorder") || cn.contains("FlatButtonBorder")) {
+            java.awt.Insets in = b.getBorderInsets(jc);
+            jc.setBorder(javax.swing.BorderFactory.createEmptyBorder(in.top, in.left, in.bottom, in.right));
+        }
     }
 
     // (2) dim the OWNER window behind a modal pop-up so it stands out (no lines/blur). A
