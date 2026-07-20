@@ -65,6 +65,17 @@ jobs:
           echo "=== heal lines ==="
           grep -E "INVALID flatlaf|deregistered|requested flatlaf" out/full.log || echo "(none)"
 
+      - name: picom compositor status (dialog rounding)
+        run: |
+          mkdir -p out
+          { echo "=== picom process (is the compositor up?) ==="
+            docker exec jd sh -c 'pgrep -a picom || echo "picom NOT running"' 2>&1
+            echo "=== /config/picom.log (warnings/errors) ==="
+            docker exec jd sh -c 'cat /config/picom.log 2>/dev/null || echo "(no picom.log — did it launch?)"' 2>&1
+            echo "=== picom binary present + version ==="
+            docker exec jd sh -c 'command -v picom && picom --version 2>&1 | head -1 || echo "picom binary MISSING"' 2>&1
+          } | tee out/picom-status.txt || true
+
       - name: Screenshot the live desktop (main + tab-hover + settings + menu)
         run: |
           set -uo pipefail
