@@ -1899,6 +1899,12 @@ public class DialogConfirmAgent {
     }
 
     private static void clearDividerBorder(Component c) {
+        if (!(c instanceof JComponent)) return;
+        JComponent jc = (JComponent) c;
+        // The sidebar edge line is a MatteBorder on an ANONYMOUS scroll container (not necessarily a
+        // JScrollPane), so clear a MatteBorder wherever it sits, keeping the empty insets.
+        if (jc.getBorder() instanceof javax.swing.border.MatteBorder)
+            jc.setBorder(javax.swing.BorderFactory.createEmptyBorder());
         if (c instanceof javax.swing.JScrollPane) {
             javax.swing.JScrollPane jsp = (javax.swing.JScrollPane) c;
             jsp.setBorder(javax.swing.BorderFactory.createEmptyBorder());
