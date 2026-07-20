@@ -1865,55 +1865,35 @@ public class DialogConfirmAgent {
     /** Remove the border that draws a long vertical line down the settings sidebar's edge: clear the
      *  enclosing JScrollPane's border + viewport border, and any 1px-wide MatteBorder on the ancestors
      *  between the list and that scroll pane (JD draws the divider there). Idempotent. */
-    private static boolean sbLineLogged = false;
+    private static boolean mbDiagDone = false;
     private static void clearSidebarBorders(Component list) {
-        if (!sbLineLogged) {   // one-shot: dump the ancestor chain + siblings so we can find the line
-            sbLineLogged = true;
-            try {
-                StringBuilder sb = new StringBuilder("SBLINE ");
-                Component q = list;
-                for (int d = 0; q != null && d < 8; d++, q = q.getParent()) {
-                    String bd = (q instanceof JComponent && ((JComponent) q).getBorder() != null)
-                            ? ((JComponent) q).getBorder().getClass().getSimpleName() : "-";
-                    sb.append(d).append(":").append(q.getClass().getSimpleName()).append("(b=").append(bd).append(")");
-                    Container par = q.getParent();
-                    if (par != null) { sb.append("{"); for (Component s : par.getComponents()) if (s != q) sb.append(s.getClass().getSimpleName()).append(","); sb.append("}"); }
-                    sb.append(" > ");
-                }
-                writeDiag(sb.toString());
-            } catch (Throwable ignore) { }
-        }
-        Component p = list;
-        for (int d = 0; p != null && d < 8; d++, p = p.getParent()) {
-            Container par = p.getParent();
-            // clear scroll-pane / split borders on this node AND its siblings (the line is often the
-            // CONTENT scroll pane's edge, which is a SIBLING of the sidebar, not an ancestor).
-            clearDividerBorder(p);
-            if (par != null) for (Component sib : par.getComponents()) {
-                clearDividerBorder(sib);
-                if (sib != p && sib instanceof javax.swing.JSeparator && sib.isVisible()
-                        && sib.getWidth() > 0 && sib.getWidth() <= 4 && sib.getHeight() > sib.getWidth() * 3)
-                    sib.setVisible(false);   // thin, tall = vertical separator line
-            }
-        }
+        // Walk up to the settings-view root (ConfigurationView), then recurse the WHOLE view clearing
+        // every MatteBorder line + scroll-pane border — the edge line can sit on the sidebar OR the
+        // content side, on an anonymous container, so a targeted clear kept missing it.
+        Component root = list;
+        for (int d = 0; d < 7 && root.getParent() != null; d++) root = root.getParent();
+        clearLinesIn(root, 0);
+        mbDiagDone = true;   // the recursion logged every MatteBorder on the first pass
     }
 
-    private static void clearDividerBorder(Component c) {
-        if (!(c instanceof JComponent)) return;
-        JComponent jc = (JComponent) c;
-        // The sidebar edge line is a MatteBorder on an ANONYMOUS scroll container (not necessarily a
-        // JScrollPane), so clear a MatteBorder wherever it sits, keeping the empty insets.
-        if (jc.getBorder() instanceof javax.swing.border.MatteBorder)
-            jc.setBorder(javax.swing.BorderFactory.createEmptyBorder());
-        if (c instanceof javax.swing.JScrollPane) {
-            javax.swing.JScrollPane jsp = (javax.swing.JScrollPane) c;
-            jsp.setBorder(javax.swing.BorderFactory.createEmptyBorder());
-            jsp.setViewportBorder(null);
-        } else if (c instanceof javax.swing.JSplitPane) {
-            javax.swing.JSplitPane sp = (javax.swing.JSplitPane) c;
-            sp.setBorder(javax.swing.BorderFactory.createEmptyBorder());
-            if (sp.getDividerSize() > 1) sp.setDividerSize(1);
+    private static void clearLinesIn(Component c, int depth) {
+        if (depth > 12) return;
+        if (c instanceof JComponent) {
+            JComponent jc = (JComponent) c;
+            javax.swing.border.Border b = jc.getBorder();
+            if (b instanceof javax.swing.border.MatteBorder) {
+                java.awt.Insets in = ((javax.swing.border.MatteBorder) b).getBorderInsets(c);
+                if (!mbDiagDone) writeDiag("MATTE " + c.getClass().getName()
+                        + " insets=" + in.top + "," + in.left + "," + in.bottom + "," + in.right
+                        + " size=" + c.getWidth() + "x" + c.getHeight());
+                // keep the spacing but drop the drawn line
+                jc.setBorder(javax.swing.BorderFactory.createEmptyBorder(in.top, in.left, in.bottom, in.right));
+            } else if (b instanceof javax.swing.border.LineBorder || b instanceof javax.swing.border.EtchedBorder) {
+                jc.setBorder(javax.swing.BorderFactory.createEmptyBorder());
+            }
+            if (c instanceof javax.swing.JScrollPane) ((javax.swing.JScrollPane) c).setViewportBorder(null);
         }
+        if (c instanceof Container) for (Component ch : ((Container) c).getComponents()) clearLinesIn(ch, depth + 1);
     }
 
     private static final String SB_ORIG_RENDERER = "jdp.sbOrigRenderer";
