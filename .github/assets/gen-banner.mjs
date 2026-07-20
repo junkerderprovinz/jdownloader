@@ -1,23 +1,26 @@
 /**
- * Generates the JDownloader README banners (house banner convention, theme-adaptive pair):
- *   jdownloader-banner.svg / .png      : light 1600x500 - the Carbon globe logo on
- *                                        the left, "JDownloader" + a cheeky claim.
- *   jdownloader-banner-dark.svg / .png : same layout on GitHub-dark #0d1117 with
- *                                        light text. The README serves the pair via
- *                                        <picture> (prefers-color-scheme).
- * The globe logo is embedded VERBATIM in BOTH themes (BombVault pattern) - its
- * coloured artwork reads on either background; only bg/text colours flip.
+ * Generates the JDownloader README banners (theme-adaptive pair):
+ *   jdownloader-banner.svg / .png      : light 1600x500 - globe on the LEFT, then the
+ *                                        "JDOWNLOADER" wordmark + a cheeky claim.
+ *   jdownloader-banner-dark.svg / .png : same layout on GitHub-dark #0d1117, light text.
+ * The README serves the pair via <picture> (prefers-color-scheme).
  *
- * Brand font: the wordmark is set in Bree Serif - OUR house wordmark face (same as
- * BombVault / ShipLog) - instead of JDownloader's official Arial Black. Arial reads
- * as "no font at all" and isn't recognisable as JD's, so the banner now carries our
- * brand. The claim uses Lato, the shared claim font across all repos. Both are OFL,
- * fetched at runtime to the OS temp dir (never committed) and converted to SVG paths
- * (opentype.js) so the SVG is self-contained.
+ * Wordmark: JDownloader's own website wordmark is Myriad Pro Bold with TWO modifications
+ * to the initial J - it is enlarged so it overshoots the other caps BOTH up and down, and
+ * it carries a horizontal crossbar across its top (Myriad's plain J has neither). The
+ * geometry below is MEASURED from the original logo (ratios are relative to the main cap
+ * height): the J's cap top sits J_OVER_UP above the caps, its hook drops J_OVER_DOWN below
+ * the baseline, and the crossbar's thickness/length are CROSSBAR_TH/CROSSBAR_LEN.
  *
- * The logo-only banner (jdownloader-banner-logo.png/.svg) is a separate asset used
- * by the support thread; it is NOT touched here.
+ * The glyphs are rendered to VECTOR PATHS from a LOCAL, gitignored copy of Myriad Pro Bold
+ * (.github/assets/_fonts/MyriadPro-Bold.otf - the font file is NEVER committed; only the
+ * outlines land in the SVG, as with any logo). Nominative use of the product's own mark
+ * (this repo packages JDownloader). Letters are FLAT (no 3D bevel): #161616 on the light
+ * card, light on dark. The claim uses Lato (OFL), fetched at runtime. The globe (icon.svg:
+ * green earth + gold download arrow) is embedded verbatim in both themes.
  *
+ * Requires Myriad Pro Bold at .github/assets/_fonts/MyriadPro-Bold.otf (ships with Adobe
+ * apps; copy it there locally - it stays gitignored).
  * Deps: `npm i -g @resvg/resvg-js opentype.js`. Run: node .github/assets/gen-banner.mjs
  */
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
@@ -30,134 +33,131 @@ import { execSync } from "node:child_process";
 const require = createRequire(import.meta.url);
 const gRoot = execSync("npm root -g").toString().trim();
 const opentype = require(`${gRoot}/opentype.js`);
-// @resvg/resvg-js (native rasterizer) is required lazily below, after the text-to-
-// path work. Note: opentype's own getPath() intermittently returns NaN coords in
-// this script, so we don't use it - glyphRunPath() transforms each glyph's raw
-// outline by hand instead (see its comment). The SVG is checked for NaN before write.
-
 const __dir = dirname(fileURLToPath(import.meta.url));
 
 // ---- content + styling -----------------------------------------------------
-const NAME = "JDownloader"; // mixed-case brand wordmark (Bree Serif)
+const NAME_POST = "DOWNLOADER"; // the J is handled separately (oversized + crossbar)
 const CLAIM = "Grab it. All of it. In the dark.";
-// Theme pair (house rule): light keeps the Carbon wordmark; dark flips to
-// GitHub-dark bg + light text. Same logo in both (see header comment).
 const THEMES = [
-  { suffix: "",      bg: "#ffffff", name: "#161616", claim: "#5a5d5e" }, // Carbon on white
+  { suffix: "",      bg: "#ffffff", name: "#161616", claim: "#5a5d5e" },
   { suffix: "-dark", bg: "#0d1117", name: "#e6edf3", claim: "#9aa4ad" },
 ];
 const W = 1600, H = 500;
-const LH = 360; // logo height (icon.svg is square, 48x48 units)
-const LW = LH;  // square logo
-let nameSize = 168; // shrunk below to fit "JDOWNLOADER"
-const claimSize = 42, gap = 64, lineGap = 22;
-const MAX_GROUP = W - 160; // keep ~80px breathing room each side
+const LH = 300, LW = LH;      // globe on the left (square)
+const gap = 60, lineGap = 22;
+const claimSize = 40;
+// Measured from the original logo (all as fractions of the MAIN cap height):
+const J_OVER_UP = 0.27;       // J cap top above the other caps
+const J_OVER_DOWN = 0.30;     // J hook below the baseline (overshoots DOWNLOADER downward)
+const CROSSBAR_TH = 0.24;     // J crossbar thickness
+const CROSSBAR_LEN = 0.47;    // J crossbar length, from the stem-right edge leftward
+const THICKEN = 4;            // faux-weight: stroke the glyphs a touch (the logo's bevel reads heavier)
+const MAX_GROUP = W - 160;
+let nameSize = 200;           // shrunk below to fit beside the globe
 // ---------------------------------------------------------------------------
 
-// Brand fonts (OFL) fetched at runtime - never committed. Bree Serif = wordmark
-// (our brand face), Lato = claim (shared across all repos).
-const breeFile = join(tmpdir(), "JD-BreeSerif-Regular.ttf");
+const MYRIAD = join(__dir, "_fonts", "MyriadPro-Bold.otf");
+if (!existsSync(MYRIAD)) throw new Error(`Myriad Pro Bold not found at ${MYRIAD} (copy the .otf there; it stays gitignored)`);
+const nameFont = opentype.parse(readFileSync(MYRIAD).buffer);
 const latoFile = join(tmpdir(), "JD-Lato-Regular.ttf");
-async function ensureFont(file, url) {
-  if (!existsSync(file)) {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`font fetch ${res.status}: ${url}`);
-    writeFileSync(file, Buffer.from(await res.arrayBuffer()));
-  }
+if (!existsSync(latoFile)) {
+  const r = await fetch("https://github.com/google/fonts/raw/main/ofl/lato/Lato-Regular.ttf");
+  if (!r.ok) throw new Error(`Lato fetch ${r.status}`);
+  writeFileSync(latoFile, Buffer.from(await r.arrayBuffer()));
 }
-await ensureFont(breeFile, "https://github.com/google/fonts/raw/main/ofl/breeserif/BreeSerif-Regular.ttf");
-await ensureFont(latoFile, "https://github.com/google/fonts/raw/main/ofl/lato/Lato-Regular.ttf");
-const nameFont = opentype.parse(readFileSync(breeFile));
-const claimFont = opentype.parse(readFileSync(latoFile));
+const claimFont = opentype.parse(readFileSync(latoFile).buffer);
+const emOf = (f) => f.unitsPerEm;
 
-// Per-glyph shaping (charToGlyph + glyph.getPath) - bypasses opentype.js's
-// feature engine, which emits NaN path coords for some Lato pairs and truncates
-// the claim after the first word. Lossless for plain Latin; the small claim line
-// needs no kerning.
-function glyphRunWidth(font, text, size) {
-  const scale = size / font.unitsPerEm;
+function runWidth(font, text, size) {
+  const s = size / font.unitsPerEm;
   let w = 0;
-  for (const ch of text) w += font.charToGlyph(ch).advanceWidth * scale;
+  for (const ch of text) w += font.charToGlyph(ch).advanceWidth * s;
   return w;
 }
-// Build the SVG path by transforming each glyph's OWN outline commands (font units)
-// ourselves - scale + baseline flip + advance - instead of opentype's getPath().
-// opentype's getPath() intermittently emits NaN coords here (a float-state quirk that
-// surfaces only in file execution, not via stdin), so we never call it; this is pure
-// finite arithmetic on the raw outline, so the output can't contain NaN.
-function glyphRunPath(font, text, x, baseline, size) {
-  const scale = size / font.unitsPerEm;
-  const n = (v) => v.toFixed(2);
+// sizeY defaults to sizeX (uniform). Passing sizeY > sizeX stretches the glyph VERTICALLY
+// only - taller, but the vertical stems keep the sizeX stroke width (used for the oversized J
+// so it is bigger than the other letters WITHOUT getting heavier).
+function runPath(font, text, x, baseline, sizeX, sizeY = sizeX) {
+  const sx = sizeX / font.unitsPerEm, sy = sizeY / font.unitsPerEm, n = (v) => v.toFixed(2);
   let d = "", cx = x;
   for (const ch of text) {
     const g = font.charToGlyph(ch);
     for (const c of g.path.commands) {
-      if (c.type === "M") d += `M${n(cx + c.x * scale)} ${n(baseline - c.y * scale)}`;
-      else if (c.type === "L") d += `L${n(cx + c.x * scale)} ${n(baseline - c.y * scale)}`;
-      else if (c.type === "C")
-        d += `C${n(cx + c.x1 * scale)} ${n(baseline - c.y1 * scale)} ${n(cx + c.x2 * scale)} ${n(baseline - c.y2 * scale)} ${n(cx + c.x * scale)} ${n(baseline - c.y * scale)}`;
-      else if (c.type === "Q")
-        d += `Q${n(cx + c.x1 * scale)} ${n(baseline - c.y1 * scale)} ${n(cx + c.x * scale)} ${n(baseline - c.y * scale)}`;
+      if (c.type === "M") d += `M${n(cx + c.x * sx)} ${n(baseline - c.y * sy)}`;
+      else if (c.type === "L") d += `L${n(cx + c.x * sx)} ${n(baseline - c.y * sy)}`;
+      else if (c.type === "C") d += `C${n(cx + c.x1 * sx)} ${n(baseline - c.y1 * sy)} ${n(cx + c.x2 * sx)} ${n(baseline - c.y2 * sy)} ${n(cx + c.x * sx)} ${n(baseline - c.y * sy)}`;
+      else if (c.type === "Q") d += `Q${n(cx + c.x1 * sx)} ${n(baseline - c.y1 * sy)} ${n(cx + c.x * sx)} ${n(baseline - c.y * sy)}`;
       else if (c.type === "Z") d += "Z";
     }
-    cx += g.advanceWidth * scale;
+    cx += g.advanceWidth * sx;
   }
   return d;
 }
 
-const em = (f, s) => s / f.unitsPerEm;
+const jbFU = nameFont.charToGlyph("J").getBoundingBox();     // J glyph bbox, font units
+const jGlyphH = jbFU.y2 - jbFU.y1;                           // J glyph height, font units
+const emU = emOf(nameFont);
+const capU = nameFont.tables.os2.sCapHeight;                 // main cap height, font units
 
-// Shrink the wordmark until the logo + name group fits the card with margins.
-// The whole word is set at one uniform size (no oversized initial letter).
-while (nameSize > 80 && LW + gap + glyphRunWidth(nameFont, NAME, nameSize) > MAX_GROUP) {
-  nameSize -= 2;
-}
-const nameW = glyphRunWidth(nameFont, NAME, nameSize);
-const claimW = glyphRunWidth(claimFont, CLAIM, claimSize);
+// The J is enlarged PROPORTIONALLY (uniform scale) so it overshoots up and down. It reads a
+// touch heavier than the other letters, but a vertical-only stretch distorts the shape, so
+// keep it proportional (the original's J is proportional too).
+const jScaleFor = (size) => (1 + J_OVER_UP + J_OVER_DOWN) * (capU * size / emU) / jGlyphH;
+const jAdvFor = (size) => nameFont.charToGlyph("J").advanceWidth * jScaleFor(size);
+while (nameSize > 90 && LW + gap + jAdvFor(nameSize) + runWidth(nameFont, NAME_POST, nameSize) > MAX_GROUP) nameSize -= 2;
+
+const capMain = capU * nameSize / emU;
+const jScaleU = jScaleFor(nameSize);
+const SJ = jScaleU * emU;
+const jAdv = jAdvFor(nameSize);
+const nameW = jAdv + runWidth(nameFont, NAME_POST, nameSize);
+const claimW = runWidth(claimFont, CLAIM, claimSize);
 const groupW = LW + gap + Math.max(nameW, claimW);
 const startX = (W - groupW) / 2;
 const LX = startX, LY = (H - LH) / 2;
 const textX = startX + LW + gap;
 
-const nameAsc = nameFont.ascender * em(nameFont, nameSize);
-const nameDesc = -nameFont.descender * em(nameFont, nameSize);
-const claimAsc = claimFont.ascender * em(claimFont, claimSize);
-const blockH = nameAsc + nameDesc + lineGap + claimAsc;
-const nameBaseline = H / 2 - blockH / 2 + nameAsc;
-const claimBaseline = nameBaseline + nameDesc + lineGap + claimAsc;
+// Vertical placement: the J spans J_OVER_UP above the caps to J_OVER_DOWN below the baseline.
+const claimAsc = claimFont.ascender * claimSize / emOf(claimFont);
+const jTopAbove = (1 + J_OVER_UP) * capMain;   // J cap top above the main baseline
+const jBotBelow = J_OVER_DOWN * capMain;       // J hook below the main baseline
+const blockH = jTopAbove + jBotBelow + lineGap + claimAsc;
+const nameBaseline = H / 2 - blockH / 2 + jTopAbove;   // DOWNLOADER sits on this baseline
+const claimBaseline = nameBaseline + jBotBelow + lineGap + claimAsc;
 
-// Both lines per-glyph (charToGlyph + glyph.getPath). opentype.js's feature engine
-// (font.getPath / getAdvanceWidth) corrupts state across two parsed fonts here and
-// makes the Lato claim render as NaN coords; per-glyph bypasses it entirely.
-const claimPath = glyphRunPath(claimFont, CLAIM, textX, claimBaseline, claimSize);
-const namePath = glyphRunPath(nameFont, NAME, textX, nameBaseline, nameSize);
-// Never ship a NaN path (the resvg-float-state bug above would silently truncate
-// the text); fail loudly so a bad banner can't be committed.
-if (claimPath.includes("NaN") || namePath.includes("NaN")) {
-  throw new Error("text path contains NaN - aborting (load order / float-state regression)");
-}
+const jBaseline = nameBaseline + jBotBelow + jbFU.y1 * jScaleU;
+const jPath = runPath(nameFont, "J", textX, jBaseline, SJ);
+const restPath = runPath(nameFont, NAME_POST, textX + jAdv, nameBaseline, nameSize);
+const namePath = jPath + restPath;
 
-// Embed the Carbon globe (icon.svg, 48x48) verbatim - only the root tag gets
-// position/size attributes; the artwork inside is untouched.
+// J crossbar: a thin horizontal bar across the top of the J. Right edge at the stem/glyph
+// right; length + thickness are the measured fractions of the main cap height. Thickness is
+// reduced by THICKEN so the stroke brings it back to the measured value.
+const barTop = nameBaseline - jTopAbove;
+const barRight = textX + jbFU.x2 * jScaleU;
+const barLeft = barRight - CROSSBAR_LEN * capMain;
+const barTh = Math.max(2, CROSSBAR_TH * capMain - THICKEN);
+const crossbar = `M${barLeft.toFixed(2)} ${barTop.toFixed(2)} H${barRight.toFixed(2)} V${(barTop + barTh).toFixed(2)} H${barLeft.toFixed(2)} Z`;
+
+const claimPath = runPath(claimFont, CLAIM, textX, claimBaseline, claimSize);
+if ([namePath, crossbar, claimPath].some((d) => d.includes("NaN"))) throw new Error("NaN path");
+
 let logo = readFileSync(join(__dir, "icon.svg"), "utf8").replace(/<\?xml[^>]*\?>\s*/, "");
-logo = logo.replace(
-  /<svg[\s\S]*?>/,
-  `<svg x="${LX.toFixed(1)}" y="${LY.toFixed(1)}" width="${LW}" height="${LH}" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">`,
-);
+logo = logo.replace(/<svg[\s\S]*?>/,
+  `<svg x="${LX.toFixed(1)}" y="${LY.toFixed(1)}" width="${LW}" height="${LH}" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">`);
 
-// Load the native rasterizer now (after all opentype path work) - see note at top.
 const { Resvg } = require(`${gRoot}/@resvg/resvg-js`);
-
 for (const t of THEMES) {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="JDownloader">
   <rect width="${W}" height="${H}" fill="${t.bg}"/>
   ${logo}
-  <path d="${namePath}" fill="${t.name}"/>
+  <path d="${namePath}" fill="${t.name}" stroke="${t.name}" stroke-width="${THICKEN}" stroke-linejoin="round"/>
+  <path d="${crossbar}" fill="${t.name}" stroke="${t.name}" stroke-width="${THICKEN}" stroke-linejoin="round"/>
   <path d="${claimPath}" fill="${t.claim}"/>
 </svg>
 `;
   writeFileSync(join(__dir, `jdownloader-banner${t.suffix}.svg`), svg);
   const png = new Resvg(svg, { fitTo: { mode: "width", value: W }, background: t.bg }).render().asPng();
   writeFileSync(join(__dir, `jdownloader-banner${t.suffix}.png`), png);
-  console.log(`wrote jdownloader-banner${t.suffix}.svg + .png (name ${Math.round(nameW)}px @ ${nameSize}, claim ${Math.round(claimW)}px, group ${Math.round(groupW)}px)`);
+  console.log(`wrote jdownloader-banner${t.suffix}.svg + .png (name ${Math.round(nameW)}px @ ${nameSize})`);
 }
