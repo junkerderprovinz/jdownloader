@@ -94,7 +94,11 @@ RUN set -eux; \
         # Locale
         locales coreutils \
         # openbox-xdg-autostart braucht PyXDG
-        python3-xdg; \
+        python3-xdg \
+        # picom: minimal compositor whose ONLY job is to round the pop-up dialog window corners
+        # (xrender backend works on the GPU-less Xvfb display; config /defaults/picom.conf turns
+        # off everything expensive so it stays out of the Selkies encoder's way)
+        picom; \
     # Font-Cache aufbauen damit Java die Fonts beim ersten Start sofort findet
     fc-cache -f -v >/dev/null 2>&1 || true; \
     apt-get clean; \

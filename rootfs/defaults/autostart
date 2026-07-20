@@ -13,6 +13,16 @@ export LC_ALL="${LC_ALL:-en_US.UTF-8}"
 # the area outside JD's window is dark instead of the default grey/white.
 xsetroot -solid '#161616' 2>/dev/null || true
 
+# Round the pop-up DIALOG window corners: a minimal picom compositor (xrender backend — the only
+# way to get anti-aliased rounded top-level windows on this GPU-less Xvfb display; Java setShape
+# can't, and X-SHAPE gives jagged corners). Config /defaults/picom.conf turns off everything
+# expensive so the Selkies software encoder keeps priority. Backgrounded; svc-de's finish reaps
+# forked openbox-autostart children on shutdown.
+if command -v picom >/dev/null 2>&1; then
+    # log warnings/errors to /config so a compositor conflict or missing X Composite ext is visible
+    picom --config /defaults/picom.conf --log-level=warn > /config/picom.log 2>&1 &
+fi
+
 # (JD's "system tray isn't supported" popup — raised by the SystemTrayExtension in
 # Core.jar — is auto-dismissed by the dialog agent; see JAVA_TOOL_OPTIONS below.)
 
