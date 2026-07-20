@@ -2005,6 +2005,26 @@ public class DialogConfirmAgent {
                     if (!vsb.isOpaque()) vsb.setOpaque(true);
                 }
             }
+            // pt2: the #1f1f1f strip is the 6px gap BETWEEN the sidebar + content scrollpanes (per
+            // SP-DIAG: sidebar ends x195, content starts x201) — the split divider / parent panel,
+            // painted @componentBackground #1e1e1e. Pin any split divider + any componentBackground-
+            // shaded panel in this settings tree to base so no lighter gutter shows. Field fills
+            // (#1a1a1a) and cards (#242424) are outside this shade band, so they stay untouched.
+            Color base2 = new Color(0x16, 0x16, 0x16);
+            if (jc instanceof javax.swing.JSplitPane) {
+                jc.setBackground(base2);
+                try {
+                    java.awt.Component dvd = ((javax.swing.plaf.basic.BasicSplitPaneUI)
+                            ((javax.swing.JSplitPane) jc).getUI()).getDivider();
+                    if (dvd != null) dvd.setBackground(base2);
+                } catch (Throwable ignore) { }
+            } else if (jc.getBackground() != null) {
+                Color pb = jc.getBackground();
+                if (pb.getRed() >= 0x1b && pb.getRed() <= 0x21
+                        && pb.getGreen() >= 0x1b && pb.getGreen() <= 0x21
+                        && pb.getBlue() >= 0x1b && pb.getBlue() <= 0x21)
+                    jc.setBackground(base2);
+            }
         }
         if (c instanceof Container) for (Component ch : ((Container) c).getComponents()) clearLinesIn(ch, depth + 1);
     }
@@ -2364,13 +2384,35 @@ public class DialogConfirmAgent {
     private static void installTabIconWrap(final javax.swing.JLabel l) {
         javax.swing.Icon cur = l.getIcon();
         if (cur instanceof TabIcon) { ensureTabIconListener(l); return; }   // already wrapped
-        if (cur == null || iconKey(cur) == null) return;                    // not a nameable chrome glyph
-        javax.swing.Icon light = tablerIcon(cur, SIDEBAR_TEXT, l);
-        javax.swing.Icon dark  = tablerIcon(cur, accentFg(), l);
-        if (light == cur) return;                                           // couldn't mono -> leave it
+        if (cur == null) return;                                            // text-only tab label
+        // Diagnostic proved the tab glyph is a RAW keyless ImageIcon (iconAt=ImageIcon/k=null) that
+        // tablerIcon can't key-lookup + retint — so the selected-tab icon stayed light. Pixel-tint it
+        // to a solid-tone silhouette instead (keep alpha, replace RGB) for the light + dark twins.
+        javax.swing.Icon light = tintSolid(cur, SIDEBAR_TEXT);
+        javax.swing.Icon dark  = tintSolid(cur, accentFg());
+        if (light == cur || light == null) return;                          // tint failed -> leave it
         l.putClientProperty("jdp.tabOrig", cur);
         l.setIcon(new TabIcon(light, dark));
         ensureTabIconListener(l);
+    }
+
+    /** Solid-tone silhouette of an icon: render it, then replace every non-transparent pixel's RGB with
+     *  `tone` (alpha kept). Reliably recolours a raw keyless ImageIcon that tablerIcon's key lookup can't. */
+    private static javax.swing.Icon tintSolid(javax.swing.Icon ic, Color tone) {
+        try {
+            int w = ic.getIconWidth(), h = ic.getIconHeight();
+            if (w <= 0 || h <= 0) return ic;
+            java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g = img.createGraphics();
+            ic.paintIcon(null, g, 0, 0);
+            g.dispose();
+            int rgb = tone.getRGB() & 0x00ffffff;
+            for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) {
+                int a = (img.getRGB(x, y) >>> 24);
+                if (a != 0) img.setRGB(x, y, (a << 24) | rgb);
+            }
+            return new javax.swing.ImageIcon(img);
+        } catch (Throwable t) { return ic; }
     }
 
     private static void ensureTabIconListener(final javax.swing.JLabel l) {
