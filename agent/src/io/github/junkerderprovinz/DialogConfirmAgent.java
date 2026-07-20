@@ -1865,15 +1865,13 @@ public class DialogConfirmAgent {
     /** Remove the border that draws a long vertical line down the settings sidebar's edge: clear the
      *  enclosing JScrollPane's border + viewport border, and any 1px-wide MatteBorder on the ancestors
      *  between the list and that scroll pane (JD draws the divider there). Idempotent. */
-    private static boolean mbDiagDone = false;
     private static void clearSidebarBorders(Component list) {
-        // Walk up to the settings-view root (ConfigurationView), then recurse the WHOLE view clearing
-        // every MatteBorder line + scroll-pane border — the edge line can sit on the sidebar OR the
-        // content side, on an anonymous container, so a targeted clear kept missing it.
+        // Walk up to the settings-view root (ConfigurationView) and recurse it, dropping every
+        // MatteBorder/Line the theme should not show. JD RE-APPLIES the sidebar's 1px right divider
+        // (ConfigSidebar$3) after each clear, so a border-change listener re-clears it every time.
         Component root = list;
-        for (int d = 0; d < 7 && root.getParent() != null; d++) root = root.getParent();
+        for (int d = 0; d < 6 && root.getParent() != null; d++) root = root.getParent();
         clearLinesIn(root, 0);
-        mbDiagDone = true;   // the recursion logged every MatteBorder on the first pass
     }
 
     private static void clearLinesIn(Component c, int depth) {
@@ -1882,18 +1880,38 @@ public class DialogConfirmAgent {
             JComponent jc = (JComponent) c;
             javax.swing.border.Border b = jc.getBorder();
             if (b instanceof javax.swing.border.MatteBorder) {
-                java.awt.Insets in = ((javax.swing.border.MatteBorder) b).getBorderInsets(c);
-                if (!mbDiagDone) writeDiag("MATTE " + c.getClass().getName()
-                        + " insets=" + in.top + "," + in.left + "," + in.bottom + "," + in.right
-                        + " size=" + c.getWidth() + "x" + c.getHeight());
-                // keep the spacing but drop the drawn line
-                jc.setBorder(javax.swing.BorderFactory.createEmptyBorder(in.top, in.left, in.bottom, in.right));
+                clearMatte(jc);
+                installBorderGuard(jc);
             } else if (b instanceof javax.swing.border.LineBorder || b instanceof javax.swing.border.EtchedBorder) {
                 jc.setBorder(javax.swing.BorderFactory.createEmptyBorder());
+                installBorderGuard(jc);
             }
             if (c instanceof javax.swing.JScrollPane) ((javax.swing.JScrollPane) c).setViewportBorder(null);
         }
         if (c instanceof Container) for (Component ch : ((Container) c).getComponents()) clearLinesIn(ch, depth + 1);
+    }
+
+    private static void clearMatte(JComponent jc) {
+        javax.swing.border.Border b = jc.getBorder();
+        if (b instanceof javax.swing.border.MatteBorder) {
+            java.awt.Insets in = ((javax.swing.border.MatteBorder) b).getBorderInsets(jc);   // keep spacing, drop the line
+            jc.setBorder(javax.swing.BorderFactory.createEmptyBorder(in.top, in.left, in.bottom, in.right));
+        }
+    }
+
+    /** JD re-applies a component's divider border after we clear it; a border-change listener re-clears
+     *  it the instant JD puts a MatteBorder/Line back, so the line can never persist. Once per component. */
+    private static void installBorderGuard(final JComponent jc) {
+        if (jc.getClientProperty("jdp.borderGuard") != null) return;
+        jc.putClientProperty("jdp.borderGuard", Boolean.TRUE);
+        jc.addPropertyChangeListener("border", new java.beans.PropertyChangeListener() {
+            public void propertyChange(java.beans.PropertyChangeEvent e) {
+                javax.swing.border.Border nb = jc.getBorder();
+                if (nb instanceof javax.swing.border.MatteBorder) clearMatte(jc);
+                else if (nb instanceof javax.swing.border.LineBorder || nb instanceof javax.swing.border.EtchedBorder)
+                    jc.setBorder(javax.swing.BorderFactory.createEmptyBorder());
+            }
+        });
     }
 
     private static final String SB_ORIG_RENDERER = "jdp.sbOrigRenderer";
