@@ -1601,6 +1601,7 @@ public class DialogConfirmAgent {
                         }
                     } else if (ch instanceof javax.swing.AbstractButton && !isCheckLike(ch)) {
                         if (!BTN_CFG_BG.equals(ch.getBackground())) ch.setBackground(BTN_CFG_BG);
+                        installBtnHoverFg((javax.swing.AbstractButton) ch);
                     }
                 } catch (Throwable ignore) { }
             }
@@ -1611,6 +1612,49 @@ public class DialogConfirmAgent {
         if (ch instanceof javax.swing.JCheckBox || ch instanceof javax.swing.JRadioButton) return true;
         String n = ch.getClass().getSimpleName().toLowerCase();
         return n.contains("check") || n.contains("radio") || n.contains("toggle");
+    }
+
+    /** A text button's accent hover fill left its LIGHT label unreadable (light-on-yellow). Flip the
+     *  foreground to the dark accent-fg while rolled over, restore on exit. Model ChangeListener so it
+     *  tracks FlatLaf's own rollover state. Once per button. */
+    private static void installBtnHoverFg(final javax.swing.AbstractButton b) {
+        if (b.getClientProperty("jdp.hoverFg") != null) return;
+        b.putClientProperty("jdp.hoverFg", Boolean.TRUE);
+        b.getModel().addChangeListener(new javax.swing.event.ChangeListener() {
+            private boolean applied = false;
+            public void stateChanged(javax.swing.event.ChangeEvent e) {
+                boolean roll = b.isEnabled() && (b.getModel().isRollover() || b.getModel().isPressed());
+                if (roll && !applied) {
+                    b.putClientProperty("jdp.savedFg", b.getForeground());
+                    b.setForeground(accentFg());
+                    applied = true;
+                } else if (!roll && applied) {
+                    Object s = b.getClientProperty("jdp.savedFg");
+                    if (s instanceof Color) b.setForeground((Color) s);
+                    applied = false;
+                }
+            }
+        });
+    }
+
+    // Settings section-HEADER icons are name-less scaled glyphs, so map them by the header TITLE
+    // (keyword -> a JD key that has a Tabler PNG). English titles (the container runs English).
+    private static final String[][] TITLE_MAP = {
+        {"download folder", "download"}, {"download management", "downloadmanagment"}, {"autostart", "start"},
+        {"linkgrabber", "linkgrabber"}, {"file writing", "save"}, {"file access", "folder"},
+        {"miscellaneous", "wrench"}, {"reconnect", "reconnect"}, {"connection manager", "proxy_rotate"},
+        {"connection", "network-idle"}, {"account", "premium"}, {"basic auth", "basicauth"},
+        {"plugin", "plugin"}, {"captcha solver", "order"}, {"captcha", "ocr"}, {"notification", "bubble"},
+        {"packagizer", "packagizer"}, {"archive extractor", "extract"}, {"extract", "extract"},
+        {"folder watch", "folder_add"}, {"advanced", "advancedConfig"}, {"extension", "extension"},
+        {"general", "home"}, {"user interface", "gui"}, {"my.jdownloader", "logo/myjdownloader"},
+        {"proxy", "proxy"}, {"password", "password"}, {"tray", "minimize"}, {"solver", "order"},
+    };
+    private static String titleToKey(String text) {
+        if (text == null) return null;
+        String t = text.toLowerCase().replaceAll("<[^>]*>", " ").trim();   // strip any HTML/bold/underline markup
+        for (String[] m : TITLE_MAP) if (t.contains(m[0])) return m[1];
+        return null;
     }
 
     private static void monoLabelIcon(javax.swing.JLabel l, boolean cfg) {
@@ -1626,6 +1670,16 @@ public class DialogConfirmAgent {
             if (!cfg) {
                 String key = iconKey(cur);
                 if (key == null || tablerBase(key, cur.getIconWidth(), cur.getIconHeight()) == null) return;
+            }
+            // Section header with a name-less icon: recover a Tabler glyph from the header TITLE.
+            if (cfg && iconKey(cur) == null) {
+                String jk = titleToKey(l.getText());
+                javax.swing.Icon base = (jk != null) ? tablerBase(jk, cur.getIconWidth(), cur.getIconHeight()) : null;
+                if (base != null) {
+                    javax.swing.Icon t = tintIcon(base, SIDEBAR_TEXT, l);
+                    l.setIcon(t); l.putClientProperty("jdp.monoLbl", t);
+                    return;
+                }
             }
             javax.swing.Icon mono = tablerIcon(cur, SIDEBAR_TEXT, l);
             if (mono != cur) { l.setIcon(mono); l.putClientProperty("jdp.monoLbl", mono); }
@@ -1802,16 +1856,26 @@ public class DialogConfirmAgent {
      *  enclosing JScrollPane's border + viewport border, and any 1px-wide MatteBorder on the ancestors
      *  between the list and that scroll pane (JD draws the divider there). Idempotent. */
     private static void clearSidebarBorders(Component list) {
-        for (Component p = list.getParent(); p != null; p = p.getParent()) {
-            if (p instanceof JComponent) {
-                JComponent jc = (JComponent) p;
-                if (jc.getBorder() != null) jc.setBorder(javax.swing.BorderFactory.createEmptyBorder());
-            }
+        Component p = list;
+        for (int d = 0; p != null && d < 7; d++, p = p.getParent()) {
+            // scroll pane + split divider are where JD draws the long vertical edge line — clear both;
+            // do NOT clear arbitrary panel borders (the settings cards use one).
             if (p instanceof javax.swing.JScrollPane) {
-                javax.swing.JScrollPane sp = (javax.swing.JScrollPane) p;
-                if (sp.getViewportBorder() != null) sp.setViewportBorder(null);
-                break;   // the scroll pane is the sidebar's outer edge; stop here
+                javax.swing.JScrollPane jsp = (javax.swing.JScrollPane) p;
+                jsp.setBorder(javax.swing.BorderFactory.createEmptyBorder());
+                jsp.setViewportBorder(null);
             }
+            if (p instanceof javax.swing.JSplitPane) {
+                javax.swing.JSplitPane sp = (javax.swing.JSplitPane) p;
+                sp.setBorder(javax.swing.BorderFactory.createEmptyBorder());
+                if (sp.getDividerSize() > 1) sp.setDividerSize(1);
+            }
+            // hide a thin, tall (vertical) JSeparator sibling — the divider line between sidebar + content
+            Container par = p.getParent();
+            if (par != null) for (Component sib : par.getComponents())
+                if (sib != p && sib instanceof javax.swing.JSeparator && sib.isVisible()
+                        && sib.getWidth() > 0 && sib.getWidth() <= 4 && sib.getHeight() > sib.getWidth() * 3)
+                    sib.setVisible(false);
         }
     }
 
@@ -2048,16 +2112,17 @@ public class DialogConfirmAgent {
         }
     }
 
-    /** Dark text on tabs with an accent background (SELECTED or HOVERED), light on the rest.
-     *  JD's custom tab components bypass FlatLaf's hover/selectedForeground, so we own it. */
-    private static void applyTabForegrounds(final javax.swing.JTabbedPane tp, Color selFg, Color norFg, int hover) {
+    /** Dark text/icon on the SELECTED tab (accent fill from FlatLaf), light on the rest. Hover is a
+     *  subtle grey fill (TabbedPane.hoverColor) so the text stays light + readable — no custom pill,
+     *  no re-measure (that was fragile: it clipped/vanished when JD rebuilt the tab bar). JD's custom
+     *  tab components bypass FlatLaf's selectedForeground, so we own the per-tab foreground. */
+    private static void applyTabForegrounds(javax.swing.JTabbedPane tp, Color selFg, Color norFg, int hover) {
         int sel = tp.getSelectedIndex();
-        boolean pillInstalled = false;
         for (int i = 0; i < tp.getTabCount(); i++) {
-            boolean accentBg = (i == sel || i == hover);
-            Color want = new Color((accentBg ? selFg : norFg).getRGB());  // plain Color: app-set, honoured
+            boolean onAccent = (i == sel);   // only the selected tab has the accent fill
+            Color want = new Color((onAccent ? selFg : norFg).getRGB());  // plain Color: app-set, honoured
             if (!want.equals(tp.getForegroundAt(i))) tp.setForegroundAt(i, want);
-            Color iconTone = accentBg ? accentFg() : SIDEBAR_TEXT;        // dark glyph on the accent tab, light otherwise
+            Color iconTone = onAccent ? accentFg() : SIDEBAR_TEXT;        // dark glyph on the accent tab, light otherwise
             javax.swing.Icon slot = tp.getIconAt(i);                      // JD may set the icon via setIconAt(...)
             if (slot != null) {
                 String pk = "jdp.tabIcOrig." + i;
@@ -2066,67 +2131,7 @@ public class DialogConfirmAgent {
                 if (o != null) { javax.swing.Icon nw = tablerIcon(o, iconTone, tp); if (nw != tp.getIconAt(i)) tp.setIconAt(i, nw); }
             }
             Component tc = tp.getTabComponentAt(i);   // custom tab component (JLabel etc.)
-            if (tc != null) {
-                setLabelFg(tc, want);
-                tablerTabIcons(tc, iconTone);
-                // Install the inset accent-pill border once; it grows each tab's preferred width.
-                if (tc instanceof javax.swing.JComponent
-                        && !(((javax.swing.JComponent) tc).getBorder() instanceof PillBorder)) {
-                    ((javax.swing.JComponent) tc).setBorder(new PillBorder());
-                    pillInstalled = true;
-                }
-            }
-        }
-        if (pillInstalled) {
-            // FlatLaf caches tab widths and a plain revalidate() during the tick did not re-measure
-            // (the label clipped: "Downloads" -> "Download"). Re-SET each tab component + revalidate,
-            // deferred to the next EDT cycle, which forces FlatTabbedPaneUI to recompute the widths
-            // from the now-bordered components — so the pill has room and nothing clips.
-            javax.swing.SwingUtilities.invokeLater(new Runnable() {
-                public void run() {
-                    try {
-                        for (int i = 0; i < tp.getTabCount(); i++) {
-                            Component t = tp.getTabComponentAt(i);
-                            if (t != null) { t.invalidate(); tp.setTabComponentAt(i, t); }
-                        }
-                        tp.revalidate();
-                        tp.repaint();
-                    } catch (Throwable ignore) { }
-                }
-            });
-        }
-    }
-
-    /** The main-tab pill: an inset rounded accent fill painted behind the tab's content, only when
-     *  THIS tab is selected or hovered. Self-determining (finds its own tab index + the pane's
-     *  selected/hover state each paint), so it is correct on the very first paint — no 400ms flash.
-     *  paintBorder runs after the component background and BEFORE the children, so the icon+text sit
-     *  on top of the pill. Its insets pad the content inside the pill; the FlatLaf tabInsets margin
-     *  around this component then reads as the dark gap between pills. */
-    private static final class PillBorder implements javax.swing.border.Border {
-        private static final int PAD_V = 4, PAD_H = 10, ARC = 12;
-        public boolean isBorderOpaque() { return false; }
-        public java.awt.Insets getBorderInsets(Component c) { return new java.awt.Insets(PAD_V, PAD_H, PAD_V, PAD_H); }
-        public void paintBorder(Component c, Graphics g, int x, int y, int w, int h) {
-            try {
-                javax.swing.JTabbedPane tp = null;
-                for (Component p = c.getParent(); p != null; p = p.getParent())
-                    if (p instanceof javax.swing.JTabbedPane) { tp = (javax.swing.JTabbedPane) p; break; }
-                if (tp == null) return;
-                int idx = -1;
-                for (int i = 0; i < tp.getTabCount(); i++) if (tp.getTabComponentAt(i) == c) { idx = i; break; }
-                if (idx < 0) return;
-                Object hv = tp.getClientProperty(TAB_HOVER_IDX);
-                int hover = (hv instanceof Integer) ? ((Integer) hv).intValue() : -1;
-                if (idx != tp.getSelectedIndex() && idx != hover) return;
-                Color acc = accentColor();
-                if (acc == null) return;
-                java.awt.Graphics2D g2 = (java.awt.Graphics2D) g.create();
-                g2.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.setColor(acc);
-                g2.fillRoundRect(x, y, w, h, ARC, ARC);
-                g2.dispose();
-            } catch (Throwable ignore) { }
+            if (tc != null) { setLabelFg(tc, want); tablerTabIcons(tc, iconTone); }
         }
     }
 
@@ -2351,6 +2356,7 @@ public class DialogConfirmAgent {
                     }
                 } else if (ch instanceof javax.swing.AbstractButton && !isCheckLike(ch)) {
                     if (!BTN_CFG_BG.equals(ch.getBackground())) ch.setBackground(BTN_CFG_BG);
+                    installBtnHoverFg((javax.swing.AbstractButton) ch);
                 } else if (ch instanceof javax.swing.JLabel && ((javax.swing.JLabel) ch).getIcon() != null) {
                     // mono EVERY dialog label icon (e.g. the colourful archive/extract glyph) — dialogs
                     // are chrome, not content, so this never touches a hoster favicon or file thumbnail.

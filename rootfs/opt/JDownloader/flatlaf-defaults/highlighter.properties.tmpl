@@ -84,11 +84,15 @@ MenuBar.borderColor           = #161616
 ToolBar.borderColor           = #161616
 PopupMenu.borderColor         = #161616
 
-# --- rounded ---
-Button.arc        = 6
-Component.arc     = 6
-TextComponent.arc = 6
+# --- rounded (match the tabs: soft corners everywhere for a consistent look) ---
+Button.arc        = 12
+Component.arc     = 10
+TextComponent.arc = 10
 CheckBox.arc      = 4
+ProgressBar.arc   = 8
+PopupMenu.arc     = 10
+Spinner.arc       = 10
+ComboBox.arc      = 10
 
 # --- roomier controls: taller fields + more padded dropdown rows (space, not lines) ---
 # Combo/dropdown popups are JLists, so List.cellMargins is what makes each dropdown
@@ -104,20 +108,19 @@ List.selectionArc       = 6
 OptionPane.background = #242424
 RootPane.background   = #242424
 
-# --- main tabs: the selected/hovered tab is an INSET accent pill with a real dark gap ---
-# FlatLaf lays tabs adjacent and fills the whole tab, so there is no native gap. We therefore make
-# FlatLaf's own fill invisible (= base #161616) and let the agent paint an INSET rounded pill inside
-# each tab (org...maintab.TabHeader) via a border; the tabInsets margin then shows as a dark gap
-# between pills. selectedForeground stays the dark accent-fg (agent paints the pill behind the text).
-TabbedPane.selectedBackground = #161616
+# --- main tabs: the SELECTED tab is a rounded accent pill; hover is a subtle grey ---
+# Reliable FlatLaf fill (no custom pill / re-measure — that clipped + vanished when JD rebuilt the
+# tab bar). Only the selected tab is accent (dark text); hover is a subtle #2a2a2a with light text so
+# it stays readable and two adjacent tabs never both go yellow.
+TabbedPane.selectedBackground = @@ACCENT@@
 TabbedPane.selectedForeground = @@ACCENT_FG@@
 TabbedPane.tabSelectionHeight = 0
-TabbedPane.hoverColor         = #161616
-TabbedPane.hoverForeground    = @@ACCENT_FG@@
+TabbedPane.hoverColor         = #2a2a2a
+TabbedPane.hoverForeground    = #f4f4f4
 TabbedPane.background         = #161616
-TabbedPane.tabArc             = 10
-TabbedPane.cardTabArc         = 10
-TabbedPane.tabInsets          = 5,10,5,10
+TabbedPane.tabArc             = 12
+TabbedPane.cardTabArc         = 12
+TabbedPane.tabInsets          = 6,16,6,16
 TabbedPane.tabAreaInsets      = 2,10,2,10
 
 # --- toolbar + menu: accent background on hover / selection ---
