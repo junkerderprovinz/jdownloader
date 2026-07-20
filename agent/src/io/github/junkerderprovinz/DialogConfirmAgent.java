@@ -1671,9 +1671,19 @@ public class DialogConfirmAgent {
                 String key = iconKey(cur);
                 if (key == null || tablerBase(key, cur.getIconWidth(), cur.getIconHeight()) == null) return;
             }
-            // Section header with a name-less icon: recover a Tabler glyph from the header TITLE.
+            // Section header with a name-less icon: recover a Tabler glyph from the header TITLE. The
+            // icon + title are often SEPARATE labels, so if this label has no text, borrow a sibling's.
             if (cfg && iconKey(cur) == null) {
-                String jk = titleToKey(l.getText());
+                String title = l.getText();
+                if (title == null || title.replaceAll("<[^>]*>", " ").trim().isEmpty()) {
+                    Container par = l.getParent();
+                    if (par != null) for (Component sib : par.getComponents())
+                        if (sib instanceof javax.swing.JLabel && sib != l) {
+                            String st = ((javax.swing.JLabel) sib).getText();
+                            if (st != null && !st.replaceAll("<[^>]*>", " ").trim().isEmpty()) { title = st; break; }
+                        }
+                }
+                String jk = titleToKey(title);
                 javax.swing.Icon base = (jk != null) ? tablerBase(jk, cur.getIconWidth(), cur.getIconHeight()) : null;
                 if (base != null) {
                     javax.swing.Icon t = tintIcon(base, SIDEBAR_TEXT, l);
@@ -1855,27 +1865,48 @@ public class DialogConfirmAgent {
     /** Remove the border that draws a long vertical line down the settings sidebar's edge: clear the
      *  enclosing JScrollPane's border + viewport border, and any 1px-wide MatteBorder on the ancestors
      *  between the list and that scroll pane (JD draws the divider there). Idempotent. */
+    private static boolean sbLineLogged = false;
     private static void clearSidebarBorders(Component list) {
+        if (!sbLineLogged) {   // one-shot: dump the ancestor chain + siblings so we can find the line
+            sbLineLogged = true;
+            try {
+                StringBuilder sb = new StringBuilder("SBLINE ");
+                Component q = list;
+                for (int d = 0; q != null && d < 8; d++, q = q.getParent()) {
+                    String bd = (q instanceof JComponent && ((JComponent) q).getBorder() != null)
+                            ? ((JComponent) q).getBorder().getClass().getSimpleName() : "-";
+                    sb.append(d).append(":").append(q.getClass().getSimpleName()).append("(b=").append(bd).append(")");
+                    Container par = q.getParent();
+                    if (par != null) { sb.append("{"); for (Component s : par.getComponents()) if (s != q) sb.append(s.getClass().getSimpleName()).append(","); sb.append("}"); }
+                    sb.append(" > ");
+                }
+                writeDiag(sb.toString());
+            } catch (Throwable ignore) { }
+        }
         Component p = list;
-        for (int d = 0; p != null && d < 7; d++, p = p.getParent()) {
-            // scroll pane + split divider are where JD draws the long vertical edge line — clear both;
-            // do NOT clear arbitrary panel borders (the settings cards use one).
-            if (p instanceof javax.swing.JScrollPane) {
-                javax.swing.JScrollPane jsp = (javax.swing.JScrollPane) p;
-                jsp.setBorder(javax.swing.BorderFactory.createEmptyBorder());
-                jsp.setViewportBorder(null);
-            }
-            if (p instanceof javax.swing.JSplitPane) {
-                javax.swing.JSplitPane sp = (javax.swing.JSplitPane) p;
-                sp.setBorder(javax.swing.BorderFactory.createEmptyBorder());
-                if (sp.getDividerSize() > 1) sp.setDividerSize(1);
-            }
-            // hide a thin, tall (vertical) JSeparator sibling — the divider line between sidebar + content
+        for (int d = 0; p != null && d < 8; d++, p = p.getParent()) {
             Container par = p.getParent();
-            if (par != null) for (Component sib : par.getComponents())
+            // clear scroll-pane / split borders on this node AND its siblings (the line is often the
+            // CONTENT scroll pane's edge, which is a SIBLING of the sidebar, not an ancestor).
+            clearDividerBorder(p);
+            if (par != null) for (Component sib : par.getComponents()) {
+                clearDividerBorder(sib);
                 if (sib != p && sib instanceof javax.swing.JSeparator && sib.isVisible()
                         && sib.getWidth() > 0 && sib.getWidth() <= 4 && sib.getHeight() > sib.getWidth() * 3)
-                    sib.setVisible(false);
+                    sib.setVisible(false);   // thin, tall = vertical separator line
+            }
+        }
+    }
+
+    private static void clearDividerBorder(Component c) {
+        if (c instanceof javax.swing.JScrollPane) {
+            javax.swing.JScrollPane jsp = (javax.swing.JScrollPane) c;
+            jsp.setBorder(javax.swing.BorderFactory.createEmptyBorder());
+            jsp.setViewportBorder(null);
+        } else if (c instanceof javax.swing.JSplitPane) {
+            javax.swing.JSplitPane sp = (javax.swing.JSplitPane) c;
+            sp.setBorder(javax.swing.BorderFactory.createEmptyBorder());
+            if (sp.getDividerSize() > 1) sp.setDividerSize(1);
         }
     }
 
