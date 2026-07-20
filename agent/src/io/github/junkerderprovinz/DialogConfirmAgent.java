@@ -1964,6 +1964,7 @@ public class DialogConfirmAgent {
         clearLinesIn(root, 0);
     }
 
+    private static int SB_SP_DIAG_N = 0;   // pt2 diagnostic: bound the scrollpane dump
     private static void clearLinesIn(Component c, int depth) {
         if (depth > 12) return;
         if (c instanceof JComponent) {
@@ -1979,6 +1980,20 @@ public class DialogConfirmAgent {
             if (c instanceof javax.swing.JScrollPane) {
                 javax.swing.JScrollPane sp = (javax.swing.JScrollPane) c;
                 sp.setViewportBorder(null);
+                // pt2 diagnostic: log which scrollpanes clearLinesIn reaches + their vertical scrollbar
+                // (class, on-screen bounds, ORIGINAL bg, opaque, UI) — BEFORE the recolor below — so we
+                // can see whether the #1f1f1f strip's component is actually this scrollbar's track.
+                if (SB_SP_DIAG_N < 6) {
+                    SB_SP_DIAG_N++;
+                    javax.swing.JScrollBar dv = sp.getVerticalScrollBar();
+                    writeDiag("SP-DIAG " + sp.getClass().getName() + " b=" + sp.getBounds()
+                        + " bg=#" + Integer.toHexString(sp.getBackground().getRGB() & 0xffffff)
+                        + " vsb=" + (dv == null ? "-" : dv.getClass().getName() + " b=" + dv.getBounds()
+                            + " vis=" + dv.isVisible()
+                            + " bg=#" + Integer.toHexString(dv.getBackground().getRGB() & 0xffffff)
+                            + " op=" + dv.isOpaque()
+                            + " ui=" + dv.getUI().getClass().getName()));
+                }
                 // pt2: kill the #1f1f1f scrollbar gutter strip at the sidebar's right edge — pin scroll chrome to base
                 Color base = new Color(0x16, 0x16, 0x16);
                 if (!base.equals(sp.getBackground())) sp.setBackground(base);
@@ -2272,9 +2287,44 @@ public class DialogConfirmAgent {
                 Object hv = tp.getClientProperty(TAB_HOVER_IDX);
                 applyTabForegrounds(tp, selFg, norFg, (hv instanceof Integer) ? (Integer) hv : -1);
                 installTabHoverListener(tp, selFg, norFg);
+                tabDiag(tp);
             }
             if (child instanceof Container) recolorTabsIn((Container) child, selFg, norFg);
         }
+    }
+
+    // pt4 diagnostic: dump the tab structure so we know WHICH label carries the icon, its key (does
+    // installTabIconWrap engage? it needs iconKey != null), and the selected label's foreground (is it
+    // accentFg, so the TabIcon wrapper would pick dark?). Re-logs whenever the selection changes.
+    private static int TAB_DIAG_SEL = -99;
+    private static void tabDiag(javax.swing.JTabbedPane tp) {
+        try {
+            int sel = tp.getSelectedIndex();
+            if (sel == TAB_DIAG_SEL) return;
+            TAB_DIAG_SEL = sel;
+            writeDiag("=== TAB DIAG sel=" + sel + " count=" + tp.getTabCount() + " ===");
+            for (int i = 0; i < tp.getTabCount(); i++) {
+                javax.swing.Icon slot = tp.getIconAt(i);
+                Component tc = tp.getTabComponentAt(i);
+                StringBuilder sb = new StringBuilder("TAB[" + i + "] '" + tp.getTitleAt(i) + "'"
+                        + (i == sel ? " *SEL*" : "")
+                        + " iconAt=" + (slot == null ? "-" : slot.getClass().getSimpleName() + "/k=" + iconKey(slot))
+                        + " tabComp=" + (tc == null ? "-" : tc.getClass().getName()));
+                if (tc != null) tabDiagLbl(tc, sb);
+                writeDiag(sb.toString());
+            }
+        } catch (Throwable ignore) { }
+    }
+    private static void tabDiagLbl(Component c, StringBuilder sb) {
+        if (c instanceof javax.swing.JLabel) {
+            javax.swing.JLabel l = (javax.swing.JLabel) c;
+            javax.swing.Icon ic = l.getIcon();
+            Color fg = l.getForeground();
+            sb.append(" |LBL '").append(l.getText()).append("' fg=#")
+              .append(fg == null ? "?" : Integer.toHexString(fg.getRGB() & 0xffffff))
+              .append(" icon=").append(ic == null ? "-" : ic.getClass().getSimpleName() + "/k=" + iconKey(ic));
+        }
+        if (c instanceof Container) for (Component ch : ((Container) c).getComponents()) tabDiagLbl(ch, sb);
     }
 
     /** Dark text/icon on the SELECTED tab (accent fill from FlatLaf), light on the rest. Hover is a
