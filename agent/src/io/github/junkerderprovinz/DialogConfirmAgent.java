@@ -252,6 +252,8 @@ public class DialogConfirmAgent {
             stripSectionUnderlines();
             recolorMainTabs();
             monoChromeIcons();
+            badgeViewsMenu();
+            styleMenuFields();
             cardSettingsSections();
             borderlessConfigTables();
             unifyConfigFields();
@@ -887,6 +889,29 @@ public class DialogConfirmAgent {
         }
     }
 
+    // 6b: menu-embedded fields (speed limit, max chunks) sat near-invisible once borderWidth=0
+    // removed their frame. Give them a raised #2a2a2a pill (same shade as config buttons) so they
+    // read as editable without reintroducing a line. Chrome-only: scoped to JPopupMenu subtrees.
+    private static final Color MENU_FIELD_BG = new Color(0x2a, 0x2a, 0x2a);
+
+    private static void styleMenuFields() {
+        for (Window w : Window.getWindows()) if (w.isShowing()) styleMenuFieldsIn(w, false);
+    }
+    private static void styleMenuFieldsIn(Container c, boolean inMenu) {
+        boolean menu = inMenu || c instanceof javax.swing.JPopupMenu;
+        for (Component ch : c.getComponents()) {
+            if (menu && (ch instanceof javax.swing.JSpinner
+                    || ch instanceof javax.swing.text.JTextComponent
+                    || ch instanceof javax.swing.JComboBox)) {
+                if (!MENU_FIELD_BG.equals(ch.getBackground())) {
+                    ch.setBackground(MENU_FIELD_BG);
+                    if (ch instanceof JComponent) ((JComponent) ch).setOpaque(true);
+                }
+            }
+            if (ch instanceof Container) styleMenuFieldsIn((Container) ch, menu);
+        }
+    }
+
     private static void widenSpeedIn(Container c) {
         for (Component child : c.getComponents()) {
             if (isSpeedEditor(child.getClass())) {
@@ -1515,14 +1540,21 @@ public class DialogConfirmAgent {
         }
     }
 
-    private static void monoChromeIn(Container c, boolean inConfig) {
-        boolean cfg = inConfig || (c instanceof JComponent && isConfigPanel(c.getClass()));
+    private static void monoChromeIn(Container c, boolean inChrome) {
+        // A config panel AND the main toolbar are pure chrome (never content): inside them we mono
+        // EVERY label icon too, not just the mapped chrome keys. Content icons (hoster favicons, file
+        // thumbnails) live in the download TABLE, never in these containers, so this stays safe.
+        boolean chrome = inChrome
+                || (c instanceof JComponent && isConfigPanel(c.getClass()))
+                || isMainToolbar(c.getClass());
         for (Component child : c.getComponents()) {
-            // ALL buttons (JD's toolbar is not a JToolBar, so scoping to JToolBar missed the play
-            // button) + section-header labels inside config panels (the coloured section icons).
-            if (child instanceof javax.swing.AbstractButton) monoButtonIcon((javax.swing.AbstractButton) child);
-            else if (child instanceof javax.swing.JLabel) monoLabelIcon((javax.swing.JLabel) child, cfg);
-            if (child instanceof Container) monoChromeIn((Container) child, cfg);
+            // JMenuItem extends AbstractButton, so route it FIRST: menu items ignore
+            // rollover/selected icons, so monoButtonIcon's scheme leaves a light glyph on the
+            // accent hover. monoMenuItemIcon flips the icon dark when armed/selected instead.
+            if (child instanceof javax.swing.JMenuItem) monoMenuItemIcon((javax.swing.JMenuItem) child);
+            else if (child instanceof javax.swing.AbstractButton) monoButtonIcon((javax.swing.AbstractButton) child);
+            else if (child instanceof javax.swing.JLabel) monoLabelIcon((javax.swing.JLabel) child, chrome);
+            if (child instanceof Container) monoChromeIn((Container) child, chrome);
         }
     }
 
@@ -1535,6 +1567,17 @@ public class DialogConfirmAgent {
         ACTION_ICON.put("AutoReconnectToggleAction",     "reconnect");
         ACTION_ICON.put("GlobalPremiumSwitchToggleAction", "premium");
         ACTION_ICON.put("SilentModeToggleAction",        "silentmode");
+        // verify-live: confirm these simple-names via logIconInventory before relying on them
+        ACTION_ICON.put("StartDownloadsAction",          "media-playback-start");
+        ACTION_ICON.put("StartStopDownloadsAction",      "media-playback-start"); // merged start/stop toggle
+        ACTION_ICON.put("StopDownloadsAction",           "media-playback-stop");
+        ACTION_ICON.put("ForcedDownloadsAction",         "media-playback-start_forced");
+        ACTION_ICON.put("ReconnectAction",               "reconnect");
+        ACTION_ICON.put("StartReconnectAction",          "reconnect");
+        ACTION_ICON.put("MyJDownloaderAction",           "logo/myjdownloader");   // -> logo_myjdownloader png
+        ACTION_ICON.put("SettingsAction",                "settings");
+        ACTION_ICON.put("AddLinksAction",                "add");
+        ACTION_ICON.put("AddContainerAction",            "addContainer");
     }
 
     private static void monoButtonIcon(javax.swing.AbstractButton b) {
@@ -1560,6 +1603,42 @@ public class DialogConfirmAgent {
             // Leave disabledIcon null so Swing derives a grey version of our mono icon.
             b.setContentAreaFilled(true);   // so FlatLaf's ToggleButton.hoverBackground actually paints
         } catch (Throwable ignore) { }
+    }
+
+    /** Menu items ignore rolloverIcon/selectedIcon (BasicMenuItemUI/FlatMenuItemRenderer paint from
+     *  getIcon()), so the accent hover left a LIGHT glyph on the yellow row = invisible. Mono the icon
+     *  light, precompute a DARK (accentFg) twin, and swap getIcon() between them when the item is
+     *  armed/selected — the icon analogue of installBtnHoverFg. Guarded on both variants so the tick
+     *  never re-monos our own icon. */
+    private static void monoMenuItemIcon(javax.swing.JMenuItem mi) {
+        try {
+            javax.swing.Icon cur = mi.getIcon();
+            if (cur == null) return;                                   // check/radio glyphs are UI-painted, not getIcon()
+            Object light = mi.getClientProperty("jdp.miLight");
+            if (cur == light || cur == mi.getClientProperty("jdp.miDark")) { installMenuItemHoverIcon(mi); return; }
+            javax.swing.Icon lo = tablerIcon(cur, SIDEBAR_TEXT, mi);
+            javax.swing.Icon hi = tablerIcon(cur, accentFg(), mi);
+            if (lo == cur) return;                                     // nothing monod (defensive)
+            mi.putClientProperty("jdp.miLight", lo);
+            mi.putClientProperty("jdp.miDark", hi);
+            mi.setIcon(lo);
+            mi.setIconTextGap(10);                                     // 6a: uniform gap
+            mi.setVerticalAlignment(javax.swing.SwingConstants.CENTER);
+            installMenuItemHoverIcon(mi);
+        } catch (Throwable ignore) { }
+    }
+
+    private static void installMenuItemHoverIcon(final javax.swing.JMenuItem mi) {
+        if (mi.getClientProperty("jdp.miHoverIcon") != null) return;
+        mi.putClientProperty("jdp.miHoverIcon", Boolean.TRUE);
+        mi.getModel().addChangeListener(new javax.swing.event.ChangeListener() {
+            public void stateChanged(javax.swing.event.ChangeEvent e) {
+                javax.swing.ButtonModel m = mi.getModel();
+                boolean hot = mi.isEnabled() && (m.isArmed() || m.isSelected());
+                Object want = mi.getClientProperty(hot ? "jdp.miDark" : "jdp.miLight");
+                if (want instanceof javax.swing.Icon && mi.getIcon() != want) mi.setIcon((javax.swing.Icon) want);
+            }
+        });
     }
 
     /** Like tablerIcon, but for a button: when the icon carries no name (a merged toggle glyph), pick
@@ -1599,9 +1678,20 @@ public class DialogConfirmAgent {
                             ch.setBackground(FIELD_BG);
                             if (ch instanceof JComponent) ((JComponent) ch).setOpaque(true);
                         }
+                        // recolorDialogs strips AppWork frame borders on DIALOG fields; the settings
+                        // pages live in the main JFrame and never hit that path, so strip here too —
+                        // else JD's AppWork inputs keep the rectangular rahmen that borderWidth=0
+                        // (a FlatBorder-only default) can't reach.
+                        stripFramingBorder((JComponent) ch);
                     } else if (ch instanceof javax.swing.AbstractButton && !isCheckLike(ch)) {
                         if (!BTN_CFG_BG.equals(ch.getBackground())) ch.setBackground(BTN_CFG_BG);
                         installBtnHoverFg((javax.swing.AbstractButton) ch);
+                        stripFramingBorder((JComponent) ch);
+                    } else if (isCheckLike(ch) && ch instanceof JComponent) {
+                        // checkboxes/radios were skipped entirely above: strip their component
+                        // frame so the row reads borderless (the check GLYPH keeps its
+                        // CheckBox.icon.* border from the properties).
+                        stripFramingBorder((JComponent) ch);
                     }
                 } catch (Throwable ignore) { }
             }
@@ -1886,7 +1976,20 @@ public class DialogConfirmAgent {
                 jc.setBorder(javax.swing.BorderFactory.createEmptyBorder());
                 installBorderGuard(jc);
             }
-            if (c instanceof javax.swing.JScrollPane) ((javax.swing.JScrollPane) c).setViewportBorder(null);
+            if (c instanceof javax.swing.JScrollPane) {
+                javax.swing.JScrollPane sp = (javax.swing.JScrollPane) c;
+                sp.setViewportBorder(null);
+                // pt2: kill the #1f1f1f scrollbar gutter strip at the sidebar's right edge — pin scroll chrome to base
+                Color base = new Color(0x16, 0x16, 0x16);
+                if (!base.equals(sp.getBackground())) sp.setBackground(base);
+                if (sp.getViewport() != null && !base.equals(sp.getViewport().getBackground()))
+                    sp.getViewport().setBackground(base);
+                javax.swing.JScrollBar vsb = sp.getVerticalScrollBar();
+                if (vsb != null) {
+                    if (!base.equals(vsb.getBackground())) vsb.setBackground(base);
+                    if (!vsb.isOpaque()) vsb.setOpaque(true);
+                }
+            }
         }
         if (c instanceof Container) for (Component ch : ((Container) c).getComponents()) clearLinesIn(ch, depth + 1);
     }
@@ -2045,6 +2148,21 @@ public class DialogConfirmAgent {
                                     }
                                     kl.setIcon(tablerIcon(ic, hovAcc ? accentFg() : SIDEBAR_TEXT, kl));
                                 }
+                                // (7a/7b) Icon-only sidebar: hide the tile NAME unless this row is
+                                // hovered, so the sidebar reads as a strip of CENTRED glyphs that reveal
+                                // the label on mouseover. The name lives on this same shared RenderLabel,
+                                // and JD re-sets the real text every render, so blanking non-hovered rows
+                                // here is idempotent and survives rebuilds; the hovered row keeps JD's
+                                // text. hoverRow drives it and the existing mouseMoved listener already
+                                // repaints the list on hover change, re-running this. The accent tile is
+                                // painted by SidebarButton (independent of the label), so selection is
+                                // untouched. Centre the collapsed glyph; on reveal switch to LEADING so
+                                // the icon+name read left-to-right.
+                                boolean reveal = (idx == hoverRow);
+                                if (!reveal && kl.getText() != null && kl.getText().length() > 0) kl.setText("");
+                                int wantAlign = reveal ? javax.swing.SwingConstants.LEADING
+                                                       : javax.swing.SwingConstants.CENTER;
+                                if (kl.getHorizontalAlignment() != wantAlign) kl.setHorizontalAlignment(wantAlign);
                             }
                         }
                     }
@@ -2263,10 +2381,92 @@ public class DialogConfirmAgent {
         return false;
     }
 
+    private static boolean isMainToolbar(Class<?> k) {
+        for (; k != null && k != Object.class; k = k.getSuperclass())
+            if (k.getName().endsWith(".MainToolBar")) return true;
+        return false;
+    }
+
     private static void hideSeparators(Container c) {
         for (Component ch : c.getComponents()) {
             if (ch instanceof javax.swing.JSeparator) { if (ch.isVisible()) ch.setVisible(false); }
             else if (ch instanceof Container) hideSeparators((Container) ch);
+        }
+    }
+
+    // --- downloads "Views" popup: items as rounded badges, not lined rows -----
+    // The Views menu (Custom Views / File Types / Hoster, each checkmarked) separates its items with
+    // JPopupMenu.Separator lines. Drop the separators and give each JMenuItem a rounded #242424 chip
+    // (same surface as sidebar tiles / cards); FlatLaf's MenuItem.selectionArc still paints the accent
+    // hover ON TOP. Gated to THIS popup via its invoker so ordinary right-click menus are untouched.
+    private static final String VIEWS_BADGED = "jdp.viewsBadged";
+    private static boolean VIEWS_LOGGED = false;
+
+    private static void badgeViewsMenu() {
+        javax.swing.MenuElement[] path =
+                javax.swing.MenuSelectionManager.defaultManager().getSelectedPath();
+        for (javax.swing.MenuElement me : path) {
+            if (!(me instanceof JPopupMenu)) continue;
+            JPopupMenu pm = (JPopupMenu) me;
+            if (!isViewsPopup(pm)) continue;
+            hideSeparators(pm);                       // reuse: kills the JPopupMenu.Separator lines
+            for (Component ch : pm.getComponents()) {
+                if (!(ch instanceof javax.swing.JMenuItem)) continue;
+                javax.swing.JMenuItem mi = (javax.swing.JMenuItem) ch;
+                if (mi.getClientProperty(VIEWS_BADGED) == Boolean.TRUE) continue;
+                mi.setBorder(new MenuChipBorder(mi.getBorder()));
+                mi.setOpaque(false);
+                mi.putClientProperty(VIEWS_BADGED, Boolean.TRUE);
+            }
+            pm.revalidate(); pm.repaint();
+        }
+    }
+
+    // GATE — verify-live: capture the real invoker class once via the writeDiag line below, then
+    // replace the structural fallback with an invoker match (invCn.contains(...)). Do NOT ship the
+    // structural-only gate: some right-click context menus are also all-checkbox with separators.
+    private static boolean isViewsPopup(JPopupMenu pm) {
+        Component inv = pm.getInvoker();
+        String invCn = (inv == null) ? "" : inv.getClass().getName();
+        boolean allChecky = pm.getComponentCount() > 0;
+        int seps = 0;
+        for (Component ch : pm.getComponents()) {
+            if (ch instanceof javax.swing.JSeparator) { seps++; continue; }
+            if (!(ch instanceof javax.swing.JCheckBoxMenuItem
+                    || ch instanceof javax.swing.JRadioButtonMenuItem)) allChecky = false;
+        }
+        if (!VIEWS_LOGGED) {
+            VIEWS_LOGGED = true;
+            writeDiag("VIEWS popup invoker=" + invCn + " items=" + pm.getComponentCount()
+                    + " seps=" + seps + " allChecky=" + allChecky);
+        }
+        return allChecky && seps >= 1;   // TODO(discovery): tighten to invCn.contains(<views button>)
+    }
+
+    /** Rounded #242424 chip behind a menu item, with a small gap so items read as separate badges.
+     *  Modeled on SectionCardBorder: paints AFTER the (transparent) item background and BEFORE the
+     *  text, so the accent selection highlight still lands on top. */
+    private static final class MenuChipBorder implements javax.swing.border.Border {
+        private final javax.swing.border.Border original;
+        private static final Color CHIP = new Color(0x24, 0x24, 0x24);
+        private static final int GAP = 3, PAD_V = 2, PAD_H = 6, ARC = 10;
+        MenuChipBorder(javax.swing.border.Border o) { this.original = o; }
+        public boolean isBorderOpaque() { return false; }
+        public java.awt.Insets getBorderInsets(Component c) {
+            java.awt.Insets in = (original != null) ? original.getBorderInsets(c)
+                    : new java.awt.Insets(0, 0, 0, 0);
+            return new java.awt.Insets(in.top + GAP + PAD_V, in.left + GAP + PAD_H,
+                    in.bottom + GAP + PAD_V, in.right + GAP + PAD_H);
+        }
+        public void paintBorder(Component c, Graphics g, int x, int y, int w, int h) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            try {
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(CHIP);
+                g2.fill(new java.awt.geom.RoundRectangle2D.Float(
+                        x + GAP, y + GAP, w - 2 * GAP, h - 2 * GAP, ARC, ARC));
+            } finally { g2.dispose(); }
+            if (original != null) original.paintBorder(c, g, x, y, w, h);
         }
     }
 
@@ -2310,7 +2510,13 @@ public class DialogConfirmAgent {
                             int cy = ch.getY();
                             if (cy >= hTop && cy < hNext) contentBottom = Math.max(contentBottom, cy + ch.getHeight());
                         }
-                        int top = hTop - INNER, bottom = contentBottom + INNER;
+                        // First card: paint its TOP edge flush with the settings sidebar's first
+                        // tile, whose rounded fill starts SB_BTN_GAP_V px below the list top. The
+                        // panel's own top edge (y) is level with the sidebar list top in the split,
+                        // so y+SB_BTN_GAP_V lands the card top on the tile top. Later cards keep the
+                        // hTop-INNER band. Pure paint: no row move, safe across JD rebuilds.
+                        int top = (i == 0) ? y + SB_BTN_GAP_V : hTop - INNER;
+                        int bottom = contentBottom + INNER;
                         if (bottom - top > 6)
                             g2.fill(new java.awt.geom.RoundRectangle2D.Float(
                                     left, top, right - left, bottom - top, ARC, ARC));

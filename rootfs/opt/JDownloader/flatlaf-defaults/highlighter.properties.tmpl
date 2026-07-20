@@ -142,6 +142,13 @@ CheckBoxMenuItem.margin            = 6,16,6,16
 RadioButtonMenuItem.margin         = 6,16,6,16
 MenuItem.selectionInsets           = 1,2,1,2
 MenuItem.selectionArc              = 6
+# reserve a uniform icon column so item TEXT lines up whether or not a row has an icon,
+# and centre each glyph within that column (FlatMenuItemRenderer honours these).
+# verify-live: MenuItem.minimumIconSize is a FlatLaf extension — confirm the key exists in the
+# bundled com/formdev/flatlaf/FlatLaf.properties; if absent, the setIconTextGap/setVerticalAlignment
+# in monoMenuItemIcon (agent Edit 5) still give per-item consistency.
+MenuItem.minimumIconSize           = 16,16
+MenuItem.iconTextGap               = 10
 
 # --- no lines anywhere: differentiate by shading, not borders ---
 # The header keeps a subtly lighter fill (#1e1e1e) so it reads as a header by
