@@ -108,10 +108,11 @@ List.selectionArc       = 6
 OptionPane.background = #242424
 RootPane.background   = #242424
 
-# --- main tabs: the SELECTED tab is a rounded accent pill; hover is a subtle grey ---
-# Reliable FlatLaf fill (no custom pill / re-measure — that clipped + vanished when JD rebuilt the
-# tab bar). Only the selected tab is accent (dark text); hover is a subtle #2a2a2a with light text so
-# it stays readable and two adjacent tabs never both go yellow.
+# --- main tabs: the SELECTED tab is a rounded accent pill; HOVER is the accent too ---
+# S2: the user wants the hover in the ACCENT colour, not a subtle grey. FlatLaf's TabbedPaneUI paints
+# the tab background (the JD TabHeader carries no hover/pressed colour of its own — reflection dump
+# confirmed), so hoverColor=accent gives a yellow hover; hoverForeground=accent-fg keeps the text dark
+# and readable on it (the agent also flips the hovered tab's icon+text dark, see applyTabForegrounds).
 TabbedPane.selectedBackground = @@ACCENT@@
 TabbedPane.selectedForeground = @@ACCENT_FG@@
 TabbedPane.tabSelectionHeight = 0
@@ -119,8 +120,8 @@ TabbedPane.tabSelectionHeight = 0
 # tab strip and the tab content). showContentSeparator=false removes it; height=0 belt-and-suspenders.
 TabbedPane.showContentSeparator   = false
 TabbedPane.contentSeparatorHeight = 0
-TabbedPane.hoverColor         = #2a2a2a
-TabbedPane.hoverForeground    = #f4f4f4
+TabbedPane.hoverColor         = @@ACCENT@@
+TabbedPane.hoverForeground    = @@ACCENT_FG@@
 TabbedPane.background         = #161616
 TabbedPane.tabArc             = 12
 TabbedPane.cardTabArc         = 12

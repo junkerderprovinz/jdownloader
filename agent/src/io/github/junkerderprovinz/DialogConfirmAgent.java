@@ -2461,7 +2461,7 @@ public class DialogConfirmAgent {
     private static void applyTabForegrounds(javax.swing.JTabbedPane tp, Color selFg, Color norFg, int hover) {
         int sel = tp.getSelectedIndex();
         for (int i = 0; i < tp.getTabCount(); i++) {
-            boolean onAccent = (i == sel);   // only the selected tab has the accent fill
+            boolean onAccent = (i == sel) || (hover >= 0 && i == hover);   // S2: selected OR hovered tab = accent fill -> dark text/icon
             Color want = new Color((onAccent ? selFg : norFg).getRGB());  // plain Color: app-set, honoured
             if (!want.equals(tp.getForegroundAt(i))) tp.setForegroundAt(i, want);
             Color iconTone = onAccent ? accentFg() : SIDEBAR_TEXT;        // dark glyph on the accent tab, light otherwise
