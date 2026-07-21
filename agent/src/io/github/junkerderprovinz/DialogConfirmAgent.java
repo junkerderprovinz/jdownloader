@@ -1661,7 +1661,22 @@ public class DialogConfirmAgent {
             if (pi != null && pi != mono) b.setPressedIcon(tablerForButton(b, pi, accentFg()));
             // Leave disabledIcon null so Swing derives a grey version of our mono icon.
             b.setContentAreaFilled(true);   // so FlatLaf's ToggleButton.hoverBackground actually paints
+            installBtnIconListener(b);       // S1(r60): re-mono instantly when JD swaps the icon (animated updater)
         } catch (Throwable ignore) { }
+    }
+
+    /** S1(r60): JD's animated self-updater swaps the button's icon reference every frame, faster than
+     *  the 400ms tick, so the tick-set mono is overwritten -> grey blob. Re-run monoButtonIcon the
+     *  instant JD sets a new icon (event-based, keeps up with the animation). Guarded so our own setIcon
+     *  (which fires this too) doesn't recurse: skip when the current icon already IS our mono. */
+    private static void installBtnIconListener(final javax.swing.AbstractButton b) {
+        if (b.getClientProperty("jdp.btnIconL") != null) return;
+        b.putClientProperty("jdp.btnIconL", Boolean.TRUE);
+        b.addPropertyChangeListener("icon", new java.beans.PropertyChangeListener() {
+            public void propertyChange(java.beans.PropertyChangeEvent e) {
+                if (b.getIcon() != b.getClientProperty("jdp.monoBtn")) monoButtonIcon(b);
+            }
+        });
     }
 
     /** Menu items ignore rolloverIcon/selectedIcon (BasicMenuItemUI/FlatMenuItemRenderer paint from
