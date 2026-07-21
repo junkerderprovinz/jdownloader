@@ -1613,7 +1613,7 @@ public class DialogConfirmAgent {
     static {
         ACTION_ICON.put("PauseDownloadsAction",          "media-playback-pause");
         ACTION_ICON.put("ClipBoardToggleAction",         "clipboard");
-        ACTION_ICON.put("AutoReconnectToggleAction",     "reconnect");
+        ACTION_ICON.put("AutoReconnectToggleAction",     "auto-reconnect");   // S1: distinct from ReconnectAction's "reconnect"
         ACTION_ICON.put("GlobalPremiumSwitchToggleAction", "premium");
         ACTION_ICON.put("SilentModeToggleAction",        "silentmode");
         // verify-live: confirm these simple-names via logIconInventory before relying on them
@@ -1621,9 +1621,11 @@ public class DialogConfirmAgent {
         ACTION_ICON.put("StartStopDownloadsAction",      "media-playback-start"); // merged start/stop toggle
         ACTION_ICON.put("StopDownloadsAction",           "media-playback-stop");
         ACTION_ICON.put("ForcedDownloadsAction",         "media-playback-start_forced");
-        // S1b: do NOT map ReconnectAction/StartReconnectAction to "reconnect" — that duplicated the
-        // AutoReconnectToggleAction glyph (two identical reconnect icons in the toolbar). Left unmapped,
-        // ReconnectAction keeps JD's own (distinct) reconnect glyph, mono'd by the toolbar sweep.
+        // S1 (r58): three distinct glyphs so the toolbar's reconnect/update cluster no longer looks
+        // doubled — AutoReconnectToggle="auto-reconnect" (above), ReconnectAction="reconnect", and
+        // UpdateAction="update" (was JD's colored update logo -> a refresh-looking mono blob).
+        ACTION_ICON.put("ReconnectAction",               "reconnect");
+        ACTION_ICON.put("UpdateAction",                  "update");
         ACTION_ICON.put("MyJDownloaderAction",           "logo/myjdownloader");   // -> logo_myjdownloader png
         ACTION_ICON.put("SettingsAction",                "settings");
         ACTION_ICON.put("AddLinksAction",                "add");
@@ -3365,7 +3367,8 @@ public class DialogConfirmAgent {
      *  subtree. Matched on getClass() directly (JD instantiates Header, not an anonymous subclass). */
     private static boolean isViewsHeader(Class<?> k) {
         String cn = k.getName();
-        return cn.endsWith(".Header") && cn.startsWith("org.jdownloader.gui.views.components.");
+        return (cn.endsWith(".Header") && cn.startsWith("org.jdownloader.gui.views.components."))
+                || cn.endsWith(".CustomFilterHeader");   // pt5 (r58): the "Custom Views" item is a CustomFilterHeader
     }
 
     /** Strip HeaderScrollPane-style dividers (their border draws the divider line) so the badges read
