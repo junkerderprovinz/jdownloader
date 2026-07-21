@@ -1639,11 +1639,12 @@ public class DialogConfirmAgent {
             if (cur == b.getClientProperty("jdp.monoBtn")) return;   // already our mono icon
             javax.swing.Icon mono = tablerForButton(b, cur, SIDEBAR_TEXT);
             if (mono == cur) {
-                // S1a: tablerForButton couldn't key-lookup this glyph (a raw/composite ImageIcon such
-                // as UpdateAction's colored "update" logo that stayed a grey blob in the toolbar) —
-                // pixel-mono it to a solid-tone silhouette so no colored/old logo remains in the chrome.
-                mono = tintSolid(cur, SIDEBAR_TEXT);
-                if (mono == cur) return;   // couldn't tint either -> leave it untouched
+                // S1a / S1(r59): tablerForButton couldn't key-lookup this glyph (a raw/composite/ANIMATED
+                // ImageIcon such as UpdateAction's animated self-updater logo that stayed a grey blob).
+                // A static tintSolid only monos ONE frame -> the animation redraws the raw next frame.
+                // LiveMonoIcon tints the CURRENT underlying frame at PAINT time, so an animated icon is
+                // mono'd frame-by-frame and never shows a colored/old logo.
+                mono = new LiveMonoIcon(cur, SIDEBAR_TEXT);
             }
             b.setIcon(mono);
             b.putClientProperty("jdp.monoBtn", mono);
@@ -2522,6 +2523,35 @@ public class DialogConfirmAgent {
             }
             return new javax.swing.ImageIcon(img);
         } catch (Throwable t) { return ic; }
+    }
+
+    /** S1(r59): paint-time mono wrapper. Renders the underlying (possibly ANIMATED) icon to an offscreen
+     *  at PAINT time, replaces every non-transparent pixel's RGB with `tone` (alpha kept), and draws it —
+     *  so an animated icon (JD's self-updater) is mono'd frame-by-frame instead of a static tint catching
+     *  one frame while the animation redraws the raw next one. Costs a small render per paint, so it's
+     *  used only on the few chrome icons tablerForButton can't key-lookup. */
+    private static final class LiveMonoIcon implements javax.swing.Icon {
+        private final javax.swing.Icon base;
+        private final Color tone;
+        LiveMonoIcon(javax.swing.Icon base, Color tone) { this.base = base; this.tone = tone; }
+        public void paintIcon(Component c, Graphics g, int x, int y) {
+            try {
+                int w = base.getIconWidth(), h = base.getIconHeight();
+                if (w <= 0 || h <= 0) return;
+                java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+                Graphics2D ig = img.createGraphics();
+                base.paintIcon(c, ig, 0, 0);
+                ig.dispose();
+                int rgb = tone.getRGB() & 0x00ffffff;
+                for (int yy = 0; yy < h; yy++) for (int xx = 0; xx < w; xx++) {
+                    int a = (img.getRGB(xx, yy) >>> 24);
+                    if (a != 0) img.setRGB(xx, yy, (a << 24) | rgb);
+                }
+                g.drawImage(img, x, y, null);
+            } catch (Throwable t) { base.paintIcon(c, g, x, y); }
+        }
+        public int getIconWidth() { return base.getIconWidth(); }
+        public int getIconHeight() { return base.getIconHeight(); }
     }
 
     /** S3: render an icon into a BufferedImage scaled by `factor` (bilinear) so the sidebar glyph shows
