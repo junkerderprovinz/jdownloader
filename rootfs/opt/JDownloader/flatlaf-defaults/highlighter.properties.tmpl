@@ -115,6 +115,10 @@ RootPane.background   = #242424
 TabbedPane.selectedBackground = @@ACCENT@@
 TabbedPane.selectedForeground = @@ACCENT_FG@@
 TabbedPane.tabSelectionHeight = 0
+# kill the thin line under the tab bar: that is FlatLaf's content separator (the strip between the
+# tab strip and the tab content). showContentSeparator=false removes it; height=0 belt-and-suspenders.
+TabbedPane.showContentSeparator   = false
+TabbedPane.contentSeparatorHeight = 0
 TabbedPane.hoverColor         = #2a2a2a
 TabbedPane.hoverForeground    = #f4f4f4
 TabbedPane.background         = #161616

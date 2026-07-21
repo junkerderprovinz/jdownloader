@@ -254,6 +254,7 @@ public class DialogConfirmAgent {
             monoChromeIcons();
             badgeViewsMenu();
             styleMenuFields();
+            wireMenuPopups();       // S8: pre-style popups on open (no unstyled flash)
             cardSettingsSections();
             borderlessConfigTables();
             unifyConfigFields();
@@ -264,7 +265,10 @@ public class DialogConfirmAgent {
             lafTick = 0;
             writeLafMarker();
             if (GEO_DEBUG) dumpGeometry();
-            if (isHighlighter()) { logHlPolish(); logIconInventory(); logConfigFields(); }   // polish + icon names + config fields
+            if (isHighlighter()) {   // polish + icon names + config fields + S1/S2/S5/pt5 one-time diags
+                logHlPolish(); logIconInventory(); logConfigFields();
+                logToolbarIcons(); logTabHeaderStructure(); logReconnectPanel(); logViewsDockedPanel();
+            }
         }
     }
 
@@ -912,6 +916,44 @@ public class DialogConfirmAgent {
         }
     }
 
+    // S8 — menu-open flash. Menus open UNSTYLED and only get themed on the next ~400ms tick, so the old
+    // design shows briefly. Wire each JPopupMenu ONCE with a PopupMenuListener that styles it the instant
+    // it becomes visible (mono its item icons + raise its embedded fields), so it is already themed when
+    // it appears. JMenus (menu bar + submenus) expose their popup BEFORE it shows, so wiring via
+    // getPopupMenu() pre-styles even the first open.
+    private static final String POPUP_WIRED = "jdp.popupWired";
+
+    private static void wireMenuPopups() {
+        for (Window w : Window.getWindows()) if (w.isShowing()) wireMenuPopupsIn(w);
+    }
+
+    private static void wireMenuPopupsIn(Container c) {
+        if (c instanceof javax.swing.JMenu) wirePopup(((javax.swing.JMenu) c).getPopupMenu());
+        else if (c instanceof javax.swing.JPopupMenu) wirePopup((javax.swing.JPopupMenu) c);
+        if (c instanceof javax.swing.JFrame) {
+            javax.swing.JMenuBar mb = ((javax.swing.JFrame) c).getJMenuBar();
+            if (mb != null) wireMenuPopupsIn(mb);
+        }
+        for (Component ch : c.getComponents())
+            if (ch instanceof Container) wireMenuPopupsIn((Container) ch);
+    }
+
+    private static void wirePopup(final javax.swing.JPopupMenu pm) {
+        if (pm == null || Boolean.TRUE.equals(pm.getClientProperty(POPUP_WIRED))) return;
+        pm.putClientProperty(POPUP_WIRED, Boolean.TRUE);
+        pm.addPopupMenuListener(new javax.swing.event.PopupMenuListener() {
+            public void popupMenuWillBecomeVisible(javax.swing.event.PopupMenuEvent e) {
+                try {
+                    styleMenuFieldsIn(pm, true);                       // raise the embedded fields
+                    for (Component ch : pm.getComponents())            // mono the item icons
+                        if (ch instanceof javax.swing.JMenuItem) monoMenuItemIcon((javax.swing.JMenuItem) ch);
+                } catch (Throwable ignore) { }
+            }
+            public void popupMenuWillBecomeInvisible(javax.swing.event.PopupMenuEvent e) { }
+            public void popupMenuCanceled(javax.swing.event.PopupMenuEvent e) { }
+        });
+    }
+
     private static void widenSpeedIn(Container c) {
         for (Component child : c.getComponents()) {
             if (isSpeedEditor(child.getClass())) {
@@ -1349,7 +1391,10 @@ public class DialogConfirmAgent {
     }
 
     private static final int SIDEBAR_ROW_PX = 66;   // native is ~53 in this JD build; must exceed it
-    private static final int SIDEBAR_TOP_PAD = 6;   // top inset on the RenderLabel to center it in the row
+    // S3: enlarge the collapsed sidebar glyph (native ~32 -> ~44px) and vertically center it. The old
+    // fixed SIDEBAR_TOP_PAD top-inset hack is gone — the tile now computes a centering inset per render.
+    private static final double SIDEBAR_ICON_SCALE = 1.4;
+    private static final java.util.Map<javax.swing.Icon, javax.swing.Icon> SCALED_ICONS = new java.util.WeakHashMap<>();
     private static final Color SIDEBAR_TEXT = new Color(0xf4, 0xf4, 0xf4);  // normal sidebar label colour
     private static boolean SIDEBAR_DIAG_DONE = false;   // one-time renderer dump (round 14)
 
@@ -1365,6 +1410,9 @@ public class DialogConfirmAgent {
                     java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
         } catch (Throwable ignore) { }
     }
+
+    /** #rrggbb of a colour (or "null") — shared by the diagnostics below. */
+    private static String hex(Color c) { return c == null ? "null" : "#" + Integer.toHexString(c.getRGB() & 0xffffff); }
 
     private static final java.util.Map<javax.swing.Icon, javax.swing.Icon> TINT_LIGHT = new java.util.WeakHashMap<>();
     private static final java.util.Map<javax.swing.Icon, javax.swing.Icon> TINT_DARK  = new java.util.WeakHashMap<>();
@@ -1684,8 +1732,13 @@ public class DialogConfirmAgent {
                         // (a FlatBorder-only default) can't reach.
                         stripFramingBorder((JComponent) ch);
                     } else if (ch instanceof javax.swing.AbstractButton && !isCheckLike(ch)) {
-                        if (!BTN_CFG_BG.equals(ch.getBackground())) ch.setBackground(BTN_CFG_BG);
-                        installBtnHoverFg((javax.swing.AbstractButton) ch);
+                        javax.swing.AbstractButton ab = (javax.swing.AbstractButton) ch;
+                        // S6: don't reset the bg to BTN_CFG_BG while the button is hovered/pressed —
+                        // installBtnHoverBg has flipped it to the accent and the tick would fight it.
+                        boolean hot = ab.getModel().isRollover() || ab.getModel().isPressed();
+                        if (!hot && !BTN_CFG_BG.equals(ab.getBackground())) ab.setBackground(BTN_CFG_BG);
+                        installBtnHoverFg(ab);
+                        installBtnHoverBg(ab);
                         stripFramingBorder((JComponent) ch);
                     } else if (isCheckLike(ch) && ch instanceof JComponent) {
                         // checkboxes/radios were skipped entirely above: strip their component
@@ -1727,6 +1780,33 @@ public class DialogConfirmAgent {
         });
     }
 
+    /** S6 — companion to installBtnHoverFg. JD's SettingsButton paints a GREY hover instead of the
+     *  accent, and installBtnHoverFg only flips the FOREGROUND. Also flip the BACKGROUND to the accent
+     *  while rolled over/pressed and restore BTN_CFG_BG on exit, so config buttons/bars light up in the
+     *  accent on hover. Model ChangeListener (tracks FlatLaf's rollover state), once per button. */
+    private static void installBtnHoverBg(final javax.swing.AbstractButton b) {
+        if (b.getClientProperty("jdp.hoverBg") != null) return;
+        b.putClientProperty("jdp.hoverBg", Boolean.TRUE);
+        b.getModel().addChangeListener(new javax.swing.event.ChangeListener() {
+            private boolean applied = false;
+            public void stateChanged(javax.swing.event.ChangeEvent e) {
+                boolean roll = b.isEnabled() && (b.getModel().isRollover() || b.getModel().isPressed());
+                if (roll && !applied) {
+                    Color acc = accentColor();
+                    if (acc != null) {
+                        b.setBackground(acc);
+                        if (b instanceof JComponent) ((JComponent) b).setOpaque(true);
+                        b.setContentAreaFilled(true);   // so the accent fill actually paints on JD's button
+                    }
+                    applied = true;
+                } else if (!roll && applied) {
+                    b.setBackground(BTN_CFG_BG);
+                    applied = false;
+                }
+            }
+        });
+    }
+
     // Settings section-HEADER icons are name-less scaled glyphs, so map them by the header TITLE
     // (keyword -> a JD key that has a Tabler PNG). English titles (the container runs English).
     private static final String[][] TITLE_MAP = {
@@ -1739,6 +1819,9 @@ public class DialogConfirmAgent {
         {"folder watch", "folder_add"}, {"advanced", "advancedConfig"}, {"extension", "extension"},
         {"general", "home"}, {"user interface", "gui"}, {"my.jdownloader", "logo/myjdownloader"},
         {"proxy", "proxy"}, {"password", "password"}, {"tray", "minimize"}, {"solver", "order"},
+        // S7: previously-unmapped section headers (kept a colored/plain logo). Multi-word keys so they
+        // don't shadow the shorter ones above (titleToKey matches by contains).
+        {"downloadlink address", "link"}, {"window management", "windowmanager"}, {"menus and toolbars", "menu"},
     };
     private static String titleToKey(String text) {
         if (text == null) return null;
@@ -1780,6 +1863,13 @@ public class DialogConfirmAgent {
                     l.setIcon(t); l.putClientProperty("jdp.monoLbl", t);
                     return;
                 }
+                // S7 FALLBACK: a section header whose title is NOT in TITLE_MAP (and whose icon carries
+                // no key) can't be Tabler-swapped — but it must not keep a colored/plain logo. Mono the
+                // EXISTING glyph to a single-tone silhouette so the header reads consistent mono.
+                // Idempotent via the jdp.monoLbl client property so the tick never re-monos our own icon.
+                javax.swing.Icon solid = tintSolid(cur, SIDEBAR_TEXT);
+                if (solid != cur) { l.setIcon(solid); l.putClientProperty("jdp.monoLbl", solid); }
+                return;
             }
             javax.swing.Icon mono = tablerIcon(cur, SIDEBAR_TEXT, l);
             if (mono != cur) { l.setIcon(mono); l.putClientProperty("jdp.monoLbl", mono); }
@@ -2109,28 +2199,9 @@ public class DialogConfirmAgent {
                 public Component getListCellRendererComponent(javax.swing.JList l, Object v, int idx, boolean sel, boolean foc) {
                     javax.swing.ListCellRenderer real = (javax.swing.ListCellRenderer) l.getClientProperty(SB_ORIG_RENDERER);
                     Component comp = real.getListCellRendererComponent(l, v, idx, sel, foc);
-                    // Vertically center the icon+label in the tall (66px) row. JD's TreeRenderer is a
-                    // MigLayout panel wrapping a single RenderLabel that MigLayout top-anchors
-                    // (diag). A MigLayout "aligny center" constraint (round 16) did NOT move the grid
-                    // (measured still ~6px top-biased). Instead push the RenderLabel's content down
-                    // with a top inset: measured ~3px above / ~14px below, so a SIDEBAR_TOP_PAD top
-                    // border re-centers it — a JLabel's preferred size includes its border, so
-                    // MigLayout re-lays the (now taller) label lower. Applied each call but only when
-                    // not already set, so it survives any per-cell border reset by JD.
-                    if (comp instanceof Container) {
-                        try {
-                            Component[] kids = ((Container) comp).getComponents();
-                            if (kids.length >= 1 && kids[0] instanceof javax.swing.JComponent) {
-                                javax.swing.JComponent rl = (javax.swing.JComponent) kids[0];
-                                boolean ok = (rl.getBorder() instanceof javax.swing.border.EmptyBorder)
-                                        && ((javax.swing.border.EmptyBorder) rl.getBorder()).getBorderInsets().top == SIDEBAR_TOP_PAD;
-                                if (!ok) {
-                                    rl.setBorder(javax.swing.BorderFactory.createEmptyBorder(SIDEBAR_TOP_PAD, 0, 0, 0));
-                                    ((Container) comp).revalidate();
-                                }
-                            }
-                        } catch (Throwable ignore) { }
-                    }
+                    // S3: vertical centering of the (now bigger) glyph is computed per-render in the
+                    // label loop below (it needs the scaled-icon height, set there). The old fixed
+                    // SIDEBAR_TOP_PAD top-inset hack is gone — it under-padded and left the glyph high.
                     if (!SIDEBAR_DIAG_DONE) {
                         SIDEBAR_DIAG_DONE = true;
                         String kids = "";
@@ -2181,7 +2252,10 @@ public class DialogConfirmAgent {
                                         String sid = "SIDEBAR[" + (kl.getText() == null ? "" : kl.getText()) + "] " + iconId(ic);
                                         if (ICON_SEEN.add(sid)) writeDiag(sid);
                                     }
-                                    kl.setIcon(tablerIcon(ic, hovAcc ? accentFg() : SIDEBAR_TEXT, kl));
+                                    // S3: mono-tint, then scale the glyph up (~1.4x) so the collapsed
+                                    // tile shows a noticeably bigger icon. scaleIcon caches on the
+                                    // (cached) tinted icon, so this is not a per-paint re-render.
+                                    kl.setIcon(scaleIcon(tablerIcon(ic, hovAcc ? accentFg() : SIDEBAR_TEXT, kl), SIDEBAR_ICON_SCALE));
                                 }
                                 // (7a/7b) Icon-only sidebar: hide the tile NAME unless this row is
                                 // hovered, so the sidebar reads as a strip of CENTRED glyphs that reveal
@@ -2210,6 +2284,22 @@ public class DialogConfirmAgent {
                                 if (kl.getVerticalAlignment() != javax.swing.SwingConstants.CENTER)
                                     kl.setVerticalAlignment(javax.swing.SwingConstants.CENTER);
                                 kl.setIconTextGap(2);
+                                // S3: vertically center the label in the tall row. JD top-anchors this
+                                // RenderLabel in its MigLayout, so push it down by half the slack between
+                                // the tile's inner height and the label's own content height. Computed
+                                // AFTER the scaled icon is set (so contentH reflects the big glyph) and it
+                                // adapts to the reveal stack. Idempotent: only re-set + revalidate when
+                                // the computed top inset actually changes, so there is no repaint loop.
+                                int innerH = SIDEBAR_ROW_PX - 2 * SB_BTN_GAP_V;   // height the tile grants comp
+                                java.awt.Insets kcur = (kl.getBorder() instanceof javax.swing.border.EmptyBorder)
+                                        ? ((javax.swing.border.EmptyBorder) kl.getBorder()).getBorderInsets(kl)
+                                        : new java.awt.Insets(0, 0, 0, 0);
+                                int contentH = kl.getPreferredSize().height - kcur.top - kcur.bottom;
+                                int topPad = Math.max(0, (innerH - contentH) / 2);
+                                if (!(kl.getBorder() instanceof javax.swing.border.EmptyBorder) || kcur.top != topPad) {
+                                    kl.setBorder(javax.swing.BorderFactory.createEmptyBorder(topPad, 0, 0, 0));
+                                    if (comp instanceof Container) ((Container) comp).revalidate();
+                                }
                             }
                         }
                     }
@@ -2412,6 +2502,36 @@ public class DialogConfirmAgent {
                 if (a != 0) img.setRGB(x, y, (a << 24) | rgb);
             }
             return new javax.swing.ImageIcon(img);
+        } catch (Throwable t) { return ic; }
+    }
+
+    /** S3: render an icon into a BufferedImage scaled by `factor` (bilinear) so the sidebar glyph shows
+     *  noticeably bigger. Cached per source icon — the sidebar wrapper feeds it the already-cached tinted
+     *  icon (stable identity per source+tone), so after warm-up this is an O(1) map hit, not a re-render. */
+    private static javax.swing.Icon scaleIcon(javax.swing.Icon ic, double factor) {
+        try {
+            if (ic == null || factor == 1.0) return ic;
+            synchronized (SCALED_ICONS) {
+                javax.swing.Icon cached = SCALED_ICONS.get(ic);
+                if (cached != null) return cached;
+            }
+            int w = ic.getIconWidth(), h = ic.getIconHeight();
+            if (w <= 0 || h <= 0) return ic;
+            int nw = (int) Math.round(w * factor), nh = (int) Math.round(h * factor);
+            java.awt.image.BufferedImage src = new java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+            java.awt.Graphics2D sg = src.createGraphics();
+            ic.paintIcon(null, sg, 0, 0);
+            sg.dispose();
+            java.awt.image.BufferedImage dst = new java.awt.image.BufferedImage(nw, nh, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+            java.awt.Graphics2D g = dst.createGraphics();
+            g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g.setRenderingHint(java.awt.RenderingHints.KEY_RENDERING, java.awt.RenderingHints.VALUE_RENDER_QUALITY);
+            g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
+            g.drawImage(src, 0, 0, nw, nh, null);
+            g.dispose();
+            javax.swing.Icon scaled = new javax.swing.ImageIcon(dst);
+            synchronized (SCALED_ICONS) { SCALED_ICONS.put(ic, scaled); }
+            return scaled;
         } catch (Throwable t) { return ic; }
     }
 
@@ -2731,8 +2851,11 @@ public class DialogConfirmAgent {
                         if (ch instanceof JComponent) ((JComponent) ch).setOpaque(true);
                     }
                 } else if (ch instanceof javax.swing.AbstractButton && !isCheckLike(ch)) {
-                    if (!BTN_CFG_BG.equals(ch.getBackground())) ch.setBackground(BTN_CFG_BG);
-                    installBtnHoverFg((javax.swing.AbstractButton) ch);
+                    javax.swing.AbstractButton ab = (javax.swing.AbstractButton) ch;
+                    boolean hot = ab.getModel().isRollover() || ab.getModel().isPressed();   // S6: leave accent hover alone
+                    if (!hot && !BTN_CFG_BG.equals(ab.getBackground())) ab.setBackground(BTN_CFG_BG);
+                    installBtnHoverFg(ab);
+                    installBtnHoverBg(ab);
                 } else if (ch instanceof javax.swing.JLabel && ((javax.swing.JLabel) ch).getIcon() != null) {
                     // mono EVERY dialog label icon (e.g. the colourful archive/extract glyph) — dialogs
                     // are chrome, not content, so this never touches a hoster favicon or file thumbnail.
@@ -2903,6 +3026,213 @@ public class DialogConfirmAgent {
                 }
             }
             if (ch instanceof Container) countHl((Container) ch, n, sidebarH);
+        }
+    }
+
+    // ---- S1 DIAGNOSTIC: main-toolbar duplicate icons ---------------------------------------------
+    // Two rightmost main-toolbar buttons show the same icon. Walk the main toolbar ONCE and log, per
+    // AbstractButton: the button class, its Action class name, the current icon class, the resolved
+    // iconKey, and the ACTION_ICON key its Action simple-name maps to — so we can see which two actions
+    // collided on the same glyph. One-time (guarded); retried each 5s until the toolbar is found.
+    private static boolean TOOLBAR_DIAG_DONE = false;
+    private static void logToolbarIcons() {
+        if (TOOLBAR_DIAG_DONE) return;
+        try {
+            for (Window w : Window.getWindows()) {
+                if (!w.isShowing()) continue;
+                Container tb = findMainToolbar(w);
+                if (tb == null) continue;
+                TOOLBAR_DIAG_DONE = true;
+                writeDiag("=== TOOLBAR ICONS (S1 duplicate-icon diag) === " + tb.getClass().getName());
+                logToolbarButtons(tb);
+                return;
+            }
+        } catch (Throwable ignore) { }
+    }
+    private static Container findMainToolbar(Container c) {
+        if (c instanceof JComponent && isMainToolbar(c.getClass())) return c;
+        for (Component ch : c.getComponents()) {
+            if (ch instanceof Container) {
+                Container r = findMainToolbar((Container) ch);
+                if (r != null) return r;
+            }
+        }
+        return null;
+    }
+    private static void logToolbarButtons(Container c) {
+        for (Component ch : c.getComponents()) {
+            if (ch instanceof javax.swing.AbstractButton) {
+                javax.swing.AbstractButton b = (javax.swing.AbstractButton) ch;
+                javax.swing.Action act = b.getAction();
+                javax.swing.Icon ic = b.getIcon();
+                String actCn = (act == null) ? "-" : act.getClass().getName();
+                String mapped = (act == null) ? "-" : ACTION_ICON.get(act.getClass().getSimpleName());
+                writeDiag("TB-BTN " + b.getClass().getName()
+                        + " action=" + actCn
+                        + " iconClass=" + (ic == null ? "-" : ic.getClass().getName())
+                        + " iconKey=" + iconKey(ic)
+                        + " actionIconMap=" + (mapped == null ? "-" : mapped));
+            }
+            if (ch instanceof Container) logToolbarButtons((Container) ch);
+        }
+    }
+
+    // ---- S2 DIAGNOSTIC: main-tab ClosableTabHeader hover/pressed ---------------------------------
+    // The main tabs' hover goes darker + pressed goes black. Log the TabHeader/ClosableTabHeader
+    // structure ONCE: class, opaque, background, and each child button/label's opaque/background +
+    // MouseListener count / rollover flag. Structure only — no fix.
+    private static boolean TABHEADER_DIAG_DONE = false;
+    private static void logTabHeaderStructure() {
+        if (TABHEADER_DIAG_DONE) return;
+        try {
+            for (Window w : Window.getWindows()) {
+                if (w.isShowing() && findAndLogTabHeader(w)) { TABHEADER_DIAG_DONE = true; return; }
+            }
+        } catch (Throwable ignore) { }
+    }
+    private static boolean findAndLogTabHeader(Container c) {
+        for (Component ch : c.getComponents()) {
+            String cn = ch.getClass().getName();
+            if (cn.endsWith(".TabHeader") || cn.contains("ClosableTabHeader")) {
+                writeDiag("=== TABHEADER DIAG (S2) === " + cn
+                        + " opaque=" + (ch instanceof JComponent && ((JComponent) ch).isOpaque())
+                        + " bg=" + hex(ch.getBackground())
+                        + " mouseListeners=" + ch.getMouseListeners().length);
+                if (ch instanceof Container) logTabHeaderChildren((Container) ch, 1);
+                return true;
+            }
+            if (ch instanceof Container && findAndLogTabHeader((Container) ch)) return true;
+        }
+        return false;
+    }
+    private static void logTabHeaderChildren(Container c, int depth) {
+        if (depth > 6) return;
+        StringBuilder ind = new StringBuilder();
+        for (int i = 0; i < depth; i++) ind.append("  ");
+        for (Component ch : c.getComponents()) {
+            String extra = "";
+            if (ch instanceof javax.swing.AbstractButton) {
+                javax.swing.AbstractButton b = (javax.swing.AbstractButton) ch;
+                extra = " rollover=" + b.isRolloverEnabled() + " contentFilled=" + b.isContentAreaFilled();
+            }
+            writeDiag(ind + "TH-CHILD " + ch.getClass().getName()
+                    + " opaque=" + (ch instanceof JComponent && ((JComponent) ch).isOpaque())
+                    + " bg=" + hex(ch.getBackground())
+                    + " mouseListeners=" + ch.getMouseListeners().length + extra);
+            if (ch instanceof Container) logTabHeaderChildren((Container) ch, depth + 1);
+        }
+    }
+
+    // ---- S5 DIAGNOSTIC: reconnect-tab dark box + framed checkboxes -------------------------------
+    // On the Reconnect settings page a sub-box reads darker than the card and checkboxes look framed.
+    // When a reconnect config panel is showing, dump every child's class + background hex + border
+    // class (like the CONFIG FIELDS dump) so we can see which component is the dark box and what border
+    // the checkboxes carry. One-time.
+    private static boolean RECONNECT_DIAG_DONE = false;
+    private static void logReconnectPanel() {
+        if (RECONNECT_DIAG_DONE) return;
+        try {
+            for (Window w : Window.getWindows()) {
+                if (!w.isShowing()) continue;
+                JComponent panel = findReconnectPanel(w);
+                if (panel == null) continue;
+                RECONNECT_DIAG_DONE = true;
+                writeDiag("=== RECONNECT PANEL (S5 dark-box/checkbox-frame diag) === " + panel.getClass().getName());
+                dumpComponentTree(panel, 0);
+                return;
+            }
+        } catch (Throwable ignore) { }
+    }
+    private static JComponent findReconnectPanel(Container c) {
+        for (Component ch : c.getComponents()) {
+            if (ch instanceof JComponent && isConfigPanel(ch.getClass())
+                    && (ch.getClass().getName().toLowerCase().contains("reconnect")
+                        || hasReconnectText((Container) ch))) {
+                return (JComponent) ch;
+            }
+            if (ch instanceof Container) {
+                JComponent r = findReconnectPanel((Container) ch);
+                if (r != null) return r;
+            }
+        }
+        return null;
+    }
+    private static boolean hasReconnectText(Container c) {
+        for (Component ch : c.getComponents()) {
+            if (ch instanceof javax.swing.JLabel) {
+                String t = ((javax.swing.JLabel) ch).getText();
+                if (t != null && t.toLowerCase().replaceAll("<[^>]*>", " ").contains("reconnect")) return true;
+            }
+            if (ch instanceof Container && hasReconnectText((Container) ch)) return true;
+        }
+        return false;
+    }
+    private static void dumpComponentTree(Component c, int depth) {
+        if (depth > 12) return;
+        javax.swing.border.Border b = (c instanceof JComponent) ? ((JComponent) c).getBorder() : null;
+        StringBuilder ind = new StringBuilder();
+        for (int i = 0; i < depth; i++) ind.append("  ");
+        writeDiag(ind + c.getClass().getName()
+                + " bg=" + hex(c.getBackground())
+                + " opaque=" + (c instanceof JComponent && ((JComponent) c).isOpaque())
+                + " border=" + (b == null ? "null" : b.getClass().getName()));
+        if (c instanceof Container) for (Component ch : ((Container) c).getComponents()) dumpComponentTree(ch, depth + 1);
+    }
+
+    // ---- pt5 DIAGNOSTIC: LinkGrabber docked "Views" panel ----------------------------------------
+    // The LinkGrabber has a docked "Views" panel (Custom Views / File Types / Hoster with checkmarks +
+    // separators) that is NOT a JPopupMenu. Find the tightest container whose subtree holds those item
+    // texts and log its class + its children's classes so we can target it to badge the items. One-time.
+    private static boolean VIEWS_PANEL_DIAG_DONE = false;
+    private static void logViewsDockedPanel() {
+        if (VIEWS_PANEL_DIAG_DONE) return;
+        try {
+            for (Window w : Window.getWindows()) {
+                if (!w.isShowing()) continue;
+                Container host = findViewsHost(w);
+                if (host == null) continue;
+                VIEWS_PANEL_DIAG_DONE = true;
+                writeDiag("=== VIEWS DOCKED PANEL (pt5 diag) === host=" + host.getClass().getName()
+                        + " parent=" + (host.getParent() == null ? "-" : host.getParent().getClass().getName()));
+                for (Component ch : host.getComponents()) {
+                    String txt = "";
+                    if (ch instanceof javax.swing.JLabel) txt = " text='" + ((javax.swing.JLabel) ch).getText() + "'";
+                    else if (ch instanceof javax.swing.AbstractButton) txt = " text='" + ((javax.swing.AbstractButton) ch).getText() + "'";
+                    writeDiag("  VIEWS-CHILD " + ch.getClass().getName() + txt);
+                }
+                return;
+            }
+        } catch (Throwable ignore) { }
+    }
+    /** Tightest non-popup container whose subtree holds all three Views item texts (depth-first so a
+     *  child that also qualifies is returned before its ancestor). */
+    private static Container findViewsHost(Container c) {
+        for (Component ch : c.getComponents()) {
+            if (ch instanceof Container) {
+                Container r = findViewsHost((Container) ch);
+                if (r != null) return r;
+            }
+        }
+        if (!(c instanceof JPopupMenu) && subtreeHasAllViewsItems(c)) return c;
+        return null;
+    }
+    private static boolean subtreeHasAllViewsItems(Container c) {
+        boolean[] found = new boolean[3];
+        scanViewsTexts(c, found);
+        return found[0] && found[1] && found[2];
+    }
+    private static void scanViewsTexts(Container c, boolean[] found) {
+        for (Component ch : c.getComponents()) {
+            String t = null;
+            if (ch instanceof javax.swing.JLabel) t = ((javax.swing.JLabel) ch).getText();
+            else if (ch instanceof javax.swing.AbstractButton) t = ((javax.swing.AbstractButton) ch).getText();
+            if (t != null) {
+                String s = t.toLowerCase().replaceAll("<[^>]*>", " ");
+                if (s.contains("custom view")) found[0] = true;
+                if (s.contains("file type")) found[1] = true;
+                if (s.contains("hoster")) found[2] = true;
+            }
+            if (ch instanceof Container) scanViewsTexts((Container) ch, found);
         }
     }
 
