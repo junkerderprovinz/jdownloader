@@ -1625,7 +1625,7 @@ public class DialogConfirmAgent {
         // doubled — AutoReconnectToggle="auto-reconnect" (above), ReconnectAction="reconnect", and
         // UpdateAction="update" (was JD's colored update logo -> a refresh-looking mono blob).
         ACTION_ICON.put("ReconnectAction",               "reconnect");
-        ACTION_ICON.put("UpdateAction",                  "update");
+        ACTION_ICON.put("UpdateAction",                  "package_new");   // S1: 'update' PNG is a circular arrow (= reconnect); a box is distinct + doesn't clash with cloud(MyJD)/download
         ACTION_ICON.put("MyJDownloaderAction",           "logo/myjdownloader");   // -> logo_myjdownloader png
         ACTION_ICON.put("SettingsAction",                "settings");
         ACTION_ICON.put("AddLinksAction",                "add");
