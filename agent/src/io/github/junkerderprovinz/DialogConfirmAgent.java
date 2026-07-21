@@ -253,6 +253,7 @@ public class DialogConfirmAgent {
             recolorMainTabs();
             monoChromeIcons();
             badgeViewsMenu();
+            badgeViewsPanel();      // pt5: badge the docked LinkGrabber "Views" headers too
             styleMenuFields();
             wireMenuPopups();       // S8: pre-style popups on open (no unstyled flash)
             cardSettingsSections();
@@ -267,7 +268,7 @@ public class DialogConfirmAgent {
             if (GEO_DEBUG) dumpGeometry();
             if (isHighlighter()) {   // polish + icon names + config fields + S1/S2/S5/pt5 one-time diags
                 logHlPolish(); logIconInventory(); logConfigFields();
-                logToolbarIcons(); logTabHeaderStructure(); logReconnectPanel(); logViewsDockedPanel();
+                logToolbarIcons(); logTabHeaderStructure(); logTabHeaderFields(); logReconnectPanel(); logViewsDockedPanel();
             }
         }
     }
@@ -3139,6 +3140,71 @@ public class DialogConfirmAgent {
         }
     }
 
+    // ---- S2 REFLECTION DIAGNOSTIC: which field/mechanism sets the TabHeader hover/pressed colours --
+    // jd.gui.swing.jdgui.maintab.TabHeader paints its own hover (darker) + pressed (black). Reflect
+    // over the instance's class AND its superclasses (getDeclaredFields() up the chain) and dump every
+    // Color/boolean/int field, plus any field whose name hints at colour/hover/rollover/press/select/
+    // paint, so the exact colour source is known before overriding it precisely next round. Also lists
+    // the TabHeader's mouse (motion) listener classes. One-time, DIAGNOSTIC ONLY — no fix here.
+    private static boolean TABHEADER_FIELDS_DONE = false;
+    private static void logTabHeaderFields() {
+        if (TABHEADER_FIELDS_DONE) return;
+        try {
+            Component th = null;
+            for (Window w : Window.getWindows()) {
+                if (!w.isShowing()) continue;
+                th = findTabHeader(w);
+                if (th != null) break;
+            }
+            if (th == null) return;
+            TABHEADER_FIELDS_DONE = true;
+            writeDiag("=== TABHEADER FIELDS (S2 reflection) === " + th.getClass().getName());
+            for (Class<?> k = th.getClass(); k != null && k != Object.class; k = k.getSuperclass()) {
+                for (java.lang.reflect.Field f : k.getDeclaredFields()) {
+                    Class<?> ft = f.getType();
+                    String fn = f.getName();
+                    String lc = fn.toLowerCase();
+                    boolean interesting = ft == Color.class
+                            || ft == boolean.class || ft == int.class
+                            || lc.contains("color") || lc.contains("hover") || lc.contains("rollover")
+                            || lc.contains("press") || lc.contains("select") || lc.contains("paint");
+                    if (!interesting) continue;
+                    String val;
+                    try {
+                        f.setAccessible(true);
+                        Object v = f.get(th);
+                        val = (v instanceof Color) ? hex((Color) v) : String.valueOf(v);
+                    } catch (Throwable t) {
+                        val = "<" + t.getClass().getSimpleName() + ">";
+                    }
+                    writeDiag("  THF " + k.getSimpleName() + "." + fn
+                            + " : " + ft.getSimpleName() + " = " + val);
+                }
+            }
+            StringBuilder ml = new StringBuilder("  TH-MOUSE listeners=");
+            for (java.awt.event.MouseListener l : th.getMouseListeners())
+                ml.append(l.getClass().getName()).append(' ');
+            writeDiag(ml.toString().trim());
+            StringBuilder mm = new StringBuilder("  TH-MOUSEMOTION listeners=");
+            for (java.awt.event.MouseMotionListener l : th.getMouseMotionListeners())
+                mm.append(l.getClass().getName()).append(' ');
+            writeDiag(mm.toString().trim());
+        } catch (Throwable ignore) { }
+    }
+    /** First main-tab TabHeader/ClosableTabHeader instance in the subtree (S2 finder pattern, but
+     *  returns the component instead of logging it). */
+    private static Component findTabHeader(Container c) {
+        for (Component ch : c.getComponents()) {
+            String cn = ch.getClass().getName();
+            if (cn.endsWith(".TabHeader") || cn.contains("ClosableTabHeader")) return ch;
+            if (ch instanceof Container) {
+                Component r = findTabHeader((Container) ch);
+                if (r != null) return r;
+            }
+        }
+        return null;
+    }
+
     // ---- S5 DIAGNOSTIC: reconnect-tab dark box + framed checkboxes -------------------------------
     // On the Reconnect settings page a sub-box reads darker than the card and checkboxes look framed.
     // When a reconnect config panel is showing, dump every child's class + background hex + border
@@ -3250,6 +3316,74 @@ public class DialogConfirmAgent {
             }
             if (ch instanceof Container) scanViewsTexts((Container) ch, found);
         }
+    }
+
+    // ---- pt5: badge the docked LinkGrabber "Views" panel ----------------------------------------
+    // The docked Views host (org.jdownloader.gui.views.linkgrabber.LinkGrabberPanel$6) holds
+    // org.jdownloader.gui.views.components.Header items ("Custom Views" / "File Types" / "Hoster")
+    // separated by JSeparator lines. Turn each Header into a rounded #242424 chip (reuse
+    // MenuChipBorder — the same surface as the Views popup badges / sidebar tiles) and drop the
+    // separator lines. STRICTLY scoped to the Views host subtree (found via findViewsHost) and to the
+    // o.j.gui.views.components package so the settings-page org.jdownloader.extensions.Header is never
+    // matched. Each Header is guarded once via the jdp.viewsBadged client property so the tick can't
+    // recompound the wrapped border. MenuChipBorder's insets were tuned for menu items; if they look
+    // off on a full-width Header that's an acceptable first cut (rounded #242424 fill + gap kept).
+    private static void badgeViewsPanel() {
+        for (Window w : Window.getWindows()) {
+            if (!w.isShowing()) continue;
+            Container host = findViewsHost(w);
+            if (host == null) continue;
+            boolean changed = badgeViewsHeaders(host);
+            changed |= stripHeaderScrollDividers(host);
+            hideSeparators(host);       // reuse: hide the "title ----" lines (idempotent, self-repaints)
+            if (changed) { host.revalidate(); host.repaint(); }
+        }
+    }
+
+    /** Give each LinkGrabber-Views section Header a rounded #242424 chip (MenuChipBorder over its
+     *  existing border). Returns true if any header was newly badged this pass. */
+    private static boolean badgeViewsHeaders(Container c) {
+        boolean changed = false;
+        for (Component ch : c.getComponents()) {
+            if (ch instanceof JComponent && isViewsHeader(ch.getClass())) {
+                JComponent header = (JComponent) ch;
+                if (header.getClientProperty(VIEWS_BADGED) != Boolean.TRUE) {
+                    header.setBorder(new MenuChipBorder(header.getBorder()));
+                    header.setOpaque(false);
+                    header.putClientProperty(VIEWS_BADGED, Boolean.TRUE);
+                    changed = true;
+                }
+            }
+            if (ch instanceof Container) changed |= badgeViewsHeaders((Container) ch);
+        }
+        return changed;
+    }
+
+    /** True for a LinkGrabber-Views section header: class name ends with ".Header" AND lives under the
+     *  org.jdownloader.gui.views.components package. The package guard keeps the settings-page
+     *  org.jdownloader.extensions.Header from being badged; the caller further scopes to the Views host
+     *  subtree. Matched on getClass() directly (JD instantiates Header, not an anonymous subclass). */
+    private static boolean isViewsHeader(Class<?> k) {
+        String cn = k.getName();
+        return cn.endsWith(".Header") && cn.startsWith("org.jdownloader.gui.views.components.");
+    }
+
+    /** Strip HeaderScrollPane-style dividers (their border draws the divider line) so the badges read
+     *  as free-standing chips instead of lined rows. Returns true if any divider was newly stripped. */
+    private static boolean stripHeaderScrollDividers(Container c) {
+        boolean changed = false;
+        for (Component ch : c.getComponents()) {
+            if (ch instanceof JComponent && ch.getClass().getName().endsWith(".HeaderScrollPane")) {
+                JComponent hsp = (JComponent) ch;
+                javax.swing.border.Border b = hsp.getBorder();
+                if (b != null && !(b instanceof javax.swing.border.EmptyBorder)) {
+                    hsp.setBorder(javax.swing.BorderFactory.createEmptyBorder());
+                    changed = true;
+                }
+            }
+            if (ch instanceof Container) changed |= stripHeaderScrollDividers((Container) ch);
+        }
+        return changed;
     }
 
     // --------------------------------------------------------------- dialogs
