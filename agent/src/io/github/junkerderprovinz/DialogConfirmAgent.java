@@ -1620,8 +1620,9 @@ public class DialogConfirmAgent {
         ACTION_ICON.put("StartStopDownloadsAction",      "media-playback-start"); // merged start/stop toggle
         ACTION_ICON.put("StopDownloadsAction",           "media-playback-stop");
         ACTION_ICON.put("ForcedDownloadsAction",         "media-playback-start_forced");
-        ACTION_ICON.put("ReconnectAction",               "reconnect");
-        ACTION_ICON.put("StartReconnectAction",          "reconnect");
+        // S1b: do NOT map ReconnectAction/StartReconnectAction to "reconnect" — that duplicated the
+        // AutoReconnectToggleAction glyph (two identical reconnect icons in the toolbar). Left unmapped,
+        // ReconnectAction keeps JD's own (distinct) reconnect glyph, mono'd by the toolbar sweep.
         ACTION_ICON.put("MyJDownloaderAction",           "logo/myjdownloader");   // -> logo_myjdownloader png
         ACTION_ICON.put("SettingsAction",                "settings");
         ACTION_ICON.put("AddLinksAction",                "add");
@@ -1634,7 +1635,13 @@ public class DialogConfirmAgent {
             if (cur == null) return;
             if (cur == b.getClientProperty("jdp.monoBtn")) return;   // already our mono icon
             javax.swing.Icon mono = tablerForButton(b, cur, SIDEBAR_TEXT);
-            if (mono == cur) return;
+            if (mono == cur) {
+                // S1a: tablerForButton couldn't key-lookup this glyph (a raw/composite ImageIcon such
+                // as UpdateAction's colored "update" logo that stayed a grey blob in the toolbar) —
+                // pixel-mono it to a solid-tone silhouette so no colored/old logo remains in the chrome.
+                mono = tintSolid(cur, SIDEBAR_TEXT);
+                if (mono == cur) return;   // couldn't tint either -> leave it untouched
+            }
             b.setIcon(mono);
             b.putClientProperty("jdp.monoBtn", mono);
             b.setRolloverIcon(tablerForButton(b, cur, accentFg()));  // dark glyph for the accent hover fill
@@ -1720,7 +1727,16 @@ public class DialogConfirmAgent {
         for (Component ch : c.getComponents()) {
             if (cfg) {
                 try {
-                    if (ch instanceof javax.swing.text.JTextComponent || ch instanceof javax.swing.JComboBox
+                    if (ch instanceof javax.swing.text.JTextComponent
+                            && !((javax.swing.text.JTextComponent) ch).isEditable()) {
+                        // S5a: a NON-editable text component is a DESCRIPTION/info box, not an input
+                        // (e.g. the Reconnect "No Reconnect selected..." JTextPane). It was opaque
+                        // #1a1a1a (field fill) and read as a dark box on the #242424 card. Make it
+                        // transparent so the card shows through, and match its bg to the card.
+                        if (((JComponent) ch).isOpaque()) ((JComponent) ch).setOpaque(false);
+                        if (!DIALOG_BG.equals(ch.getBackground())) ch.setBackground(DIALOG_BG);
+                        stripFramingBorder((JComponent) ch);
+                    } else if (ch instanceof javax.swing.text.JTextComponent || ch instanceof javax.swing.JComboBox
                             || ch instanceof javax.swing.JSpinner) {
                         if (!FIELD_BG.equals(ch.getBackground())) {
                             ch.setBackground(FIELD_BG);
