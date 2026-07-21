@@ -1718,14 +1718,16 @@ public class DialogConfirmAgent {
     /** Like tablerIcon, but for a button: when the icon carries no name (a merged toggle glyph), pick
      *  the Tabler glyph from the button's Action class instead of monoing a rough merged blob. */
     private static javax.swing.Icon tablerForButton(javax.swing.AbstractButton b, javax.swing.Icon icon, Color tone) {
-        if (iconKey(icon) == null) {
-            javax.swing.Action act = b.getAction();
-            if (act != null) {
-                String jk = ACTION_ICON.get(act.getClass().getSimpleName());
-                if (jk != null) {
-                    javax.swing.Icon base = tablerBase(jk, icon.getIconWidth(), icon.getIconHeight());
-                    if (base != null) return tintIcon(base, tone, b);
-                }
+        // Check the ACTION_ICON mapping FIRST, regardless of the icon's own key. JD's animated buttons
+        // (UpdateAction) carry a KEYED frame icon each animation tick (updaterIconN, a circular arrow),
+        // so the old iconKey==null gate let the frame's key win over our mapping — the update button
+        // stayed a circular arrow. A deliberately-mapped toolbar action must always show its mapped glyph.
+        javax.swing.Action act = b.getAction();
+        if (act != null) {
+            String jk = ACTION_ICON.get(act.getClass().getSimpleName());
+            if (jk != null) {
+                javax.swing.Icon base = tablerBase(jk, icon.getIconWidth(), icon.getIconHeight());
+                if (base != null) return tintIcon(base, tone, b);
             }
         }
         return tablerIcon(icon, tone, b);
