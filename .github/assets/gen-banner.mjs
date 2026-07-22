@@ -41,8 +41,8 @@ const THEMES = [
   { suffix: "-dark", bg: "#0d1117", name: "#e6edf3", claim: "#9aa4ad" },
 ];
 const W = 1600, H = 500;
-const LH = 300, LW = LH;      // globe on the left (square)
-const gap = 60, lineGap = 26;
+const LH = 386, LW = LH;      // globe on the left (square) — enlarged to match the refined theme banners
+const gap = 48, lineGap = 26;
 const claimSize = 40;
 const WM_H = 214;             // rendered wordmark height in the banner
 const MAX_GROUP = W - 150;
@@ -98,29 +98,19 @@ for (const [text, dx, ls] of DL_RUNS)
 const crossbarPath = `M${CROSSBAR.x} ${CROSSBAR.y} h${CROSSBAR.w} v${CROSSBAR.h} h${-CROSSBAR.w} Z`;
 if ((wordmarkPath + crossbarPath).includes("NaN")) throw new Error("NaN path");
 
-// Scale the wordmark to WM_H and lay out globe + wordmark + claim.
-const wmScale = WM_H / SRC_VB.h;
-const wmW = SRC_VB.w * wmScale;
-let s2 = wmScale, wmWFit = wmW;
-if (LW + gap + wmW > MAX_GROUP) { wmWFit = MAX_GROUP - LW - gap; s2 = wmWFit / SRC_VB.w; }
-
+// FIXED layout, matching the user's hand-refined theme banner: the globe box sits at a fixed left so
+// its circle centre lands at (293, 242); the wordmark starts at a fixed x=522 (its crossbar aligns to
+// the user's x), 214px tall; the claim is centred under the wordmark. "JDOWNLOADER" is shorter than
+// "JD HIGHLIGHTER" so it leaves more room on the right — the same slightly left-weighted balance.
+const startX = 108, LY = 57;                    // globe box -> circle centre (293, 242)
+const textX = 522, wmTop = 138.7;               // crossbar top -> y=170.8, caps baseline -> y=273.7
+const claimBaseline = 350;                      // claim baseline, below the wordmark
+const s2 = Math.min(WM_H / SRC_VB.h, (W - textX - 60) / SRC_VB.w);   // 214px tall, capped so it can't overflow right
+const wmWFit = SRC_VB.w * s2;
 const claimAsc = lato.ascender * claimSize / lato.unitsPerEm;
 const claimW = runWidth(lato, CLAIM, claimSize);
-const groupW = LW + gap + Math.max(wmWFit, claimW);
-const startX = (W - groupW) / 2;
-const textX = startX + LW + gap;
-
-// Vertical: the claim sits just below the DOWNLOADER baseline (NOT below the J's descender),
-// and the crossbar-top .. claim-baseline block is centred in the card.
-const crossbarTopOff = CROSSBAR.y * s2;       // from the wordmark box top
-const dlBaseOff = DL_BASE.y * s2;             // DOWNLOADER baseline, from the box top
-const claimGap = 16;                           // px from the DOWNLOADER baseline to the claim cap-top
-const claimOff = dlBaseOff + claimGap + claimAsc;
-const wmTop = H / 2 - (crossbarTopOff + claimOff) / 2;
-const claimBaseline = wmTop + claimOff;
-const LY = wmTop + (crossbarTopOff + dlBaseOff) / 2 - LH / 2;   // globe centred on the wordmark mass
-// Start the claim under "DOWNLOADER" (right of the J) so it can't overlap the J's descender.
-const claimPath = runPath(lato, CLAIM, textX + DL_BASE.x * s2, claimBaseline, claimSize);
+const claimStartX = textX + (wmWFit - claimW) / 2;   // centre the claim under the wordmark
+const claimPath = runPath(lato, CLAIM, claimStartX, claimBaseline, claimSize);
 
 // Globe: light card keeps the Carbon-dark body; dark card lightens it so it reads on #0d1117.
 const iconRaw = readFileSync(join(__dir, "icon.svg"), "utf8").replace(/<\?xml[^>]*\?>\s*/, "");
