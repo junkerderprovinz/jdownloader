@@ -1397,6 +1397,11 @@ public class DialogConfirmAgent {
     private static final double SIDEBAR_ICON_SCALE = 1.4;
     private static final java.util.Map<javax.swing.Icon, javax.swing.Icon> SCALED_ICONS = new java.util.WeakHashMap<>();
     private static final Color SIDEBAR_TEXT = new Color(0xf4, 0xf4, 0xf4);  // normal sidebar label colour
+    // S1(r63): tone for a DISABLED toolbar button's glyph. A disabled ExtButton (e.g. the manual
+    // ReconnectAction when idle) paints its disabledIcon, NOT getIcon() — and JD derives that from the
+    // RAW glyph, so monoButtonIcon's setIcon(mono) never reaches it and the button stayed a grey blob.
+    // Matches the theme's @disabledForeground so disabled == a clean, dim silhouette (never a raw blob).
+    private static final Color DISABLED_TONE = new Color(0x6f, 0x6f, 0x6f);
     private static boolean SIDEBAR_DIAG_DONE = false;   // one-time renderer dump (round 14)
 
     /**
@@ -1659,7 +1664,11 @@ public class DialogConfirmAgent {
             if (rsi != null && rsi != mono) b.setRolloverSelectedIcon(tablerForButton(b, rsi, accentFg()));
             javax.swing.Icon pi = b.getPressedIcon();
             if (pi != null && pi != mono) b.setPressedIcon(tablerForButton(b, pi, accentFg()));
-            // Leave disabledIcon null so Swing derives a grey version of our mono icon.
+            // S1(r63): a DISABLED button paints its disabledIcon, not getIcon() — and JD's is derived
+            // from the RAW glyph, so setIcon(mono) above never reaches it (the manual Reconnect button
+            // is disabled when idle and stayed a grey crumpled blob). Set a clean mono silhouette in the
+            // theme's disabled tone so a disabled toolbar button reads as a dim, on-brand glyph.
+            b.setDisabledIcon(tintSolid(mono, DISABLED_TONE));
             b.setContentAreaFilled(true);   // so FlatLaf's ToggleButton.hoverBackground actually paints
             installBtnIconListener(b);       // S1(r60): re-mono instantly when JD swaps the icon (animated updater)
         } catch (Throwable ignore) { }
@@ -3137,7 +3146,9 @@ public class DialogConfirmAgent {
                         + " action=" + actCn
                         + " iconClass=" + (ic == null ? "-" : ic.getClass().getName())
                         + " iconKey=" + iconKey(ic)
-                        + " actionIconMap=" + (mapped == null ? "-" : mapped));
+                        + " actionIconMap=" + (mapped == null ? "-" : mapped)
+                        + " enabled=" + b.isEnabled()
+                        + " iconIsMono=" + (ic != null && ic == b.getClientProperty("jdp.monoBtn")));
             }
             if (ch instanceof Container) logToolbarButtons((Container) ch);
         }
