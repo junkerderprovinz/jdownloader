@@ -20,3 +20,6 @@ __pycache__/
 
 # Importable Unraid template deliverable (copy of templates/jdownloader.xml — regenerated on each template change)
 my-JDownloader.xml
+
+# proprietary font used at build time to render the wordmark to paths (never committed)
+.github/assets/_fonts/
