@@ -1914,31 +1914,45 @@ public class DialogConfirmAgent {
     private static void installBtnHoverBg(final javax.swing.AbstractButton b) {
         if (b.getClientProperty("jdp.hoverBg") != null) return;
         b.putClientProperty("jdp.hoverBg", Boolean.TRUE);
-        b.setRolloverEnabled(true);   // see installBtnHoverFg: without this the model rollover never
-                                      // fires on JD's SettingsButton, so neither this listener nor
-                                      // FlatLaf's Button.hoverBackground=accent ever paints (the
-                                      // "Sprachwaehler faerbt nicht" bug).
-        // event-driven fallback: if the model rollover STILL does not fire (custom UI), a direct mouse
-        // listener flips the accent immediately + repaints (same pattern that fixed the main-tab hover).
+        b.setRolloverEnabled(true);   // enable model rollover so FlatLaf tracks hover on this button
+        // Root cause (verified live): JD's SettingsButton is an AppWork ExtButton — onRollOver() only flips
+        // contentAreaFilled(true) and lets the LAF paint the fill. FlatLaf then painted a neutral GREY hover
+        // (#525252), NOT our accent, so the language selector went grey instead of yellow. Force THIS
+        // button's hover/pressed fill to the accent via a per-component FlatLaf style (beats whatever
+        // default the ExtButton resolved), and match the pressed-foreground to the accent-fg for contrast.
+        try {
+            Color acc0 = accentColor();
+            if (acc0 != null) {
+                String hx = String.format("#%06x", acc0.getRGB() & 0xffffff);
+                b.putClientProperty("FlatLaf.style", "hoverBackground: " + hx + "; pressedBackground: " + hx);
+            }
+        } catch (Throwable ignore) { }
+        // event-driven belt-and-suspenders: if a custom UI still ignores the style, paint the accent
+        // ourselves (same pattern that fixed the main-tab hover). Save/restore contentAreaFilled so an
+        // ExtButton (default transparent) goes back to transparent — not a stuck #2a2a2a fill — on exit.
         b.addMouseListener(new java.awt.event.MouseAdapter() {
             public void mouseEntered(java.awt.event.MouseEvent e) {
                 if (!b.isEnabled()) return;
                 Color acc = accentColor();
                 if (acc == null) return;
                 b.putClientProperty("jdp.hovered", Boolean.TRUE);
-                b.setBackground(acc);
-                if (b instanceof JComponent) ((JComponent) b).setOpaque(true);
-                b.setContentAreaFilled(true);
+                b.putClientProperty("jdp.savedCAF", Boolean.valueOf(b.isContentAreaFilled()));
                 Object fg = b.getClientProperty("jdp.savedFg");
                 if (!(fg instanceof Color)) b.putClientProperty("jdp.savedFg", b.getForeground());
+                b.setContentAreaFilled(true);
+                if (b instanceof JComponent) ((JComponent) b).setOpaque(true);
+                b.setBackground(acc);
                 b.setForeground(accentFg());
                 b.repaint();
             }
             public void mouseExited(java.awt.event.MouseEvent e) {
                 b.putClientProperty("jdp.hovered", null);
+                Object caf = b.getClientProperty("jdp.savedCAF");
+                if (caf instanceof Boolean) b.setContentAreaFilled((Boolean) caf);
                 b.setBackground(BTN_CFG_BG);
                 Object s = b.getClientProperty("jdp.savedFg");
                 if (s instanceof Color) b.setForeground((Color) s);
+                b.putClientProperty("jdp.savedFg", null);
                 b.repaint();
             }
         });
@@ -3280,24 +3294,25 @@ public class DialogConfirmAgent {
     private static boolean MENU_DIAG_DONE = false;                 // D2 menu-popup dump (one-time)
     private static int CFG_DIAG_N = 0;                             // F config-control dump (capped)
     private static final java.util.Set<String> CFG_SEEN = new java.util.HashSet<>();
-    // B: JD's MainToolBar groups buttons with JSeparators that carry ~16px gaps on each side, while the
-    // buttons within a group sit at a tight 6px pitch — so the spacing reads as uneven ("unterschiedliche
-    // abstände"). Hide the separators so the toolbar re-flows to one uniform button pitch (the Carbon-
-    // minimalist look wants no separators anyway). Guarded: only revalidate when something actually changed.
+    // B: JD's MainToolBar groups buttons with JSeparators that reserve a ~30px slot (2px line + ~16px gap
+    // on each side), while the buttons within a group sit at a tight 6px pitch — so the spacing reads as
+    // uneven ("unterschiedliche abstände"). setVisible(false) only hides the LINE; the layout keeps the
+    // slot. REMOVE the separators so the row re-flows to one uniform button pitch (the Carbon-minimalist
+    // look wants no separators anyway). Guarded: only revalidate when something actually changed.
     private static void normalizeToolbarGaps() {
         try {
             for (Window w : Window.getWindows()) {
                 if (!w.isShowing()) continue;
                 Container tb = findMainToolbar(w);
                 if (tb == null) continue;
-                boolean changed = false;
-                for (Component ch : tb.getComponents()) {
-                    if (ch instanceof javax.swing.JSeparator && ch.isVisible()) {
-                        ch.setVisible(false);
-                        changed = true;
-                    }
+                java.util.List<Component> seps = new java.util.ArrayList<>();
+                for (Component ch : tb.getComponents())
+                    if (ch instanceof javax.swing.JSeparator) seps.add(ch);
+                if (!seps.isEmpty()) {
+                    for (Component s : seps) tb.remove(s);   // collected first: no concurrent-modification
+                    tb.revalidate();
+                    tb.repaint();
                 }
-                if (changed) { tb.revalidate(); tb.repaint(); }
                 return;
             }
         } catch (Throwable ignore) { }
