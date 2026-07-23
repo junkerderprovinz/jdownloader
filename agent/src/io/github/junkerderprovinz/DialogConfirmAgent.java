@@ -252,6 +252,7 @@ public class DialogConfirmAgent {
             stripSectionUnderlines();
             recolorMainTabs();
             monoChromeIcons();
+            normalizeToolbarGaps();
             badgeViewsMenu();
             badgeViewsPanel();      // pt5: badge the docked LinkGrabber "Views" headers too
             styleMenuFields();
@@ -948,6 +949,22 @@ public class DialogConfirmAgent {
                     styleMenuFieldsIn(pm, true);                       // raise the embedded fields
                     for (Component ch : pm.getComponents())            // mono the item icons
                         if (ch instanceof javax.swing.JMenuItem) monoMenuItemIcon((javax.swing.JMenuItem) ch);
+                    // D2 fix: the Settings-menu input rows (ChunksEditorLink, SpeedlimitEditorLink, ...) are
+                    // custom components (NOT JMenuItems, so MenuItem.margin never reached them) and shipped
+                    // at h=24 vs the h=40 menu items above. Add a vertical EmptyBorder so every row breathes
+                    // the same. Kept horizontal at 0 so the embedded field's own layout stays aligned.
+                    for (Component ch : pm.getComponents()) {
+                        if (ch instanceof JComponent && !(ch instanceof javax.swing.JMenuItem)
+                                && !(ch instanceof javax.swing.JSeparator)) {
+                            JComponent jc = (JComponent) ch;
+                            if (jc.getClientProperty("jdp.menuRowPad") == null) {
+                                jc.putClientProperty("jdp.menuRowPad", Boolean.TRUE);
+                                javax.swing.border.Border pad = new javax.swing.border.EmptyBorder(8, 0, 8, 0);
+                                javax.swing.border.Border old = jc.getBorder();
+                                jc.setBorder(old == null ? pad : new javax.swing.border.CompoundBorder(pad, old));
+                            }
+                        }
+                    }
                     // D2 diag: the Settings menu's embedded input-field rows stayed cramped despite
                     // MenuItem.margin — dump the row component types + heights to find how to space them.
                     if (!MENU_DIAG_DONE && pm.getComponentCount() >= 6) {
@@ -1842,7 +1859,8 @@ public class DialogConfirmAgent {
                         javax.swing.AbstractButton ab = (javax.swing.AbstractButton) ch;
                         // S6: don't reset the bg to BTN_CFG_BG while the button is hovered/pressed —
                         // installBtnHoverBg has flipped it to the accent and the tick would fight it.
-                        boolean hot = ab.getModel().isRollover() || ab.getModel().isPressed();
+                        boolean hot = ab.getModel().isRollover() || ab.getModel().isPressed()
+                                || Boolean.TRUE.equals(ab.getClientProperty("jdp.hovered"));
                         if (!hot && !BTN_CFG_BG.equals(ab.getBackground())) ab.setBackground(BTN_CFG_BG);
                         installBtnHoverFg(ab);
                         installBtnHoverBg(ab);
@@ -1870,6 +1888,8 @@ public class DialogConfirmAgent {
     private static void installBtnHoverFg(final javax.swing.AbstractButton b) {
         if (b.getClientProperty("jdp.hoverFg") != null) return;
         b.putClientProperty("jdp.hoverFg", Boolean.TRUE);
+        b.setRolloverEnabled(true);   // JButton defaults rolloverEnabled=false, so JD's SettingsButton
+                                      // never reported model rollover — the hover FG flip never fired.
         b.getModel().addChangeListener(new javax.swing.event.ChangeListener() {
             private boolean applied = false;
             public void stateChanged(javax.swing.event.ChangeEvent e) {
@@ -1894,6 +1914,34 @@ public class DialogConfirmAgent {
     private static void installBtnHoverBg(final javax.swing.AbstractButton b) {
         if (b.getClientProperty("jdp.hoverBg") != null) return;
         b.putClientProperty("jdp.hoverBg", Boolean.TRUE);
+        b.setRolloverEnabled(true);   // see installBtnHoverFg: without this the model rollover never
+                                      // fires on JD's SettingsButton, so neither this listener nor
+                                      // FlatLaf's Button.hoverBackground=accent ever paints (the
+                                      // "Sprachwaehler faerbt nicht" bug).
+        // event-driven fallback: if the model rollover STILL does not fire (custom UI), a direct mouse
+        // listener flips the accent immediately + repaints (same pattern that fixed the main-tab hover).
+        b.addMouseListener(new java.awt.event.MouseAdapter() {
+            public void mouseEntered(java.awt.event.MouseEvent e) {
+                if (!b.isEnabled()) return;
+                Color acc = accentColor();
+                if (acc == null) return;
+                b.putClientProperty("jdp.hovered", Boolean.TRUE);
+                b.setBackground(acc);
+                if (b instanceof JComponent) ((JComponent) b).setOpaque(true);
+                b.setContentAreaFilled(true);
+                Object fg = b.getClientProperty("jdp.savedFg");
+                if (!(fg instanceof Color)) b.putClientProperty("jdp.savedFg", b.getForeground());
+                b.setForeground(accentFg());
+                b.repaint();
+            }
+            public void mouseExited(java.awt.event.MouseEvent e) {
+                b.putClientProperty("jdp.hovered", null);
+                b.setBackground(BTN_CFG_BG);
+                Object s = b.getClientProperty("jdp.savedFg");
+                if (s instanceof Color) b.setForeground((Color) s);
+                b.repaint();
+            }
+        });
         b.getModel().addChangeListener(new javax.swing.event.ChangeListener() {
             private boolean applied = false;
             public void stateChanged(javax.swing.event.ChangeEvent e) {
@@ -1907,7 +1955,8 @@ public class DialogConfirmAgent {
                     }
                     applied = true;
                 } else if (!roll && applied) {
-                    b.setBackground(BTN_CFG_BG);
+                    // don't yank the accent away if the event-driven mouse listener still holds it
+                    if (!Boolean.TRUE.equals(b.getClientProperty("jdp.hovered"))) b.setBackground(BTN_CFG_BG);
                     applied = false;
                 }
             }
@@ -3231,6 +3280,29 @@ public class DialogConfirmAgent {
     private static boolean MENU_DIAG_DONE = false;                 // D2 menu-popup dump (one-time)
     private static int CFG_DIAG_N = 0;                             // F config-control dump (capped)
     private static final java.util.Set<String> CFG_SEEN = new java.util.HashSet<>();
+    // B: JD's MainToolBar groups buttons with JSeparators that carry ~16px gaps on each side, while the
+    // buttons within a group sit at a tight 6px pitch — so the spacing reads as uneven ("unterschiedliche
+    // abstände"). Hide the separators so the toolbar re-flows to one uniform button pitch (the Carbon-
+    // minimalist look wants no separators anyway). Guarded: only revalidate when something actually changed.
+    private static void normalizeToolbarGaps() {
+        try {
+            for (Window w : Window.getWindows()) {
+                if (!w.isShowing()) continue;
+                Container tb = findMainToolbar(w);
+                if (tb == null) continue;
+                boolean changed = false;
+                for (Component ch : tb.getComponents()) {
+                    if (ch instanceof javax.swing.JSeparator && ch.isVisible()) {
+                        ch.setVisible(false);
+                        changed = true;
+                    }
+                }
+                if (changed) { tb.revalidate(); tb.repaint(); }
+                return;
+            }
+        } catch (Throwable ignore) { }
+    }
+
     private static void logToolbarIcons() {
         if (TOOLBAR_DIAG_DONE) return;
         try {
