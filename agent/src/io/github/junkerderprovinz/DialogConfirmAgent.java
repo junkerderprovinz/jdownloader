@@ -1581,6 +1581,18 @@ public class DialogConfirmAgent {
         return tintIcon(orig, tint, c);
     }
 
+    /** Like tablerIcon, but resolves the Tabler glyph at `factor`x the icon's size — rendered directly
+     *  at the larger size, so it stays SHARP (used for the enlarged sidebar tiles). Falls back to a
+     *  bilinear upscale only when the icon carries no Tabler key (no larger source to render from). */
+    private static javax.swing.Icon tablerIconScaled(javax.swing.Icon orig, Color tint, Component c, double factor) {
+        try {
+            int w = (int) Math.round(orig.getIconWidth() * factor), h = (int) Math.round(orig.getIconHeight() * factor);
+            javax.swing.Icon base = tablerBase(iconKey(orig), w, h);
+            if (base != null) return tintIcon(base, tint, c);      // sharp: PNG rendered at the target size
+        } catch (Throwable ignore) { }
+        return scaleIcon(tablerIcon(orig, tint, c), factor);       // keyless: upscale (soft, unavoidable)
+    }
+
     /**
      * Mono the visible chrome icons that the sidebar wrapper does not cover — the toolbar buttons.
      * JD caches its icons, so (like the sidebar) the only thing that renders mono is replacing the
@@ -1641,6 +1653,12 @@ public class DialogConfirmAgent {
         try {
             javax.swing.Icon cur = b.getIcon();
             if (cur == null) return;
+            // r64: a DISABLED button paints getDisabledIcon(), and JD re-derives a raw-glyph blob for it
+            // on every enabled-state change. getIcon() stays our clean mono, so the early-return below
+            // skips the (re)mono — leaving JD's blob on disabled buttons (the idle Reconnect button).
+            // Re-assert our stored clean disabled icon on EVERY tick so JD's override never survives.
+            Object md = b.getClientProperty("jdp.monoDisabled");
+            if (md instanceof javax.swing.Icon && b.getDisabledIcon() != md) b.setDisabledIcon((javax.swing.Icon) md);
             if (cur == b.getClientProperty("jdp.monoBtn")) return;   // already our mono icon
             javax.swing.Icon mono = tablerForButton(b, cur, SIDEBAR_TEXT);
             if (mono == cur) {
@@ -1664,11 +1682,13 @@ public class DialogConfirmAgent {
             if (rsi != null && rsi != mono) b.setRolloverSelectedIcon(tablerForButton(b, rsi, accentFg()));
             javax.swing.Icon pi = b.getPressedIcon();
             if (pi != null && pi != mono) b.setPressedIcon(tablerForButton(b, pi, accentFg()));
-            // S1(r63): a DISABLED button paints its disabledIcon, not getIcon() — and JD's is derived
-            // from the RAW glyph, so setIcon(mono) above never reaches it (the manual Reconnect button
-            // is disabled when idle and stayed a grey crumpled blob). Set a clean mono silhouette in the
-            // theme's disabled tone so a disabled toolbar button reads as a dim, on-brand glyph.
-            b.setDisabledIcon(tintSolid(mono, DISABLED_TONE));
+            // S1(r63/r64): a DISABLED button paints its disabledIcon, not getIcon() — and JD keeps
+            // re-deriving one from the RAW glyph (the idle Reconnect button stayed a grey crumpled blob).
+            // Set a clean mono silhouette in the theme's disabled tone AND stash it, so the per-tick
+            // re-assert at the top of this method undoes JD's override even after the early-return.
+            javax.swing.Icon dim = tintSolid(mono, DISABLED_TONE);
+            b.setDisabledIcon(dim);
+            b.putClientProperty("jdp.monoDisabled", dim);
             b.setContentAreaFilled(true);   // so FlatLaf's ToggleButton.hoverBackground actually paints
             installBtnIconListener(b);       // S1(r60): re-mono instantly when JD swaps the icon (animated updater)
         } catch (Throwable ignore) { }
@@ -2294,14 +2314,13 @@ public class DialogConfirmAgent {
                                 javax.swing.JLabel kl = (javax.swing.JLabel) k;
                                 javax.swing.Icon ic = kl.getIcon();
                                 if (ic != null) {
-                                    if (ICON_SEEN.size() <= 400) {   // round-30 name detection for the sidebar cells
-                                        String sid = "SIDEBAR[" + (kl.getText() == null ? "" : kl.getText()) + "] " + iconId(ic);
-                                        if (ICON_SEEN.add(sid)) writeDiag(sid);
-                                    }
-                                    // S3: mono-tint, then scale the glyph up (~1.4x) so the collapsed
-                                    // tile shows a noticeably bigger icon. scaleIcon caches on the
-                                    // (cached) tinted icon, so this is not a per-paint re-render.
-                                    kl.setIcon(scaleIcon(tablerIcon(ic, hovAcc ? accentFg() : SIDEBAR_TEXT, kl), SIDEBAR_ICON_SCALE));
+                                    // S3: mono-tint + enlarge the glyph (~1.4x). Resolve the Tabler PNG at
+                                    // the ENLARGED target size (tablerIconScaled) instead of bilinear-
+                                    // upscaling a small icon, so the bigger sidebar glyph stays SHARP (the
+                                    // earlier upscale looked soft/blurry). tablerBase caches by (key,size),
+                                    // so this is not a per-paint re-render — fixes the blur AND the hover
+                                    // lag (the old per-render iconId() reflection diag is gone too).
+                                    kl.setIcon(tablerIconScaled(ic, hovAcc ? accentFg() : SIDEBAR_TEXT, kl, SIDEBAR_ICON_SCALE));
                                 }
                                 // (7a/7b) Icon-only sidebar: hide the tile NAME unless this row is
                                 // hovered, so the sidebar reads as a strip of CENTRED glyphs that reveal
@@ -2434,14 +2453,34 @@ public class DialogConfirmAgent {
     }
 
     private static final String TAB_HOVER_IDX = "jdp.tabHoverIdx";
+
+    /** FlatLaf/Basic TabbedPaneUI tracks the hovered (rollover) tab even when the tab uses a custom
+     *  component that consumes mouse events — it is what paints the hover background. Read it via
+     *  reflection so applyTabForegrounds can flip the HOVERED tab's text/icon dark, not just the
+     *  selected one (BasicTabbedPaneUI.getRolloverTab has existed since Java 1.5). */
+    private static int rolloverTabOf(javax.swing.JTabbedPane tp) {
+        try {
+            java.lang.reflect.Method m = javax.swing.plaf.basic.BasicTabbedPaneUI.class.getDeclaredMethod("getRolloverTab");
+            m.setAccessible(true);
+            Object r = m.invoke(tp.getUI());
+            if (r instanceof Integer) return ((Integer) r).intValue();
+        } catch (Throwable ignore) { }
+        return -1;
+    }
+
     private static void recolorTabsIn(Container c, Color selFg, Color norFg) {
         for (Component child : c.getComponents()) {
             if (child instanceof javax.swing.JTabbedPane) {
                 javax.swing.JTabbedPane tp = (javax.swing.JTabbedPane) child;
-                // Respect the CURRENT hover (tracked by the listener) so the 400ms tick does not
-                // reset the hovered tab back to light (that fight left the hover text unreadable).
+                // r64: the main tabs use custom TabHeader components that CONSUME mouse events, so the
+                // JTabbedPane's own mouseMoved never fires over a tab and TAB_HOVER_IDX stayed -1 -> the
+                // hovered tab's text/icon never flipped dark (light-on-yellow). Read FlatLaf's OWN
+                // rollover-tab (it tracks the hover correctly for custom-component tabs, that is what
+                // paints the yellow bg); fall back to the listener's index for the strip gaps.
+                int rov = rolloverTabOf(tp);
                 Object hv = tp.getClientProperty(TAB_HOVER_IDX);
-                applyTabForegrounds(tp, selFg, norFg, (hv instanceof Integer) ? (Integer) hv : -1);
+                int hover = (rov >= 0) ? rov : ((hv instanceof Integer) ? (Integer) hv : -1);
+                applyTabForegrounds(tp, selFg, norFg, hover);
                 installTabHoverListener(tp, selFg, norFg);
                 tabDiag(tp);
             }
