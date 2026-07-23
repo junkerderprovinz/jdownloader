@@ -2564,7 +2564,7 @@ public class DialogConfirmAgent {
                 if (o != null) { javax.swing.Icon nw = tablerIcon(o, iconTone, tp); if (nw != tp.getIconAt(i)) tp.setIconAt(i, nw); }
             }
             Component tc = tp.getTabComponentAt(i);   // custom tab component (JLabel etc.)
-            if (tc != null) { setLabelFg(tc, want); tablerTabIcons(tc, iconTone); }
+            if (tc != null) { setLabelFg(tc, want); tablerTabIcons(tc, iconTone); installTabCompHover(tp, tc, selFg, norFg); }
         }
     }
 
@@ -2699,6 +2699,35 @@ public class DialogConfirmAgent {
         public void paintIcon(Component c, Graphics g, int x, int y) { pick(c).paintIcon(c, g, x, y); }
         public int getIconWidth() { return light.getIconWidth(); }
         public int getIconHeight() { return light.getIconHeight(); }
+    }
+
+    private static int indexOfTabComp(javax.swing.JTabbedPane tp, Component tc) {
+        for (int k = 0; k < tp.getTabCount(); k++) if (tp.getTabComponentAt(k) == tc) return k;
+        return -1;
+    }
+
+    /** r66: the main tabs use custom TabHeader components that CONSUME mouse events, so the JTabbedPane's
+     *  own mouseMoved never fires over a tab — the hover flip only caught up on the ~400ms tick (the laggy
+     *  "träge" hover in the user's video). Put a listener on each TabHeader itself so the hovered tab flips
+     *  to the accent INSTANTLY on enter and clears on real exit (an exit INTO a child still counts as
+     *  hovering, so ignore it). Guarded so it installs once per tab. */
+    private static void installTabCompHover(final javax.swing.JTabbedPane tp, final Component tc,
+                                            final Color selFg, final Color norFg) {
+        if (!(tc instanceof JComponent)) return;
+        final JComponent jc = (JComponent) tc;
+        if (jc.getClientProperty("jdp.tabCompHover") != null) return;
+        jc.putClientProperty("jdp.tabCompHover", Boolean.TRUE);
+        jc.addMouseListener(new MouseAdapter() {
+            @Override public void mouseEntered(MouseEvent e) {
+                int idx = indexOfTabComp(tp, tc);
+                if (idx >= 0) { tp.putClientProperty(TAB_HOVER_IDX, Integer.valueOf(idx)); applyTabForegrounds(tp, selFg, norFg, idx); }
+            }
+            @Override public void mouseExited(MouseEvent e) {
+                if (jc.contains(e.getPoint())) return;   // moved into a child -> still hovering, ignore
+                tp.putClientProperty(TAB_HOVER_IDX, Integer.valueOf(-1));
+                applyTabForegrounds(tp, selFg, norFg, rolloverTabOf(tp));
+            }
+        });
     }
 
     private static final String TAB_HOVER_WIRED = "jdp.tabHoverWired";
