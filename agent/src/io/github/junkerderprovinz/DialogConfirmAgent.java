@@ -948,6 +948,18 @@ public class DialogConfirmAgent {
                     styleMenuFieldsIn(pm, true);                       // raise the embedded fields
                     for (Component ch : pm.getComponents())            // mono the item icons
                         if (ch instanceof javax.swing.JMenuItem) monoMenuItemIcon((javax.swing.JMenuItem) ch);
+                    // D2 diag: the Settings menu's embedded input-field rows stayed cramped despite
+                    // MenuItem.margin — dump the row component types + heights to find how to space them.
+                    if (!MENU_DIAG_DONE && pm.getComponentCount() >= 6) {
+                        MENU_DIAG_DONE = true;
+                        writeDiag("=== MENU POPUP (D2) === " + pm.getComponentCount() + " rows");
+                        for (Component ch : pm.getComponents()) {
+                            javax.swing.border.Border bd = (ch instanceof JComponent) ? ((JComponent) ch).getBorder() : null;
+                            writeDiag("  ROW " + ch.getClass().getName() + " h=" + ch.getPreferredSize().height
+                                + (ch instanceof javax.swing.JMenuItem ? " text='" + ((javax.swing.JMenuItem) ch).getText() + "'" : "")
+                                + " border=" + (bd == null ? "-" : bd.getClass().getSimpleName()));
+                        }
+                    }
                 } catch (Throwable ignore) { }
             }
             public void popupMenuWillBecomeInvisible(javax.swing.event.PopupMenuEvent e) { }
@@ -1796,6 +1808,16 @@ public class DialogConfirmAgent {
         for (Component ch : c.getComponents()) {
             if (cfg) {
                 try {
+                    // F diag: which config controls exist + is the accent hover installed? The language
+                    // selector never lights up on hover — find its type (AbstractButton vs JComboBox).
+                    if (CFG_DIAG_N < 60 && (ch instanceof javax.swing.AbstractButton || ch instanceof javax.swing.JComboBox)) {
+                        String txt = (ch instanceof javax.swing.AbstractButton) ? ("'" + ((javax.swing.AbstractButton) ch).getText() + "'") : "(combo)";
+                        if (CFG_SEEN.add(ch.getClass().getName() + "|" + txt)) {
+                            CFG_DIAG_N++;
+                            writeDiag("CFG-CTRL " + ch.getClass().getName() + " text=" + txt
+                                + " hoverBg=" + (ch instanceof JComponent && ((JComponent) ch).getClientProperty("jdp.hoverBg") != null));
+                        }
+                    }
                     if (ch instanceof javax.swing.text.JTextComponent
                             && !((javax.swing.text.JTextComponent) ch).isEditable()) {
                         // S5a: a NON-editable text component is a DESCRIPTION/info box, not an input
@@ -3206,6 +3228,9 @@ public class DialogConfirmAgent {
     // iconKey, and the ACTION_ICON key its Action simple-name maps to — so we can see which two actions
     // collided on the same glyph. One-time (guarded); retried each 5s until the toolbar is found.
     private static boolean TOOLBAR_DIAG_DONE = false;
+    private static boolean MENU_DIAG_DONE = false;                 // D2 menu-popup dump (one-time)
+    private static int CFG_DIAG_N = 0;                             // F config-control dump (capped)
+    private static final java.util.Set<String> CFG_SEEN = new java.util.HashSet<>();
     private static void logToolbarIcons() {
         if (TOOLBAR_DIAG_DONE) return;
         try {
@@ -3216,6 +3241,12 @@ public class DialogConfirmAgent {
                 TOOLBAR_DIAG_DONE = true;
                 writeDiag("=== TOOLBAR ICONS (S1 duplicate-icon diag) === " + tb.getClass().getName());
                 logToolbarButtons(tb);
+                // B diag: dump the toolbar's DIRECT children (buttons + separators + glue/struts) with
+                // x/width so the uneven inter-group gaps ("unterschiedliche Abstände") can be normalised.
+                int bi = 0;
+                for (Component ch : tb.getComponents())
+                    writeDiag("  TB-LAY[" + (bi++) + "] " + ch.getClass().getSimpleName()
+                        + " x=" + ch.getX() + " w=" + ch.getWidth() + " vis=" + ch.isVisible());
                 return;
             }
         } catch (Throwable ignore) { }
