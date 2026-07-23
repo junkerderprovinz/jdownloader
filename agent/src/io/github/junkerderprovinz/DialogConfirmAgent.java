@@ -1581,16 +1581,28 @@ public class DialogConfirmAgent {
         return tintIcon(orig, tint, c);
     }
 
-    /** Like tablerIcon, but resolves the Tabler glyph at `factor`x the icon's size — rendered directly
-     *  at the larger size, so it stays SHARP (used for the enlarged sidebar tiles). Falls back to a
-     *  bilinear upscale only when the icon carries no Tabler key (no larger source to render from). */
+    // Cache the resolved sidebar icon per (source, tone) so the render wrapper is NOT a per-paint
+    // re-render — the uncached tint+scale on every paint was the "super träge" hover lag.
+    private static final java.util.Map<javax.swing.Icon, java.util.Map<Integer, javax.swing.Icon>> SB_ICON_CACHE = new java.util.WeakHashMap<>();
+    /** Sidebar tile icon: resolve the Tabler glyph at an EXACT PNG size (32 = the biggest available) so it
+     *  renders SHARP — requesting an in-between size (native*1.4 ≈ 45) forced a soft bilinear upscale of the
+     *  32px PNG (the "unscharf" blur, since there are no larger Tabler PNGs). A keyless icon has no Tabler
+     *  source, so it is tinted at its native size (still crisp). `factor` is kept for the call site. */
     private static javax.swing.Icon tablerIconScaled(javax.swing.Icon orig, Color tint, Component c, double factor) {
+        Integer tkey = Integer.valueOf(tint.getRGB());
+        synchronized (SB_ICON_CACHE) {
+            java.util.Map<Integer, javax.swing.Icon> m = SB_ICON_CACHE.get(orig);
+            if (m != null) { javax.swing.Icon hit = m.get(tkey); if (hit != null) return hit; }
+        }
+        javax.swing.Icon out;
         try {
-            int w = (int) Math.round(orig.getIconWidth() * factor), h = (int) Math.round(orig.getIconHeight() * factor);
-            javax.swing.Icon base = tablerBase(iconKey(orig), w, h);
-            if (base != null) return tintIcon(base, tint, c);      // sharp: PNG rendered at the target size
-        } catch (Throwable ignore) { }
-        return scaleIcon(tablerIcon(orig, tint, c), factor);       // keyless: upscale (soft, unavoidable)
+            javax.swing.Icon base = tablerBase(iconKey(orig), 32, 32);   // exact 32px PNG -> SHARP, no scaling
+            out = (base != null) ? tintIcon(base, tint, c) : tintIcon(orig, tint, c);
+        } catch (Throwable t) { out = tintIcon(orig, tint, c); }
+        synchronized (SB_ICON_CACHE) {
+            SB_ICON_CACHE.computeIfAbsent(orig, k -> new java.util.HashMap<>()).put(tkey, out);
+        }
+        return out;
     }
 
     /**
@@ -1689,6 +1701,13 @@ public class DialogConfirmAgent {
             javax.swing.Icon dim = tintSolid(mono, DISABLED_TONE);
             b.setDisabledIcon(dim);
             b.putClientProperty("jdp.monoDisabled", dim);
+            // r65: AppWork's ExtButton derives its DISABLED icon from the ACTION's own icon and ignores
+            // the button's disabledIcon (r63/r64 had no effect on the idle Reconnect button). Point the
+            // Action's SMALL_ICON at our clean mono too, so the derived disabled icon is clean as well.
+            // (Menus using the same action are mono'd by the theme anyway, so this stays consistent.)
+            javax.swing.Action ba = b.getAction();
+            if (ba != null && ba.getValue(javax.swing.Action.SMALL_ICON) != mono)
+                ba.putValue(javax.swing.Action.SMALL_ICON, mono);
             b.setContentAreaFilled(true);   // so FlatLaf's ToggleButton.hoverBackground actually paints
             installBtnIconListener(b);       // S1(r60): re-mono instantly when JD swaps the icon (animated updater)
         } catch (Throwable ignore) { }
@@ -2529,10 +2548,14 @@ public class DialogConfirmAgent {
     private static void applyTabForegrounds(javax.swing.JTabbedPane tp, Color selFg, Color norFg, int hover) {
         int sel = tp.getSelectedIndex();
         for (int i = 0; i < tp.getTabCount(); i++) {
-            boolean onAccent = (i == sel) || (hover >= 0 && i == hover);   // S2: selected OR hovered tab = accent fill -> dark text/icon
-            Color want = new Color((onAccent ? selFg : norFg).getRGB());  // plain Color: app-set, honoured
+            boolean isSel = (i == sel);
+            boolean isHover = (hover >= 0 && i == hover && !isSel);
+            // Selected tab = the yellow pill -> DARK text/icon. Hovered (non-selected) tab: JD's custom
+            // TabHeader components do NOT reliably paint the hover FILL, so dark text would be dark-on-dark
+            // (unreadable). Colour the hovered text/icon in the ACCENT itself so it reads on the dark strip.
+            Color want = new Color((isSel ? selFg : (isHover ? accentColor() : norFg)).getRGB());
             if (!want.equals(tp.getForegroundAt(i))) tp.setForegroundAt(i, want);
-            Color iconTone = onAccent ? accentFg() : SIDEBAR_TEXT;        // dark glyph on the accent tab, light otherwise
+            Color iconTone = isSel ? accentFg() : (isHover ? accentColor() : SIDEBAR_TEXT);
             javax.swing.Icon slot = tp.getIconAt(i);                      // JD may set the icon via setIconAt(...)
             if (slot != null) {
                 String pk = "jdp.tabIcOrig." + i;
@@ -2563,11 +2586,12 @@ public class DialogConfirmAgent {
         // Diagnostic proved the tab glyph is a RAW keyless ImageIcon (iconAt=ImageIcon/k=null) that
         // tablerIcon can't key-lookup + retint — so the selected-tab icon stayed light. Pixel-tint it
         // to a solid-tone silhouette instead (keep alpha, replace RGB) for the light + dark twins.
-        javax.swing.Icon light = tintSolid(cur, SIDEBAR_TEXT);
-        javax.swing.Icon dark  = tintSolid(cur, accentFg());
+        javax.swing.Icon light  = tintSolid(cur, SIDEBAR_TEXT);
+        javax.swing.Icon dark   = tintSolid(cur, accentFg());
+        javax.swing.Icon accent = tintSolid(cur, accentColor());            // hovered tab: accent glyph on the dark strip
         if (light == cur || light == null) return;                          // tint failed -> leave it
         l.putClientProperty("jdp.tabOrig", cur);
-        l.setIcon(new TabIcon(light, dark));
+        l.setIcon(new TabIcon(light, dark, accent));
         ensureTabIconListener(l);
     }
 
@@ -2663,10 +2687,14 @@ public class DialogConfirmAgent {
      *  override the foreground, so read it when painting and pick the dark or light glyph accordingly.
      *  Immune to JD's between-tick icon repaints — the tone is decided per paint, not per tick. */
     private static final class TabIcon implements javax.swing.Icon {
-        private final javax.swing.Icon light, dark;
-        TabIcon(javax.swing.Icon light, javax.swing.Icon dark) { this.light = light; this.dark = dark; }
+        private final javax.swing.Icon light, dark, accent;
+        TabIcon(javax.swing.Icon light, javax.swing.Icon dark, javax.swing.Icon accent) { this.light = light; this.dark = dark; this.accent = accent; }
         private javax.swing.Icon pick(Component c) {
-            return (c != null && accentFg().equals(c.getForeground())) ? dark : light;
+            if (c == null) return light;
+            Color fg = c.getForeground();
+            if (accentFg().equals(fg)) return dark;        // selected tab (dark glyph on the yellow pill)
+            if (accentColor().equals(fg)) return accent;   // hovered tab (accent glyph on the dark strip)
+            return light;
         }
         public void paintIcon(Component c, Graphics g, int x, int y) { pick(c).paintIcon(c, g, x, y); }
         public int getIconWidth() { return light.getIconWidth(); }
@@ -3187,7 +3215,9 @@ public class DialogConfirmAgent {
                         + " iconKey=" + iconKey(ic)
                         + " actionIconMap=" + (mapped == null ? "-" : mapped)
                         + " enabled=" + b.isEnabled()
-                        + " iconIsMono=" + (ic != null && ic == b.getClientProperty("jdp.monoBtn")));
+                        + " iconIsMono=" + (ic != null && ic == b.getClientProperty("jdp.monoBtn"))
+                        + " disIcon=" + (b.getDisabledIcon() == null ? "-" : b.getDisabledIcon().getClass().getSimpleName())
+                        + " disIsMono=" + (b.getDisabledIcon() != null && b.getDisabledIcon() == b.getClientProperty("jdp.monoDisabled")));
             }
             if (ch instanceof Container) logToolbarButtons((Container) ch);
         }

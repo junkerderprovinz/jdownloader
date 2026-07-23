@@ -126,7 +126,9 @@ TabbedPane.background         = #161616
 TabbedPane.tabArc             = 12
 TabbedPane.cardTabArc         = 12
 TabbedPane.tabInsets          = 6,26,6,26
-TabbedPane.tabAreaInsets      = 2,14,2,14
+# bottom inset = a bit of empty space BELOW the tab strip (where the removed content-separator line
+# used to sit) so the download table no longer butts right up against the tabs ("alles nach oben gerückt")
+TabbedPane.tabAreaInsets      = 2,14,12,14
 
 # --- toolbar + menu: accent background on hover / selection ---
 Button.toolbar.hoverBackground    = @@ACCENT@@
@@ -140,11 +142,12 @@ Menu.selectionBackground          = @@ACCENT@@
 Menu.selectionForeground          = @@ACCENT_FG@@
 MenuItem.selectionBackground      = @@ACCENT@@
 MenuItem.selectionForeground      = @@ACCENT_FG@@
-# roomier dropdown-menu rows (the menus were too cramped/"gedrungen")
-MenuItem.margin                    = 6,16,6,16
-Menu.margin                        = 6,16,6,16
-CheckBoxMenuItem.margin            = 6,16,6,16
-RadioButtonMenuItem.margin         = 6,16,6,16
+# roomier dropdown-menu rows (the menus were too cramped/"gedrungen"); taller vertical margin so
+# the rows — including the ones carrying input fields (Max. Chunks, Speed Limit) — are not cramped
+MenuItem.margin                    = 11,16,11,16
+Menu.margin                        = 11,16,11,16
+CheckBoxMenuItem.margin            = 11,16,11,16
+RadioButtonMenuItem.margin         = 11,16,11,16
 MenuItem.selectionInsets           = 1,2,1,2
 MenuItem.selectionArc              = 6
 # reserve a uniform icon column so item TEXT lines up whether or not a row has an icon,
