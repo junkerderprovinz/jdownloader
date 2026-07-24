@@ -266,6 +266,7 @@ public class DialogConfirmAgent {
             lafTick = 0;
             writeLafMarker();
             if (GEO_DEBUG) dumpGeometry();
+            if (isHighlighter()) diagCornersAndLists();   // TEMP r74 (P6/P10/P11)
         }
     }
 
@@ -2046,6 +2047,43 @@ public class DialogConfirmAgent {
      * row at once. Reached through a LIVE renderer instance found in the tree, so the
      * static field resolves in JD's own classloader regardless of the agent's.
      */
+    // ===== TEMP DIAG (r74) — P6 sidebar advanced size / P10 dialog+popup corners / P11 combobox selection =====
+    private static void writeDiag(String s) {
+        try { java.nio.file.Files.write(java.nio.file.Paths.get("/config/hl-diag.txt"),
+                ("[hl-diag] " + s + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND); } catch (Throwable ignore) { }
+    }
+    private static String hex2(Color c) { return c == null ? "null" : String.format("#%06x", c.getRGB() & 0xffffff); }
+    private static final java.util.Set<String> DIAG_SEEN = new java.util.HashSet<>();
+    private static void diagCornersAndLists() {
+        try {
+            for (Window w : Window.getWindows()) {
+                if (!w.isShowing()) continue;
+                if (DIAG_SEEN.add("win:" + w.getClass().getName())) {   // P10: dialog / popup-window corners
+                    javax.swing.JRootPane rp = (w instanceof javax.swing.RootPaneContainer) ? ((javax.swing.RootPaneContainer) w).getRootPane() : null;
+                    Container cp = (w instanceof javax.swing.RootPaneContainer) ? ((javax.swing.RootPaneContainer) w).getContentPane() : null;
+                    writeDiag("WIN " + w.getClass().getName()
+                        + " undec=" + (w instanceof Dialog ? ((Dialog) w).isUndecorated() : (w instanceof Frame ? ((Frame) w).isUndecorated() : "?"))
+                        + " rpBorder=" + (rp == null || rp.getBorder() == null ? "-" : rp.getBorder().getClass().getName())
+                        + " cpBorder=" + (cp instanceof JComponent && ((JComponent) cp).getBorder() != null ? ((JComponent) cp).getBorder().getClass().getName() : "-"));
+                }
+                diagLists(w);                                            // P11: combobox popup list selection colors
+            }
+        } catch (Throwable ignore) { }
+    }
+    private static void diagLists(Container c) {
+        for (Component ch : c.getComponents()) {
+            if (ch instanceof javax.swing.JList && DIAG_SEEN.add("list:" + ch.getClass().getName())) {
+                javax.swing.JList<?> l = (javax.swing.JList<?>) ch;
+                writeDiag("LIST " + ch.getClass().getName() + " selBg=" + hex2(l.getSelectionBackground())
+                    + " selFg=" + hex2(l.getSelectionForeground()) + " ui=" + l.getUI().getClass().getName()
+                    + " cellRend=" + (l.getCellRenderer() == null ? "-" : l.getCellRenderer().getClass().getName()));
+            }
+            if (ch instanceof Container) diagLists((Container) ch);
+        }
+    }
+    // ===== END TEMP DIAG =====
+
     private static void styleSidebar() {
         for (Window w : Window.getWindows()) {
             if (w.isShowing() && styleSidebarIn(w)) return;
@@ -2301,6 +2339,14 @@ public class DialogConfirmAgent {
                                     }
                                     if (sbIcon == null) sbIcon = tablerIconScaled(ic, sbTone, kl, SIDEBAR_ICON_SCALE);
                                     kl.setIcon(sbIcon);
+                                    if (sbOverride != null && DIAG_SEEN.add("sb:" + sbOverride)) {   // TEMP r74 (P6)
+                                        javax.swing.Icon tbDbg = tablerBase(sbOverride, 32, 32);
+                                        writeDiag("SB-OVR key=" + sbOverride
+                                            + " tablerBase=" + (tbDbg == null ? "null" : tbDbg.getIconWidth() + "x" + tbDbg.getIconHeight())
+                                            + " sbIcon=" + (sbIcon == null ? "null" : sbIcon.getIconWidth() + "x" + sbIcon.getIconHeight())
+                                            + " orig=" + ic.getIconWidth() + "x" + ic.getIconHeight()
+                                            + " afterSet=" + (kl.getIcon() == null ? "null" : kl.getIcon().getIconWidth() + "x" + kl.getIcon().getIconHeight()));
+                                    }
                                 }
                                 // (7a/7b) Icon-only sidebar: hide the tile NAME unless this row is
                                 // hovered, so the sidebar reads as a strip of CENTRED glyphs that reveal
