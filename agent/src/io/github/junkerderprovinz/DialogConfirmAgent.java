@@ -945,6 +945,8 @@ public class DialogConfirmAgent {
                     styleMenuFieldsIn(pm, true);                       // raise the embedded fields
                     for (Component ch : pm.getComponents())            // mono the item icons
                         if (ch instanceof javax.swing.JMenuItem) monoMenuItemIcon((javax.swing.JMenuItem) ch);
+                    for (Component ch : pm.getComponents())            // P3: mono the custom EditorLink rows too
+                        if (!(ch instanceof javax.swing.JMenuItem) && ch instanceof Container) monoRowLabels((Container) ch);
                     // D2 fix: the Settings-menu input rows (ChunksEditorLink, SpeedlimitEditorLink, ...) are
                     // custom components (NOT JMenuItems, so MenuItem.margin never reached them) and shipped
                     // at h=24 vs the h=40 menu items above. Add a vertical EmptyBorder so every row breathes
@@ -1560,6 +1562,25 @@ public class DialogConfirmAgent {
         return tintIcon(orig, tint, c);
     }
 
+    // P6: paint any Icon into a size×size ARGB image so undersized JD glyphs (e.g. the 20x20 Advanced
+    // Settings sidebar icon) can be brought up to the uniform sidebar size.
+    private static javax.swing.Icon scaleIconTo(javax.swing.Icon ic, int size) {
+        try {
+            int iw = Math.max(1, ic.getIconWidth()), ih = Math.max(1, ic.getIconHeight());
+            java.awt.image.BufferedImage src = new java.awt.image.BufferedImage(iw, ih, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+            java.awt.Graphics2D sg = src.createGraphics();
+            ic.paintIcon(null, sg, 0, 0);
+            sg.dispose();
+            java.awt.image.BufferedImage dst = new java.awt.image.BufferedImage(size, size, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+            java.awt.Graphics2D g = dst.createGraphics();
+            g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g.setRenderingHint(java.awt.RenderingHints.KEY_RENDERING, java.awt.RenderingHints.VALUE_RENDER_QUALITY);
+            g.drawImage(src, 0, 0, size, size, null);
+            g.dispose();
+            return new javax.swing.ImageIcon(dst);
+        } catch (Throwable t) { return ic; }
+    }
+
     // Cache the resolved sidebar icon per (source, tone) so the render wrapper is NOT a per-paint
     // re-render — the uncached tint+scale on every paint was the "super träge" hover lag.
     private static final java.util.Map<javax.swing.Icon, java.util.Map<Integer, javax.swing.Icon>> SB_ICON_CACHE = new java.util.WeakHashMap<>();
@@ -1576,7 +1597,11 @@ public class DialogConfirmAgent {
         javax.swing.Icon out;
         try {
             javax.swing.Icon base = tablerBase(iconKey(orig), 32, 32);   // exact 32px PNG -> SHARP, no scaling
-            out = (base != null) ? tintIcon(base, tint, c) : tintIcon(orig, tint, c);
+            if (base == null) base = orig;
+            // P6: some JD sidebar icons ship undersized (Advanced Settings came in at 20x20) — force the
+            // uniform 32px sidebar size so every tile glyph reads the same, not shrunk in its tile.
+            if (base.getIconWidth() != 32 || base.getIconHeight() != 32) base = scaleIconTo(base, 32);
+            out = tintIcon(base, tint, c);
         } catch (Throwable t) { out = tintIcon(orig, tint, c); }
         synchronized (SB_ICON_CACHE) {
             SB_ICON_CACHE.computeIfAbsent(orig, k -> new java.util.HashMap<>()).put(tkey, out);
@@ -1639,10 +1664,34 @@ public class DialogConfirmAgent {
         ACTION_ICON.put("AddContainerAction",            "addContainer");
     }
 
+    // P7 root cause: AppWork's ExtButton has its OWN private `disabledIcon` field that it lazily derives
+    // from getIcon() ONCE (at first paint = the raw glyph) and caches forever; it also IGNORES
+    // setDisabledIcon(). Once getIcon() is our mono, null that cache reflectively so getDisabledIcon()
+    // re-derives a CLEAN dim silhouette from the mono icon. Returns true if the field was nulled.
+    private static boolean invalidateExtDisabledIcon(javax.swing.AbstractButton b) {
+        try {
+            Class<?> c = b.getClass();
+            while (c != null && !"org.appwork.swing.components.ExtButton".equals(c.getName())) c = c.getSuperclass();
+            if (c == null) return false;
+            java.lang.reflect.Field f = c.getDeclaredField("disabledIcon");
+            f.setAccessible(true);
+            f.set(b, null);
+            return true;
+        } catch (Throwable ignore) { return false; }
+    }
+
     private static void monoButtonIcon(javax.swing.AbstractButton b) {
         try {
             javax.swing.Icon cur = b.getIcon();
             if (cur == null) return;
+            // P7: once per mono-icon change, invalidate ExtButton's cached (raw-derived) disabled icon so
+            // it re-derives cleanly from our mono getIcon(). Guarded via jdp.disInval so it runs ONCE per
+            // mono icon (not every tick) — and BEFORE the early-return below, which the r65 SMALL_ICON
+            // re-assert sat after (so that only ran once and JD's later resets brought the blob back).
+            Object mb0 = b.getClientProperty("jdp.monoBtn");
+            if (mb0 instanceof javax.swing.Icon && b.getClientProperty("jdp.disInval") != mb0
+                    && invalidateExtDisabledIcon(b))
+                b.putClientProperty("jdp.disInval", mb0);
             // r64: a DISABLED button paints getDisabledIcon(), and JD re-derives a raw-glyph blob for it
             // on every enabled-state change. getIcon() stays our clean mono, so the early-return below
             // skips the (re)mono — leaving JD's blob on disabled buttons (the idle Reconnect button).
@@ -1982,8 +2031,26 @@ public class DialogConfirmAgent {
                 return;
             }
             javax.swing.Icon mono = tablerIcon(cur, SIDEBAR_TEXT, l);
-            if (mono != cur) { l.setIcon(mono); l.putClientProperty("jdp.monoLbl", mono); }
+            if (mono != cur) { l.setIcon(mono); l.putClientProperty("jdp.monoLbl", mono); return; }
+            // P3: a cfg icon that carries a KEY but has NO Tabler PNG (e.g. the menu Speed-Limit row's
+            // "speed" glyph) can't be swapped — tint the original to a mono silhouette so it stops
+            // reading as an old colored logo, matching every other menu-row icon.
+            if (cfg) {
+                javax.swing.Icon solid = tintSolid(cur, SIDEBAR_TEXT);
+                if (solid != cur) { l.setIcon(solid); l.putClientProperty("jdp.monoLbl", solid); }
+            }
         } catch (Throwable ignore) { }
+    }
+
+    // P3: mono the label icons inside a custom menu row (ChunksEditorLink/SpeedlimitEditorLink/...),
+    // which are NOT JMenuItems so monoMenuItemIcon never reached them. cfg=true so a keyed-but-PNG-less
+    // glyph (speed) still gets tinted to mono.
+    private static void monoRowLabels(Container c) {
+        for (Component ch : c.getComponents()) {
+            if (ch instanceof javax.swing.JLabel && ((javax.swing.JLabel) ch).getIcon() != null)
+                monoLabelIcon((javax.swing.JLabel) ch, true);
+            if (ch instanceof Container) monoRowLabels((Container) ch);
+        }
     }
 
     // ===== TEMP ICON DIAG (r71) — remove after P3/P6/P7 are fixed =====
@@ -2287,7 +2354,19 @@ public class DialogConfirmAgent {
                                     // upscaling a small icon, so the bigger sidebar glyph stays SHARP (the
                                     // earlier upscale looked soft/blurry). tablerBase caches by (key,size),
                                     // so this is not a per-paint re-render — fixes the blur AND the hover lag.
-                                    kl.setIcon(tablerIconScaled(ic, hovAcc ? accentFg() : SIDEBAR_TEXT, kl, SIDEBAR_ICON_SCALE));
+                                    Color sbTone = hovAcc ? accentFg() : SIDEBAR_TEXT;
+                                    String sbTxt = kl.getText();
+                                    javax.swing.Icon sbIcon;
+                                    if (sbTxt != null && sbTxt.toLowerCase().contains("tray")) {
+                                        // P6: JD keys the Tray item as "minimize" (a bare dash) — swap to a
+                                        // proper tray glyph (a window with a bottom bar = the system tray).
+                                        javax.swing.Icon tb = tablerBase("bottombar", 32, 32);
+                                        sbIcon = (tb != null) ? tintIcon(tb, sbTone, kl)
+                                                              : tablerIconScaled(ic, sbTone, kl, SIDEBAR_ICON_SCALE);
+                                    } else {
+                                        sbIcon = tablerIconScaled(ic, sbTone, kl, SIDEBAR_ICON_SCALE);
+                                    }
+                                    kl.setIcon(sbIcon);
                                 }
                                 // (7a/7b) Icon-only sidebar: hide the tile NAME unless this row is
                                 // hovered, so the sidebar reads as a strip of CENTRED glyphs that reveal
