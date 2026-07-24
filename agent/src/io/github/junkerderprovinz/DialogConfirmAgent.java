@@ -266,7 +266,6 @@ public class DialogConfirmAgent {
             lafTick = 0;
             writeLafMarker();
             if (GEO_DEBUG) dumpGeometry();
-            if (isHighlighter()) diagToolbarIcons();   // TEMP r71 diag (P7)
         }
     }
 
@@ -957,24 +956,10 @@ public class DialogConfirmAgent {
                             JComponent jc = (JComponent) ch;
                             if (jc.getClientProperty("jdp.menuRowPad") == null) {
                                 jc.putClientProperty("jdp.menuRowPad", Boolean.TRUE);
-                                javax.swing.border.Border pad = new javax.swing.border.EmptyBorder(8, 0, 8, 0);
+                                javax.swing.border.Border pad = new javax.swing.border.EmptyBorder(3, 0, 3, 0);
                                 javax.swing.border.Border old = jc.getBorder();
                                 jc.setBorder(old == null ? pad : new javax.swing.border.CompoundBorder(pad, old));
                             }
-                        }
-                    }
-                    // TEMP r71 diag (P3): dump each menu row's icon key (the Speed Limit row shows an old
-                    // colored icon while the others are mono — find its icon class/key).
-                    if (MENU_ICONDIAG_N < 3 && pm.getComponentCount() >= 6) {
-                        MENU_ICONDIAG_N++;
-                        writeDiag("=== MENU ROW ICONS (P3) === " + pm.getComponentCount());
-                        for (Component ch : pm.getComponents()) {
-                            javax.swing.Icon ic = (ch instanceof javax.swing.JMenuItem)
-                                    ? ((javax.swing.JMenuItem) ch).getIcon()
-                                    : (ch instanceof Container ? firstLabelIcon((Container) ch) : null);
-                            writeDiag("  ROW " + ch.getClass().getSimpleName()
-                                + " icon=" + (ic == null ? "-" : ic.getClass().getSimpleName() + "/k=" + iconKey(ic)
-                                      + " wh=" + ic.getIconWidth() + "x" + ic.getIconHeight()));
                         }
                     }
                 } catch (Throwable ignore) { }
@@ -2053,55 +2038,6 @@ public class DialogConfirmAgent {
         }
     }
 
-    // ===== TEMP ICON DIAG (r71) — remove after P3/P6/P7 are fixed =====
-    private static void writeDiag(String s) {
-        try { java.nio.file.Files.write(java.nio.file.Paths.get("/config/hl-diag.txt"),
-                ("[hl-diag] " + s + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8),
-                java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND); } catch (Throwable ignore) { }
-    }
-    private static boolean TB_ICONDIAG = false;
-    private static int MENU_ICONDIAG_N = 0;
-    private static int SB_ICONDIAG_N = 0;
-    private static final java.util.Set<String> SB_ICONSEEN = new java.util.HashSet<>();
-    private static void diagToolbarIcons() {
-        if (TB_ICONDIAG) return;
-        try {
-            for (Window w : Window.getWindows()) {
-                if (!w.isShowing()) continue;
-                Container tb = findMainToolbar(w);
-                if (tb == null) continue;
-                TB_ICONDIAG = true;
-                writeDiag("=== TOOLBAR ICONS (P7 reconnect) ===");
-                for (Component ch : tb.getComponents()) {
-                    if (!(ch instanceof javax.swing.AbstractButton)) continue;
-                    javax.swing.AbstractButton b = (javax.swing.AbstractButton) ch;
-                    javax.swing.Action a = b.getAction();
-                    javax.swing.Icon ic = b.getIcon();
-                    javax.swing.Icon di = b.getDisabledIcon();
-                    Object sm = (a == null) ? null : a.getValue(javax.swing.Action.SMALL_ICON);
-                    writeDiag("  BTN act=" + (a == null ? "-" : a.getClass().getSimpleName())
-                        + " en=" + b.isEnabled()
-                        + " icon=" + (ic == null ? "-" : ic.getClass().getSimpleName() + "/k=" + iconKey(ic))
-                        + " iconMono=" + (ic != null && ic == b.getClientProperty("jdp.monoBtn"))
-                        + " dis=" + (di == null ? "-" : di.getClass().getSimpleName())
-                        + " disMono=" + (di != null && di == b.getClientProperty("jdp.monoDisabled"))
-                        + " small=" + (sm == null ? "-" : sm.getClass().getSimpleName()
-                              + "/mono=" + (sm == b.getClientProperty("jdp.monoBtn"))));
-                }
-                return;
-            }
-        } catch (Throwable ignore) { }
-    }
-    private static javax.swing.Icon firstLabelIcon(Container c) {
-        for (Component ch : c.getComponents()) {
-            if (ch instanceof javax.swing.JLabel && ((javax.swing.JLabel) ch).getIcon() != null)
-                return ((javax.swing.JLabel) ch).getIcon();
-            if (ch instanceof Container) { javax.swing.Icon r = firstLabelIcon((Container) ch); if (r != null) return r; }
-        }
-        return null;
-    }
-    // ===== END TEMP ICON DIAG =====
-
     /**
      * Raise the Settings sidebar's row height. JD gives every entry a fixed size from a
      * shared public-static Dimension on the list's cell renderer
@@ -2342,30 +2278,28 @@ public class DialogConfirmAgent {
                                 javax.swing.JLabel kl = (javax.swing.JLabel) k;
                                 javax.swing.Icon ic = kl.getIcon();
                                 if (ic != null) {
-                                    // TEMP r71 diag (P6): sidebar tile key + size (Tray shows a dash, Advanced
-                                    // renders too small) — captured BEFORE the text is blanked below.
-                                    if (SB_ICONDIAG_N < 40 && SB_ICONSEEN.add(iconKey(ic) + "|" + kl.getText())) {
-                                        SB_ICONDIAG_N++;
-                                        writeDiag("SB-ICON txt='" + kl.getText() + "' key=" + iconKey(ic)
-                                            + " wh=" + ic.getIconWidth() + "x" + ic.getIconHeight());
-                                    }
                                     // S3: mono-tint + enlarge the glyph (~1.4x). Resolve the Tabler PNG at
                                     // the ENLARGED target size (tablerIconScaled) instead of bilinear-
                                     // upscaling a small icon, so the bigger sidebar glyph stays SHARP (the
                                     // earlier upscale looked soft/blurry). tablerBase caches by (key,size),
                                     // so this is not a per-paint re-render — fixes the blur AND the hover lag.
                                     Color sbTone = hovAcc ? accentFg() : SIDEBAR_TEXT;
-                                    String sbTxt = kl.getText();
-                                    javax.swing.Icon sbIcon;
-                                    if (sbTxt != null && sbTxt.toLowerCase().contains("tray")) {
-                                        // P6: JD keys the Tray item as "minimize" (a bare dash) — swap to a
-                                        // proper tray glyph (a window with a bottom bar = the system tray).
-                                        javax.swing.Icon tb = tablerBase("bottombar", 32, 32);
-                                        sbIcon = (tb != null) ? tintIcon(tb, sbTone, kl)
-                                                              : tablerIconScaled(ic, sbTone, kl, SIDEBAR_ICON_SCALE);
-                                    } else {
-                                        sbIcon = tablerIconScaled(ic, sbTone, kl, SIDEBAR_ICON_SCALE);
+                                    String sbLc = (kl.getText() == null) ? "" : kl.getText().toLowerCase();
+                                    // P6: two sidebar tiles need a forced 32px Tabler glyph. Tray is keyed
+                                    // "minimize" (a bare dash) -> use "bottombar" (a window with a bottom bar);
+                                    // Advanced Settings ships its icon at 20x20 and tablerIconScaled left it
+                                    // shrunk -> force the full-size "advancedConfig" PNG here.
+                                    String sbOverride = sbLc.contains("tray") ? "bottombar"
+                                                      : sbLc.contains("advanced") ? "advancedConfig" : null;
+                                    javax.swing.Icon sbIcon = null;
+                                    if (sbOverride != null) {
+                                        javax.swing.Icon ov = tablerBase(sbOverride, 32, 32);
+                                        if (ov != null) {
+                                            if (ov.getIconWidth() != 32 || ov.getIconHeight() != 32) ov = scaleIconTo(ov, 32);
+                                            sbIcon = tintIcon(ov, sbTone, kl);
+                                        }
                                     }
+                                    if (sbIcon == null) sbIcon = tablerIconScaled(ic, sbTone, kl, SIDEBAR_ICON_SCALE);
                                     kl.setIcon(sbIcon);
                                 }
                                 // (7a/7b) Icon-only sidebar: hide the tile NAME unless this row is
@@ -3158,40 +3092,6 @@ public class DialogConfirmAgent {
         }
     }
 
-    // B: JD's MainToolBar groups buttons with JSeparators that reserve a ~30px slot (2px line + ~16px gap
-    // on each side), while the buttons within a group sit at a tight 6px pitch — so the spacing reads as
-    // uneven ("unterschiedliche abstände"). setVisible(false) only hides the LINE; the layout keeps the
-    // slot. REMOVE the separators so the row re-flows to one uniform button pitch (the Carbon-minimalist
-    // look wants no separators anyway). Guarded: only revalidate when something actually changed.
-    private static void normalizeToolbarGaps() {
-        try {
-            for (Window w : Window.getWindows()) {
-                if (!w.isShowing()) continue;
-                Container tb = findMainToolbar(w);
-                if (tb == null) continue;
-                java.util.List<Component> seps = new java.util.ArrayList<>();
-                for (Component ch : tb.getComponents())
-                    if (ch instanceof javax.swing.JSeparator) seps.add(ch);
-                if (!seps.isEmpty()) {
-                    for (Component s : seps) tb.remove(s);   // collected first: no concurrent-modification
-                    tb.revalidate();
-                    tb.repaint();
-                }
-                return;
-            }
-        } catch (Throwable ignore) { }
-    }
-
-    private static Container findMainToolbar(Container c) {
-        if (c instanceof JComponent && isMainToolbar(c.getClass())) return c;
-        for (Component ch : c.getComponents()) {
-            if (ch instanceof Container) {
-                Container r = findMainToolbar((Container) ch);
-                if (r != null) return r;
-            }
-        }
-        return null;
-    }
     /** Tightest non-popup container whose subtree holds all three Views item texts (depth-first so a
      *  child that also qualifies is returned before its ancestor). */
     private static Container findViewsHost(Container c) {
