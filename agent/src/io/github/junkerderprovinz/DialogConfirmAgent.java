@@ -252,7 +252,6 @@ public class DialogConfirmAgent {
             stripSectionUnderlines();
             recolorMainTabs();
             monoChromeIcons();
-            normalizeToolbarGaps();
             badgeViewsMenu();
             badgeViewsPanel();      // pt5: badge the docked LinkGrabber "Views" headers too
             styleMenuFields();
@@ -267,6 +266,7 @@ public class DialogConfirmAgent {
             lafTick = 0;
             writeLafMarker();
             if (GEO_DEBUG) dumpGeometry();
+            if (isHighlighter()) diagToolbarIcons();   // TEMP r71 diag (P7)
         }
     }
 
@@ -959,6 +959,20 @@ public class DialogConfirmAgent {
                                 javax.swing.border.Border old = jc.getBorder();
                                 jc.setBorder(old == null ? pad : new javax.swing.border.CompoundBorder(pad, old));
                             }
+                        }
+                    }
+                    // TEMP r71 diag (P3): dump each menu row's icon key (the Speed Limit row shows an old
+                    // colored icon while the others are mono — find its icon class/key).
+                    if (MENU_ICONDIAG_N < 3 && pm.getComponentCount() >= 6) {
+                        MENU_ICONDIAG_N++;
+                        writeDiag("=== MENU ROW ICONS (P3) === " + pm.getComponentCount());
+                        for (Component ch : pm.getComponents()) {
+                            javax.swing.Icon ic = (ch instanceof javax.swing.JMenuItem)
+                                    ? ((javax.swing.JMenuItem) ch).getIcon()
+                                    : (ch instanceof Container ? firstLabelIcon((Container) ch) : null);
+                            writeDiag("  ROW " + ch.getClass().getSimpleName()
+                                + " icon=" + (ic == null ? "-" : ic.getClass().getSimpleName() + "/k=" + iconKey(ic)
+                                      + " wh=" + ic.getIconWidth() + "x" + ic.getIconHeight()));
                         }
                     }
                 } catch (Throwable ignore) { }
@@ -1916,7 +1930,8 @@ public class DialogConfirmAgent {
         {"proxy", "proxy"}, {"password", "password"}, {"tray", "minimize"}, {"solver", "order"},
         // S7: previously-unmapped section headers (kept a colored/plain logo). Multi-word keys so they
         // don't shadow the shorter ones above (titleToKey matches by contains).
-        {"downloadlink address", "link"}, {"window management", "windowmanager"}, {"menus and toolbars", "menu"},
+        // no PNG exists for windowmanager → map "window management" to the closest glyph that ships a PNG
+        {"downloadlink address", "link"}, {"window management", "desktop"}, {"menus and toolbars", "menu"},
     };
     private static String titleToKey(String text) {
         if (text == null) return null;
@@ -1970,6 +1985,55 @@ public class DialogConfirmAgent {
             if (mono != cur) { l.setIcon(mono); l.putClientProperty("jdp.monoLbl", mono); }
         } catch (Throwable ignore) { }
     }
+
+    // ===== TEMP ICON DIAG (r71) — remove after P3/P6/P7 are fixed =====
+    private static void writeDiag(String s) {
+        try { java.nio.file.Files.write(java.nio.file.Paths.get("/config/hl-diag.txt"),
+                ("[hl-diag] " + s + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND); } catch (Throwable ignore) { }
+    }
+    private static boolean TB_ICONDIAG = false;
+    private static int MENU_ICONDIAG_N = 0;
+    private static int SB_ICONDIAG_N = 0;
+    private static final java.util.Set<String> SB_ICONSEEN = new java.util.HashSet<>();
+    private static void diagToolbarIcons() {
+        if (TB_ICONDIAG) return;
+        try {
+            for (Window w : Window.getWindows()) {
+                if (!w.isShowing()) continue;
+                Container tb = findMainToolbar(w);
+                if (tb == null) continue;
+                TB_ICONDIAG = true;
+                writeDiag("=== TOOLBAR ICONS (P7 reconnect) ===");
+                for (Component ch : tb.getComponents()) {
+                    if (!(ch instanceof javax.swing.AbstractButton)) continue;
+                    javax.swing.AbstractButton b = (javax.swing.AbstractButton) ch;
+                    javax.swing.Action a = b.getAction();
+                    javax.swing.Icon ic = b.getIcon();
+                    javax.swing.Icon di = b.getDisabledIcon();
+                    Object sm = (a == null) ? null : a.getValue(javax.swing.Action.SMALL_ICON);
+                    writeDiag("  BTN act=" + (a == null ? "-" : a.getClass().getSimpleName())
+                        + " en=" + b.isEnabled()
+                        + " icon=" + (ic == null ? "-" : ic.getClass().getSimpleName() + "/k=" + iconKey(ic))
+                        + " iconMono=" + (ic != null && ic == b.getClientProperty("jdp.monoBtn"))
+                        + " dis=" + (di == null ? "-" : di.getClass().getSimpleName())
+                        + " disMono=" + (di != null && di == b.getClientProperty("jdp.monoDisabled"))
+                        + " small=" + (sm == null ? "-" : sm.getClass().getSimpleName()
+                              + "/mono=" + (sm == b.getClientProperty("jdp.monoBtn"))));
+                }
+                return;
+            }
+        } catch (Throwable ignore) { }
+    }
+    private static javax.swing.Icon firstLabelIcon(Container c) {
+        for (Component ch : c.getComponents()) {
+            if (ch instanceof javax.swing.JLabel && ((javax.swing.JLabel) ch).getIcon() != null)
+                return ((javax.swing.JLabel) ch).getIcon();
+            if (ch instanceof Container) { javax.swing.Icon r = firstLabelIcon((Container) ch); if (r != null) return r; }
+        }
+        return null;
+    }
+    // ===== END TEMP ICON DIAG =====
 
     /**
      * Raise the Settings sidebar's row height. JD gives every entry a fixed size from a
@@ -2211,6 +2275,13 @@ public class DialogConfirmAgent {
                                 javax.swing.JLabel kl = (javax.swing.JLabel) k;
                                 javax.swing.Icon ic = kl.getIcon();
                                 if (ic != null) {
+                                    // TEMP r71 diag (P6): sidebar tile key + size (Tray shows a dash, Advanced
+                                    // renders too small) — captured BEFORE the text is blanked below.
+                                    if (SB_ICONDIAG_N < 40 && SB_ICONSEEN.add(iconKey(ic) + "|" + kl.getText())) {
+                                        SB_ICONDIAG_N++;
+                                        writeDiag("SB-ICON txt='" + kl.getText() + "' key=" + iconKey(ic)
+                                            + " wh=" + ic.getIconWidth() + "x" + ic.getIconHeight());
+                                    }
                                     // S3: mono-tint + enlarge the glyph (~1.4x). Resolve the Tabler PNG at
                                     // the ENLARGED target size (tablerIconScaled) instead of bilinear-
                                     // upscaling a small icon, so the bigger sidebar glyph stays SHARP (the
@@ -2845,6 +2916,15 @@ public class DialogConfirmAgent {
             try {
                 if (ch instanceof javax.swing.JPanel || ch instanceof javax.swing.JOptionPane
                         || ch instanceof javax.swing.Box || ch instanceof javax.swing.JScrollPane) {
+                    if (!DIALOG_BG.equals(ch.getBackground())) ch.setBackground(DIALOG_BG);
+                    stripFramingBorder((JComponent) ch);
+                } else if (ch instanceof javax.swing.text.JTextComponent
+                        && !((javax.swing.text.JTextComponent) ch).isEditable()) {
+                    // S5a for DIALOGS: a NON-editable text component is the message/description (e.g. the
+                    // "You really should know that..." warning body), NOT an input — it was getting FIELD_BG
+                    // + opaque and read as a dark box inside the dialog. Make it transparent so the dialog
+                    // surface shows through, matching the config-panel handling.
+                    if (((JComponent) ch).isOpaque()) ((JComponent) ch).setOpaque(false);
                     if (!DIALOG_BG.equals(ch.getBackground())) ch.setBackground(DIALOG_BG);
                     stripFramingBorder((JComponent) ch);
                 } else if (ch instanceof javax.swing.text.JTextComponent || ch instanceof javax.swing.JComboBox
