@@ -1804,6 +1804,24 @@ public class DialogConfirmAgent {
     private static void unifyConfigFields() {
         for (Window w : Window.getWindows()) if (w.isShowing()) unifyFieldsIn(w, false);
     }
+
+    // P11: JD gives some combobox popups a hard-coded BLUE selection (#4b6eaf), bypassing the theme's
+    // list-selection colour. Reach the popup's JList through the combobox UI's accessible child and pin
+    // its selection to the accent (matching menu selection, since a dropdown is a menu of options).
+    private static void styleComboPopup(javax.swing.JComboBox<?> cb) {
+        try {
+            javax.accessibility.Accessible a = cb.getUI().getAccessibleChild(cb, 0);
+            if (a instanceof javax.swing.plaf.basic.ComboPopup) {
+                javax.swing.JList<?> list = ((javax.swing.plaf.basic.ComboPopup) a).getList();
+                Color acc = accentColor();
+                if (list != null && acc != null && !acc.equals(list.getSelectionBackground())) {
+                    list.setSelectionBackground(acc);
+                    list.setSelectionForeground(accentFg());
+                }
+            }
+        } catch (Throwable ignore) { }
+    }
+
     private static void unifyFieldsIn(Container c, boolean inCfg) {
         boolean cfg = inCfg || (c instanceof JComponent && isConfigPanel(c.getClass()));
         for (Component ch : c.getComponents()) {
@@ -1829,6 +1847,7 @@ public class DialogConfirmAgent {
                         // else JD's AppWork inputs keep the rectangular rahmen that borderWidth=0
                         // (a FlatBorder-only default) can't reach.
                         stripFramingBorder((JComponent) ch);
+                        if (ch instanceof javax.swing.JComboBox) styleComboPopup((javax.swing.JComboBox<?>) ch);   // P11
                     } else if (ch instanceof javax.swing.AbstractButton && !isCheckLike(ch)) {
                         javax.swing.AbstractButton ab = (javax.swing.AbstractButton) ch;
                         // S6: don't reset the bg to BTN_CFG_BG while the button is hovered/pressed —
@@ -2064,6 +2083,9 @@ public class DialogConfirmAgent {
                     Container cp = (w instanceof javax.swing.RootPaneContainer) ? ((javax.swing.RootPaneContainer) w).getContentPane() : null;
                     writeDiag("WIN " + w.getClass().getName()
                         + " undec=" + (w instanceof Dialog ? ((Dialog) w).isUndecorated() : (w instanceof Frame ? ((Frame) w).isUndecorated() : "?"))
+                        + " shape=" + (w.getShape() == null ? "-" : w.getShape().getClass().getSimpleName())
+                        + " rpUI=" + (rp == null ? "-" : rp.getUI().getClass().getSimpleName())
+                        + " rpWinStyle=" + (rp == null ? "-" : rp.getClientProperty("JRootPane.titleBarBackground") + "/" + rp.getClientProperty("FlatLaf.internal.rootPaneStyle"))
                         + " rpBorder=" + (rp == null || rp.getBorder() == null ? "-" : rp.getBorder().getClass().getName())
                         + " cpBorder=" + (cp instanceof JComponent && ((JComponent) cp).getBorder() != null ? ((JComponent) cp).getBorder().getClass().getName() : "-"));
                 }
@@ -2323,12 +2345,15 @@ public class DialogConfirmAgent {
                                     // so this is not a per-paint re-render — fixes the blur AND the hover lag.
                                     Color sbTone = hovAcc ? accentFg() : SIDEBAR_TEXT;
                                     String sbLc = (kl.getText() == null) ? "" : kl.getText().toLowerCase();
-                                    // P6: two sidebar tiles need a forced 32px Tabler glyph. Tray is keyed
-                                    // "minimize" (a bare dash) -> use "bottombar" (a window with a bottom bar);
-                                    // Advanced Settings ships its icon at 20x20 and tablerIconScaled left it
-                                    // shrunk -> force the full-size "advancedConfig" PNG here.
-                                    String sbOverride = sbLc.contains("tray") ? "bottombar"
-                                                      : sbLc.contains("advanced") ? "advancedConfig" : null;
+                                    String origKey = iconKey(ic);
+                                    // P6/P13: identify these two tiles by ICON KEY (not just the label text) so the
+                                    // override runs on EVERY render — including the icon-only paint where the text
+                                    // is blanked. The text-only check missed those paints, so Advanced stayed
+                                    // shrunk and Tray fell back to a grey glyph. Tray keys "minimize" (only the
+                                    // Tray tile uses it in this sidebar) -> "bottombar"; Advanced keys
+                                    // "advancedConfig" but ships at 20x20 -> force the full-size 32px PNG.
+                                    String sbOverride = (sbLc.contains("tray") || "minimize".equals(origKey)) ? "bottombar"
+                                                      : (sbLc.contains("advanced") || "advancedConfig".equals(origKey)) ? "advancedConfig" : null;
                                     javax.swing.Icon sbIcon = null;
                                     if (sbOverride != null) {
                                         javax.swing.Icon ov = tablerBase(sbOverride, 32, 32);
@@ -2358,7 +2383,7 @@ public class DialogConfirmAgent {
                                 // painted by SidebarButton (independent of the label), so selection is
                                 // untouched. Centre the collapsed glyph; on reveal switch to LEADING so
                                 // the icon+name read left-to-right.
-                                boolean reveal = (idx == hoverRow);
+                                boolean reveal = (idx == hoverRow) || sel;   // P12: the ACTIVE tile keeps its name shown
                                 // Collapsed: icon-only, big + centred in the tile. On hover: the icon
                                 // shifts UP and the name appears BELOW it (vertical icon-over-text
                                 // stack), per the user's request. horizontalTextPosition=CENTER puts the
@@ -2992,6 +3017,7 @@ public class DialogConfirmAgent {
                         ch.setBackground(FIELD_BG);
                         if (ch instanceof JComponent) ((JComponent) ch).setOpaque(true);
                     }
+                    if (ch instanceof javax.swing.JComboBox) styleComboPopup((javax.swing.JComboBox<?>) ch);   // P11
                 } else if (ch instanceof javax.swing.AbstractButton && !isCheckLike(ch)) {
                     javax.swing.AbstractButton ab = (javax.swing.AbstractButton) ch;
                     boolean hot = ab.getModel().isRollover() || ab.getModel().isPressed();   // S6: leave accent hover alone

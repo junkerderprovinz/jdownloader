@@ -90,7 +90,11 @@ Component.arc     = 10
 TextComponent.arc = 10
 CheckBox.arc      = 4
 ProgressBar.arc   = 8
-PopupMenu.arc     = 8
+# P10: heavyweight popup WINDOW corners (combobox dropdowns + menus) round via Popup.borderCornerRadius
+# (ComboBox/PopupMenu.borderCornerRadius reference it); FlatLaf default 4 read as too round. PopupMenu.arc
+# is not the key FlatLaf uses for the window corner, so it stays only as the menu-shape hint.
+PopupMenu.arc            = 8
+Popup.borderCornerRadius = 2
 Spinner.arc       = 10
 ComboBox.arc      = 10
 
