@@ -985,60 +985,8 @@ public class DialogConfirmAgent {
                     }
                 }
             }
-            dumpMenu(pm);   // TEMP: icon x-alignment + field widths
         } catch (Throwable ignore) { }
     }
-
-    // ===== TEMP menu diagnostic (remove after alignment/field fix) =====
-    private static final java.util.concurrent.atomic.AtomicBoolean MENU_DIAG = new java.util.concurrent.atomic.AtomicBoolean(false);
-    private static void appendDiag(String s) {
-        try {
-            java.nio.file.Files.write(java.nio.file.Paths.get("/config/hl-diag.txt"), s.getBytes("UTF-8"),
-                    java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
-        } catch (Throwable ignore) { }
-    }
-    private static void dumpMenu(javax.swing.JPopupMenu pm) {
-        boolean hasItem = false, hasRow = false;
-        for (Component ch : pm.getComponents()) {
-            if (ch instanceof javax.swing.JMenuItem) hasItem = true;
-            else if (ch instanceof Container && !(ch instanceof javax.swing.JSeparator)) hasRow = true;
-        }
-        if (!(hasItem && hasRow)) return;                       // only the Settings-style menu
-        if (pm.getWidth() <= 0) return;                         // wait until laid out (on-open call is pre-layout)
-        if (!MENU_DIAG.compareAndSet(false, true)) return;
-        StringBuilder sb = new StringBuilder("=== MENU DIAG (popup w=" + pm.getWidth() + " insets=" + pm.getInsets() + ") ===\n");
-        for (Component ch : pm.getComponents()) {
-            sb.append("ROW ").append(ch.getClass().getName()).append(" x=").append(ch.getX())
-              .append(" w=").append(ch.getWidth()).append(" h=").append(ch.getHeight());
-            if (ch instanceof Container && !(ch instanceof javax.swing.JMenuItem)) {
-                java.awt.LayoutManager lm = ((Container) ch).getLayout();
-                sb.append(" layout=").append(lm == null ? "null" : lm.getClass().getName());
-            }
-            if (ch instanceof javax.swing.JMenuItem) {
-                javax.swing.JMenuItem mi = (javax.swing.JMenuItem) ch;
-                sb.append(" [MenuItem '").append(mi.getText()).append("' margin=").append(mi.getMargin())
-                  .append(" iconGap=").append(mi.getIconTextGap()).append(" icon=").append(mi.getIcon() == null ? "null" : "y").append(']');
-            }
-            sb.append('\n');
-            if (ch instanceof Container && !(ch instanceof javax.swing.JMenuItem))
-                dumpRow((Container) ch, pm, sb, "   ");
-        }
-        appendDiag(sb.toString());
-    }
-    private static void dumpRow(Container c, javax.swing.JPopupMenu pm, StringBuilder sb, String ind) {
-        for (Component ch : c.getComponents()) {
-            java.awt.Point p = javax.swing.SwingUtilities.convertPoint(ch.getParent(), ch.getX(), ch.getY(), pm);
-            sb.append(ind).append(ch.getClass().getName()).append(" absX=").append(p.x).append(" w=").append(ch.getWidth());
-            if (ch instanceof javax.swing.JLabel) {
-                javax.swing.JLabel jl = (javax.swing.JLabel) ch;
-                sb.append(" [JLabel t='").append(jl.getText() == null ? "" : jl.getText().replaceAll("<[^>]*>", ""))
-                  .append("' iconKey=").append(iconKey(jl.getIcon())).append(']');
-            }
-            sb.append('\n');
-            if (ch instanceof Container) dumpRow((Container) ch, pm, sb, ind + "  ");
-        }
-    }
-    // ===== end TEMP menu diagnostic =====
 
     // Re-style every VISIBLE popup menu each tick, so JD's lazy re-render of the Speed-Limit / editor rows
     // can't leave a stale colored icon or uneven field behind (the one-shot on-open lost the race).
