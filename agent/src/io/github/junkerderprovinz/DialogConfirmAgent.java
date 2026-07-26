@@ -1533,9 +1533,6 @@ public class DialogConfirmAgent {
         } catch (Throwable t) { return original; }
     }
 
-    private static final java.util.Set<String> STATUS_DIAG =
-            java.util.Collections.synchronizedSet(new java.util.HashSet<String>());
-
     /** Classify a status glyph into a clean Tabler key, or null when unknown. Order: (1) named-field identity
      *  on the column, (2) the icon's own key (AvailabilityColumn / FinalLinkState / PluginProgress glyphs are
      *  keyed), (3) the visible glyph is usually a fresh MergedIcon that fillColumnHelper composed past the
@@ -1547,29 +1544,8 @@ public class DialogConfirmAgent {
             java.util.List<String> parts = new java.util.ArrayList<String>();
             collectSubIconKeys(owner, original, parts, 0);
             result = pickDominant(parts);
-            String cls = (original == null) ? "null" : original.getClass().getName();
-            if (STATUS_DIAG.add(cls)) {
-                System.out.println("[jd-agent-diag] status " + cls + " -> " + result + " parts=" + parts);
-                if (result == null && original != null) dumpIconFields(original);
-            }
         }
         return result;
-    }
-
-    // #11b DIAG (temporary): dump an unclassified status icon's fields so the sub-icon storage is visible.
-    private static void dumpIconFields(Object ic) {
-        try {
-            for (Class<?> c = ic.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
-                for (Field f : c.getDeclaredFields()) {
-                    try {
-                        f.setAccessible(true);
-                        Object v = f.get(ic);
-                        System.out.println("[jd-agent-diag]   field " + f.getType().getSimpleName() + " " + f.getName()
-                                + " = " + (v == null ? "null" : v.getClass().getName()));
-                    } catch (Throwable ig) { }
-                }
-            }
-        } catch (Throwable ig) { }
     }
 
     /** The clean key for an icon that IS one of the owning column's named status fields, else null. */
@@ -1587,43 +1563,37 @@ public class DialogConfirmAgent {
         return null;
     }
 
-    /** Walk a composite icon's object graph (MergedIcon may hold its parts in an Icon[] / Object[] /
-     *  Collection, or nested in another JD holder), classifying each Icon part. Recurses only into
-     *  org.jdownloader / org.appwork / jd typed fields, bounded by depth, so it can't wander the whole heap. */
+    /** Walk a composite icon's object graph (MergedIcon holds its parts in a TreeSet of position+icon wrapper
+     *  entries, not as bare Icons), classifying each Icon part. Recurses through arrays/collections and into
+     *  org.jdownloader / org.appwork / jd typed holders, depth-bounded so it can't wander the whole heap. */
     private static void collectSubIconKeys(Object owner, Object node, java.util.List<String> out, int depth) {
-        if (node == null || depth > 5) return;
+        if (node == null || depth > 6) return;
         for (Class<?> c = node.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
             for (Field f : c.getDeclaredFields()) {
                 if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) continue;
-                try {
-                    f.setAccessible(true);
-                    Object v = f.get(node);
-                    if (v == null || v == node) continue;
-                    if (v instanceof javax.swing.Icon) {
-                        addSubIcon(owner, (javax.swing.Icon) v, node, out, depth);
-                    } else if (v instanceof javax.swing.Icon[]) {
-                        for (javax.swing.Icon s : (javax.swing.Icon[]) v) addSubIcon(owner, s, node, out, depth);
-                    } else if (v instanceof Object[]) {
-                        for (Object o : (Object[]) v) if (o instanceof javax.swing.Icon) addSubIcon(owner, (javax.swing.Icon) o, node, out, depth);
-                    } else if (v instanceof java.util.Collection) {
-                        for (Object o : (java.util.Collection<?>) v) if (o instanceof javax.swing.Icon) addSubIcon(owner, (javax.swing.Icon) o, node, out, depth);
-                    } else {
-                        String vc = v.getClass().getName();
-                        if (vc.startsWith("org.jdownloader.") || vc.startsWith("org.appwork.") || vc.startsWith("jd."))
-                            collectSubIconKeys(owner, v, out, depth + 1);   // nested JD holder
-                    }
-                } catch (Throwable ignore) { }
+                try { f.setAccessible(true); consumeValue(owner, f.get(node), node, out, depth); }
+                catch (Throwable ignore) { }
             }
         }
     }
 
-    private static void addSubIcon(Object owner, javax.swing.Icon sub, Object parent,
-                                   java.util.List<String> out, int depth) {
-        if (sub == null || sub == parent) return;
-        String k = keyFromOwnerFields(owner, sub);
-        if (k == null) k = normalizeStatusKey(iconKey(sub));
-        if (k != null) out.add(k);
-        else collectSubIconKeys(owner, sub, out, depth + 1);
+    private static void consumeValue(Object owner, Object v, Object node, java.util.List<String> out, int depth) {
+        if (v == null || v == node) return;
+        if (v instanceof javax.swing.Icon) {
+            javax.swing.Icon sub = (javax.swing.Icon) v;
+            String k = keyFromOwnerFields(owner, sub);
+            if (k == null) k = normalizeStatusKey(iconKey(sub));
+            if (k != null) out.add(k);
+            else collectSubIconKeys(owner, sub, out, depth + 1);
+        } else if (v instanceof Object[]) {
+            for (Object o : (Object[]) v) consumeValue(owner, o, node, out, depth);
+        } else if (v instanceof java.util.Collection) {
+            for (Object o : (java.util.Collection<?>) v) consumeValue(owner, o, node, out, depth);
+        } else {
+            String vc = v.getClass().getName();
+            if (vc.startsWith("org.jdownloader.") || vc.startsWith("org.appwork.") || vc.startsWith("jd."))
+                collectSubIconKeys(owner, v, out, depth + 1);   // nested JD holder / TreeSet entry wrapper
+        }
     }
 
     /** Pick the status that should win when a row merges several: a problem outranks success outranks progress. */
@@ -4017,12 +3987,10 @@ public class DialogConfirmAgent {
             if (!w.isShowing()) continue;
             Container host = findViewsHost(w);
             if (host == null) continue;
-            dumpViewsTree(host, 0);   // #9 DIAG (temporary): locate the separator-line source
             boolean changed = badgeViewsHeaders(host);
             changed |= stripHeaderScrollDividers(host);
-            changed |= flattenViewsGrids(host);   // #9: kill the sub-row ExtTable grid hairlines
+            changed |= flattenViewsGrids(host);   // #9: kill any sub-row ExtTable grid hairlines
             hideSeparators(host);       // reuse: hide the "title ----" lines (idempotent, self-repaints)
-            clearLinesIn(host, 0);      // #9: strip MatteBorder/LineBorder section + row separator lines
             if (changed) { host.revalidate(); host.repaint(); }
         }
     }
@@ -4035,7 +4003,12 @@ public class DialogConfirmAgent {
             if (ch instanceof JComponent && isViewsHeader(ch.getClass())) {
                 JComponent header = (JComponent) ch;
                 if (header.getClientProperty(VIEWS_BADGED) != Boolean.TRUE) {
-                    header.setBorder(new MenuChipBorder(header.getBorder()));
+                    // #9: the Header carries a MatteBorder separator line; MenuChipBorder would repaint that
+                    // inner border ON TOP of the chip, so drop a Matte/Line/Etched inner and keep only the chip.
+                    javax.swing.border.Border ob = header.getBorder();
+                    if (ob instanceof javax.swing.border.MatteBorder || ob instanceof javax.swing.border.LineBorder
+                            || ob instanceof javax.swing.border.EtchedBorder) ob = null;
+                    header.setBorder(new MenuChipBorder(ob));
                     header.setOpaque(false);
                     header.putClientProperty(VIEWS_BADGED, Boolean.TRUE);
                     changed = true;
@@ -4072,30 +4045,6 @@ public class DialogConfirmAgent {
             if (ch instanceof Container) changed |= stripHeaderScrollDividers((Container) ch);
         }
         return changed;
-    }
-
-    // #9 DIAG (temporary): dump the Views host component tree once — class + bounds + border + opaque + bg —
-    // so the separator-line source (a thin panel/separator, a table header, or a bordered component) is visible.
-    private static boolean viewsDumped = false;
-    private static void dumpViewsTree(Component c, int d) {
-        try {
-            if (d == 0) { if (viewsDumped) return; viewsDumped = true;
-                System.out.println("[jd-agent-diag] ===== Views tree ====="); }
-            if (d > 10) return;
-            StringBuilder ind = new StringBuilder();
-            for (int i = 0; i < d; i++) ind.append("  ");
-            String extra = "";
-            if (c instanceof JComponent) {
-                javax.swing.border.Border b = ((JComponent) c).getBorder();
-                extra = " border=" + (b == null ? "null" : b.getClass().getName())
-                        + " opaque=" + c.isOpaque() + " bg=" + c.getBackground();
-            }
-            java.awt.Rectangle r = c.getBounds();
-            System.out.println("[jd-agent-diag] V " + ind + c.getClass().getName()
-                    + " [" + r.x + "," + r.y + " " + r.width + "x" + r.height + "]" + extra);
-            if (c instanceof Container) for (Component ch : ((Container) c).getComponents()) dumpViewsTree(ch, d + 1);
-            if (d == 0) System.out.println("[jd-agent-diag] ===== end Views tree =====");
-        } catch (Throwable ignore) { }
     }
 
     /** #9: flatten the grid hairlines in the LinkGrabber-Views sub-section ExtTables. Those tables sit on
