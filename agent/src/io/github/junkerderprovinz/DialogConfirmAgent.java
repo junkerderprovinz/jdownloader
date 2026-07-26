@@ -1471,6 +1471,10 @@ public class DialogConfirmAgent {
             if (isConfigPanel(p.getClass())) return true;
         return false;
     }
+    // cache the mono-tint of the (shared, stable) keyless status glyphs so a table repaint does not
+    // re-render a fresh BufferedImage per visible row every paint.
+    private static final java.util.Map<javax.swing.Icon, javax.swing.Icon> ROW_MONO =
+            java.util.Collections.synchronizedMap(new java.util.WeakHashMap<javax.swing.Icon, javax.swing.Icon>());
     private static final class MonoIconRenderer implements javax.swing.table.TableCellRenderer {
         private final javax.swing.table.TableCellRenderer orig;
         MonoIconRenderer(javax.swing.table.TableCellRenderer o) { orig = o; }
@@ -1479,8 +1483,20 @@ public class DialogConfirmAgent {
             if (c instanceof javax.swing.JLabel) {
                 javax.swing.JLabel l = (javax.swing.JLabel) c;
                 javax.swing.Icon ic = l.getIcon();
-                if (ic != null && iconKey(ic) != null) {              // keyless (hoster favicon / thumbnail) -> leave
-                    javax.swing.Icon mono = tablerIcon(ic, sel ? accentFg() : SIDEBAR_TEXT, l);
+                if (ic != null) {
+                    // The hoster-favicon COLUMN is already excluded upstream, so every icon we see here is a
+                    // themeable content glyph: keyed ones (file-type/folder) swap to the mono Tabler, keyless
+                    // ones (the coloured status error-X / extract-OK) get mono-tinted to one tone.
+                    Color tone = sel ? accentFg() : SIDEBAR_TEXT;
+                    javax.swing.Icon mono;
+                    if (iconKey(ic) != null) {
+                        mono = tablerIcon(ic, tone, l);
+                    } else if (sel) {
+                        mono = tintSolid(ic, tone);
+                    } else {
+                        mono = ROW_MONO.get(ic);
+                        if (mono == null) { mono = tintSolid(ic, tone); ROW_MONO.put(ic, mono); }
+                    }
                     if (mono != ic) l.setIcon(mono);
                 }
             }
