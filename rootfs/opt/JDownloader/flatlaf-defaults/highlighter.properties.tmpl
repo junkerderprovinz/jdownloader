@@ -83,6 +83,12 @@ TabbedPane.showTabSeparators  = false
 MenuBar.borderColor           = #161616
 ToolBar.borderColor           = #161616
 PopupMenu.borderColor         = #161616
+# the header + main menu/tool bars must sit on the SAME base #161616 as the rest of the chrome — the
+# FlatLaf defaults leave the toolbar strip a shade lighter (#1e1e1e-ish), which read as "viel zu hell".
+# Pin all three bands to base; the separators between toolbar button groups match it so they vanish.
+MenuBar.background            = #161616
+ToolBar.background            = #161616
+ToolBar.separatorColor        = #161616
 
 # --- rounded: ONE uniform corner radius everywhere ("die Ecken sollen ueberall den gleichen Radius
 #     haben"). FlatLaf .arc is a DIAMETER, so arc=12 = 6px radius = the sidebar buttons (SB_BTN_ARC=12)

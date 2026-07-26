@@ -450,6 +450,7 @@ public class DialogConfirmAgent {
             stripSectionUnderlines();
             recolorMainTabs();
             flushMenuBarItems();
+            darkenChromeBars();
             monoChromeIcons();
             badgeViewsMenu();
             badgeViewsPanel();      // pt5: badge the docked LinkGrabber "Views" headers too
@@ -1190,7 +1191,27 @@ public class DialogConfirmAgent {
                     }
                 }
             }
+            uniformMenuRowHeights(pm);                          // #3: every dropdown row the SAME height
         } catch (Throwable ignore) { }
+    }
+
+    /** #3: pin every visible row in a main-menu dropdown to ONE height. Plain JMenuItems (sized by
+     *  MenuItem.margin, ~30px) sat SHORTER than the custom EditorLink/spinner rows, so the Settings
+     *  dropdown looked uneven. Grow the shorter rows to the tallest one (height only, width left to the
+     *  popup's own stretch). Idempotent: a row already at the target height is skipped. */
+    private static void uniformMenuRowHeights(javax.swing.JPopupMenu pm) {
+        int max = 0;
+        for (Component ch : pm.getComponents()) {
+            if (ch instanceof javax.swing.JSeparator || !ch.isVisible()) continue;
+            int h = ch.getPreferredSize().height;
+            if (h > max) max = h;
+        }
+        if (max <= 0) return;
+        for (Component ch : pm.getComponents()) {
+            if (ch instanceof javax.swing.JSeparator || !(ch instanceof JComponent) || !ch.isVisible()) continue;
+            java.awt.Dimension pr = ch.getPreferredSize();
+            if (pr.height < max) ((JComponent) ch).setPreferredSize(new java.awt.Dimension(pr.width, max));
+        }
     }
 
     // Re-style every VISIBLE popup menu each tick, so JD's lazy re-render of the Speed-Limit / editor rows
@@ -2031,10 +2052,17 @@ public class DialogConfirmAgent {
      *  light, precompute a DARK (accentFg) twin, and swap getIcon() between them when the item is
      *  armed/selected — the icon analogue of installBtnHoverFg. Guarded on both variants so the tick
      *  never re-monos our own icon. */
+    private static final java.util.Set<String> MENU_DIAG = java.util.Collections.synchronizedSet(new java.util.HashSet<String>());   // TEMP #4
     private static void monoMenuItemIcon(javax.swing.JMenuItem mi) {
         try {
             javax.swing.Icon cur = mi.getIcon();
             if (cur == null) return;                                   // check/radio glyphs are UI-painted, not getIcon()
+            if (MENU_DIAG.add(String.valueOf(mi.getText()))) {         // TEMP #4: dump each menu item's icon key
+                try { java.nio.file.Files.write(java.nio.file.Paths.get("/config/menu-keys.txt"),
+                    ("[" + mi.getText() + "] key=" + iconKey(cur) + " cls=" + cur.getClass().getName()
+                        + " tabler=" + (iconKey(cur) != null && tablerBase(iconKey(cur), 16, 16) != null) + "\n").getBytes("UTF-8"),
+                    java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND); } catch (Throwable ig) { }
+            }
             Object light = mi.getClientProperty("jdp.miLight");
             if (cur == light || cur == mi.getClientProperty("jdp.miDark")) { installMenuItemHoverIcon(mi); return; }
             javax.swing.Icon lo = tablerIcon(cur, SIDEBAR_TEXT, mi);
@@ -2410,6 +2438,30 @@ public class DialogConfirmAgent {
                     // the table row-hover. Idempotent + survives sidebar rebuilds.
                     installSidebarAccentHover(list, r);
                     clearSidebarBorders(list);   // drop the long vertical line at the sidebar's edge
+                    // #5: the taller fixed rows tip the list just past the viewport, so an AS_NEEDED vertical
+                    // scrollbar appears and overlays/clips the rounded tiles' right corners. The sidebar holds
+                    // a fixed set of config panels that fit any normal window -> pin the scrollbar OFF (no clip).
+                    javax.swing.JScrollPane ssp = (javax.swing.JScrollPane)
+                            javax.swing.SwingUtilities.getAncestorOfClass(javax.swing.JScrollPane.class, list);
+                    if (ssp != null && ssp.getVerticalScrollBarPolicy() != javax.swing.ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER)
+                        ssp.setVerticalScrollBarPolicy(javax.swing.ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER);
+                    // #7: re-theme the config panel synchronously on tile click, so JD's freshly REBUILT
+                    // native panel is carded/mono'd right after the rebuild instead of flashing un-themed
+                    // until the next ~400ms tick. One guarded ListSelectionListener + invokeLater.
+                    if (list.getClientProperty("jdp.navRetheme") == null) {
+                        list.putClientProperty("jdp.navRetheme", Boolean.TRUE);
+                        list.addListSelectionListener(new javax.swing.event.ListSelectionListener() {
+                            public void valueChanged(javax.swing.event.ListSelectionEvent e) {
+                                if (e.getValueIsAdjusting()) return;
+                                javax.swing.SwingUtilities.invokeLater(new Runnable() { public void run() {
+                                    try { if (isHighlighter()) {
+                                        stripSectionUnderlines(); cardSettingsSections();
+                                        borderlessConfigTables(); unifyConfigFields(); monoChromeIcons();
+                                    } } catch (Throwable ignore) { }
+                                } });
+                            }
+                        });
+                    }
                     return true;
                 }
             }
@@ -2769,6 +2821,36 @@ public class DialogConfirmAgent {
     // links"). So set the per-tab foreground ourselves: dark on the accent selected tab,
     // light on the rest, reusing the theme's own TabbedPane colours from UIManager. Re-run
     // each tick (idempotent) so it survives rebuilds + selection changes.
+    // #1: the header menu bar + the main toolbar strip rendered a shade lighter than the #161616 base
+    // ("viel zu hell"). UIDefaults (ToolBar/MenuBar.background) only reach components created AFTER, and
+    // the boot LAF re-apply can fail (legacy-chrome-remap fallback), so pin the LIVE JMenuBar + MainToolBar
+    // (and their immediate parent band) to base directly every tick. Idempotent (guarded on the colour).
+    private static final Color CHROME_BASE = new Color(0x16, 0x16, 0x16);
+    private static void darkenChromeBars() {
+        for (Window w : Window.getWindows()) {
+            if (!w.isShowing()) continue;
+            if (w instanceof javax.swing.JFrame) {
+                javax.swing.JMenuBar mb = ((javax.swing.JFrame) w).getJMenuBar();
+                if (mb != null && !CHROME_BASE.equals(mb.getBackground())) { mb.setBackground(CHROME_BASE); mb.setOpaque(true); }
+            }
+            darkenToolbarsIn(w);
+        }
+    }
+    private static void darkenToolbarsIn(Container c) {
+        for (Component ch : c.getComponents()) {
+            if (isMainToolbar(ch.getClass()) && ch instanceof JComponent) {
+                if (!CHROME_BASE.equals(ch.getBackground())) { ch.setBackground(CHROME_BASE); ((JComponent) ch).setOpaque(true); }
+                Container par = ch.getParent();   // the band the toolbar sits in can carry the lighter fill
+                if (par instanceof JComponent && par.getBackground() != null
+                        && par.getBackground().getRed() >= 0x1b && par.getBackground().getRed() <= 0x2a
+                        && !CHROME_BASE.equals(par.getBackground())) {
+                    par.setBackground(CHROME_BASE); ((JComponent) par).setOpaque(true);
+                }
+            }
+            if (ch instanceof Container) darkenToolbarsIn((Container) ch);
+        }
+    }
+
     private static void recolorMainTabs() {
         Color selFg = UIManager.getColor("TabbedPane.selectedForeground");   // accent_fg (dark)
         Color norFg = UIManager.getColor("TabbedPane.foreground");           // light
@@ -3273,7 +3355,12 @@ public class DialogConfirmAgent {
                         // so y+SB_BTN_GAP_V lands the card top on the tile top. Later cards keep the
                         // hTop-INNER band. Pure paint: no row move, safe across JD rebuilds.
                         int top = (i == 0) ? y + SB_BTN_GAP_V : hTop - INNER;
-                        int bottom = contentBottom + INNER;
+                        // #6: the LAST card extends to the panel's own bottom edge so the content column ends
+                        // flush with the settings sidebar (which fills the split height) instead of stopping
+                        // at the final row and leaving a bare base strip below it. Never shrinks the card.
+                        int bottom = (i == headers.size() - 1)
+                                ? Math.max(contentBottom + INNER, y + h - MARGIN)
+                                : (contentBottom + INNER);
                         if (bottom - top > 6)
                             g2.fill(new java.awt.geom.RoundRectangle2D.Float(
                                     left, top, right - left, bottom - top, ARC, ARC));
