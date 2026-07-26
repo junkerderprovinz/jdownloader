@@ -1421,6 +1421,7 @@ public class DialogConfirmAgent {
     // replacement is a keyless ImageIcon, so iconKey() returns null next tick and it is skipped until JD
     // re-provisions the black one again.
     private static final Color EXPANDER_LIGHT = new Color(0xb0, 0xb0, 0xb0);
+    private static final java.util.Set<String> COL_DIAG = java.util.Collections.synchronizedSet(new java.util.HashSet<String>());   // TEMP
     private static void recolorExpanderFields(Object col) {
         if (col == null) return;
         for (Class<?> k = col.getClass(); k != null && k != Object.class; k = k.getSuperclass()) {
@@ -1431,10 +1432,25 @@ public class DialogConfirmAgent {
                     Object ic = f.get(col);
                     if (ic instanceof javax.swing.Icon) {
                         String key = iconKey((javax.swing.Icon) ic);
+                        if (COL_DIAG.add(col.getClass().getName() + "#" + f.getName())) {   // TEMP: dump column icon-field keys
+                            try { java.nio.file.Files.write(java.nio.file.Paths.get("/config/col-diag.txt"),
+                                (col.getClass().getSimpleName() + "." + f.getName() + " key=" + key + "\n").getBytes("UTF-8"),
+                                java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND); } catch (Throwable ig) { }
+                        }
                         if (key != null && (key.contains("tree_plus") || key.contains("tree_minus")
                                 || key.contains("lockColumn") || key.contains("widthLocked"))) {
                             javax.swing.Icon light = tintSolid((javax.swing.Icon) ic, EXPANDER_LIGHT);
                             if (light != ic) f.set(col, light);
+                        } else if (isHighlighter() && key != null && (key.contains("extract") || key.equals("error")
+                                || key.equals("true") || key.equals("false") || key.equals("true-orange")
+                                || key.equals("false-orange") || key.contains("warning") || key.contains("status"))) {
+                            // #11: mono the download/linkgrabber STATUS glyph at its SOURCE field (extract-OK /
+                            // error / online / offline). Keyed -> mono Tabler PNG; else a mono tint of its shape.
+                            int w = ((javax.swing.Icon) ic).getIconWidth(), h = ((javax.swing.Icon) ic).getIconHeight();
+                            javax.swing.Icon base = tablerBase(key, w, h);
+                            javax.swing.Icon repl = (base != null) ? tintIcon(base, SIDEBAR_TEXT, null)
+                                    : tintSolid((javax.swing.Icon) ic, SIDEBAR_TEXT);
+                            if (repl != ic) f.set(col, repl);
                         }
                     }
                 } catch (Throwable ignore) { }
