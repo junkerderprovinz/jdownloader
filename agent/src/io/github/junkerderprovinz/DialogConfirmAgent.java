@@ -976,7 +976,10 @@ public class DialogConfirmAgent {
                     JComponent jc = (JComponent) ch;
                     if (jc.getClientProperty("jdp.menuRowPad") == null) {
                         jc.putClientProperty("jdp.menuRowPad", Boolean.TRUE);
-                        javax.swing.border.Border pad = new javax.swing.border.EmptyBorder(3, 0, 3, 0);
+                        // left=11: the editor rows' icons sat at popup-x 7 while the JMenuItems' icons sit
+                        // at ~18 (row + MenuItem.margin.left 16) -> icons were not in one column. Indent the
+                        // editor rows 11px so their icon column lines up with the menu items' (measured live).
+                        javax.swing.border.Border pad = new javax.swing.border.EmptyBorder(3, 11, 3, 0);
                         javax.swing.border.Border old = jc.getBorder();
                         jc.setBorder(old == null ? pad : new javax.swing.border.CompoundBorder(pad, old));
                     }
@@ -2135,8 +2138,13 @@ public class DialogConfirmAgent {
     // glyph (speed) still gets tinted to mono.
     private static void monoRowLabels(Container c) {
         for (Component ch : c.getComponents()) {
-            if (ch instanceof javax.swing.JLabel && ((javax.swing.JLabel) ch).getIcon() != null)
-                monoLabelIcon((javax.swing.JLabel) ch, true);
+            if (ch instanceof javax.swing.JLabel && ((javax.swing.JLabel) ch).getIcon() != null) {
+                javax.swing.JLabel jl = (javax.swing.JLabel) ch;
+                monoLabelIcon(jl, true);
+                // match the JMenuItems' icon-text gap (10) so the row TEXT lines up with the menu items'
+                // text, not just the icon column (the JMenuItems use iconGap=10, JLabels default to 4).
+                if (jl.getText() != null && !jl.getText().isEmpty() && jl.getIconTextGap() != 10) jl.setIconTextGap(10);
+            }
             if (ch instanceof Container) monoRowLabels((Container) ch);
         }
     }
