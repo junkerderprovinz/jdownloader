@@ -266,7 +266,6 @@ public class DialogConfirmAgent {
             lafTick = 0;
             writeLafMarker();
             if (GEO_DEBUG) dumpGeometry();
-            if (isHighlighter()) diagCornersAndLists();   // TEMP r74 (P6/P10/P11)
         }
     }
 
@@ -1679,19 +1678,6 @@ public class DialogConfirmAgent {
         } catch (Throwable ignore) { return false; }
     }
 
-    // P6: same cached-disabled-icon trap as ExtButton, but for AppWork's RenderLabel (its private field is
-    // "customDisabledIcon"). Null it so getDisabledIcon() re-derives from the CURRENT (mono, full-size) icon.
-    private static void invalidateRenderLabelDisabled(javax.swing.JLabel l) {
-        try {
-            Class<?> c = l.getClass();
-            while (c != null && !"org.appwork.utils.swing.renderer.RenderLabel".equals(c.getName())) c = c.getSuperclass();
-            if (c == null) return;
-            java.lang.reflect.Field f = c.getDeclaredField("customDisabledIcon");
-            f.setAccessible(true);
-            f.set(l, null);
-        } catch (Throwable ignore) { }
-    }
-
     private static void monoButtonIcon(javax.swing.AbstractButton b) {
         try {
             javax.swing.Icon cur = b.getIcon();
@@ -2092,66 +2078,6 @@ public class DialogConfirmAgent {
      * row at once. Reached through a LIVE renderer instance found in the tree, so the
      * static field resolves in JD's own classloader regardless of the agent's.
      */
-    // ===== TEMP DIAG (r74) — P6 sidebar advanced size / P10 dialog+popup corners / P11 combobox selection =====
-    private static void writeDiag(String s) {
-        try { java.nio.file.Files.write(java.nio.file.Paths.get("/config/hl-diag.txt"),
-                ("[hl-diag] " + s + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8),
-                java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND); } catch (Throwable ignore) { }
-    }
-    private static String hex2(Color c) { return c == null ? "null" : String.format("#%06x", c.getRGB() & 0xffffff); }
-    private static final java.util.Set<String> DIAG_SEEN = new java.util.HashSet<>();
-    private static int ADV_LOG_N = 0;   // TEMP r76 (P6 deep)
-    private static void diagCornersAndLists() {
-        try {
-            for (Window w : Window.getWindows()) {
-                if (!w.isShowing()) continue;
-                if (DIAG_SEEN.add("win:" + w.getClass().getName())) {   // P10: dialog / popup-window corners
-                    javax.swing.JRootPane rp = (w instanceof javax.swing.RootPaneContainer) ? ((javax.swing.RootPaneContainer) w).getRootPane() : null;
-                    Container cp = (w instanceof javax.swing.RootPaneContainer) ? ((javax.swing.RootPaneContainer) w).getContentPane() : null;
-                    writeDiag("WIN " + w.getClass().getName()
-                        + " undec=" + (w instanceof Dialog ? ((Dialog) w).isUndecorated() : (w instanceof Frame ? ((Frame) w).isUndecorated() : "?"))
-                        + " lafDecorDlg=" + javax.swing.JDialog.isDefaultLookAndFeelDecorated()
-                        + " lafDecorFrm=" + javax.swing.JFrame.isDefaultLookAndFeelDecorated()
-                        + " prop=" + System.getProperty("flatlaf.useWindowDecorations")
-                        + " shape=" + (w.getShape() == null ? "-" : w.getShape().getClass().getSimpleName())
-                        + " rpUI=" + (rp == null ? "-" : rp.getUI().getClass().getSimpleName())
-                        + " rpBorder=" + (rp == null || rp.getBorder() == null ? "-" : rp.getBorder().getClass().getSimpleName())
-                        + " cpBorder=" + (cp instanceof JComponent && ((JComponent) cp).getBorder() != null ? ((JComponent) cp).getBorder().getClass().getSimpleName() : "-"));
-                }
-                if (w instanceof Dialog && DIAG_SEEN.add("dtree:" + w.getClass().getName())) {   // P10: what rounds the dialog?
-                    writeDiag("=== DIALOG TREE " + w.getClass().getName() + " ===");
-                    if (w instanceof javax.swing.RootPaneContainer)
-                        diagTree(((javax.swing.RootPaneContainer) w).getRootPane(), 0);
-                }
-                diagLists(w);                                            // P11: combobox popup list selection colors
-            }
-        } catch (Throwable ignore) { }
-    }
-    private static void diagLists(Container c) {
-        for (Component ch : c.getComponents()) {
-            if (ch instanceof javax.swing.JList && DIAG_SEEN.add("list:" + ch.getClass().getName())) {
-                javax.swing.JList<?> l = (javax.swing.JList<?>) ch;
-                writeDiag("LIST " + ch.getClass().getName() + " selBg=" + hex2(l.getSelectionBackground())
-                    + " selFg=" + hex2(l.getSelectionForeground()) + " ui=" + l.getUI().getClass().getName()
-                    + " cellRend=" + (l.getCellRenderer() == null ? "-" : l.getCellRenderer().getClass().getName()));
-            }
-            if (ch instanceof Container) diagLists((Container) ch);
-        }
-    }
-    private static void diagTree(Container c, int depth) {   // P10: dump dialog component tree to find the rounded element
-        if (depth > 5) return;
-        for (Component ch : c.getComponents()) {
-            javax.swing.border.Border bd = (ch instanceof JComponent) ? ((JComponent) ch).getBorder() : null;
-            Object style = (ch instanceof JComponent) ? ((JComponent) ch).getClientProperty("FlatLaf.style") : null;
-            writeDiag("  T" + depth + " " + ch.getClass().getName()
-                + " op=" + (ch instanceof JComponent && ((JComponent) ch).isOpaque())
-                + " bg=" + hex2(ch.getBackground())
-                + " bd=" + (bd == null ? "-" : bd.getClass().getSimpleName())
-                + (style != null ? " style=" + style : ""));
-            if (ch instanceof Container) diagTree((Container) ch, depth + 1);
-        }
-    }
-    // ===== END TEMP DIAG =====
 
     private static void styleSidebar() {
         for (Window w : Window.getWindows()) {
@@ -2411,20 +2337,6 @@ public class DialogConfirmAgent {
                                     }
                                     if (sbIcon == null) sbIcon = tablerIconScaled(ic, sbTone, kl, SIDEBAR_ICON_SCALE);
                                     kl.setIcon(sbIcon);
-                                    // P6: AppWork's RenderLabel caches a customDisabledIcon derived from getIcon()
-                                    // (like ExtButton) — if the Advanced row was ever rendered disabled while
-                                    // getIcon() was JD's 20x20, that shrunk disabled icon is cached + painted even
-                                    // after our setIcon(32). Null the cache so it re-derives from our 32px icon.
-                                    invalidateRenderLabelDisabled(kl);
-                                    if ("advancedConfig".equals(sbOverride) && ADV_LOG_N < 12) {   // TEMP r76 (P6 deep)
-                                        ADV_LOG_N++;
-                                        javax.swing.Icon di = kl.getDisabledIcon();
-                                        writeDiag("SB-OVR idx=" + idx + " sel=" + sel + " en=" + kl.isEnabled()
-                                            + " sbIcon=" + (sbIcon == null ? "null" : sbIcon.getIconWidth() + "x" + sbIcon.getIconHeight())
-                                            + " orig=" + ic.getIconWidth() + "x" + ic.getIconHeight()
-                                            + " afterSet=" + (kl.getIcon() == null ? "null" : kl.getIcon().getIconWidth() + "x" + kl.getIcon().getIconHeight())
-                                            + " disIcon=" + (di == null ? "-" : di.getIconWidth() + "x" + di.getIconHeight()));
-                                    }
                                 }
                                 // (7a/7b) Icon-only sidebar: hide the tile NAME unless this row is
                                 // hovered, so the sidebar reads as a strip of CENTRED glyphs that reveal
