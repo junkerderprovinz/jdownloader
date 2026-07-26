@@ -2326,7 +2326,7 @@ public class DialogConfirmAgent {
                                     // Tray tile uses it in this sidebar) -> "bottombar"; Advanced keys
                                     // "advancedConfig" but ships at 20x20 -> force the full-size 32px PNG.
                                     String sbOverride = (sbLc.contains("tray") || "minimize".equals(origKey)) ? "bottombar"
-                                                      : (sbLc.contains("advanced") || "advancedConfig".equals(origKey)) ? "advancedConfig" : null;
+                                                      : (sbLc.contains("advanced") || "advancedConfig".equals(origKey)) ? "wizard" : null;
                                     javax.swing.Icon sbIcon = null;
                                     if (sbOverride != null) {
                                         javax.swing.Icon ov = tablerBase(sbOverride, 32, 32);
