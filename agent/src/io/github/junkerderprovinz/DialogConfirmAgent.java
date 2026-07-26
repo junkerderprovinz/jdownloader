@@ -251,6 +251,7 @@ public class DialogConfirmAgent {
             styleSidebar();
             stripSectionUnderlines();
             recolorMainTabs();
+            flushMenuBarItems();
             monoChromeIcons();
             badgeViewsMenu();
             badgeViewsPanel();      // pt5: badge the docked LinkGrabber "Views" headers too
@@ -895,6 +896,7 @@ public class DialogConfirmAgent {
     // removed their frame. Give them a raised #2a2a2a pill (same shade as config buttons) so they
     // read as editable without reintroducing a line. Chrome-only: scoped to JPopupMenu subtrees.
     private static final Color MENU_FIELD_BG = new Color(0x2a, 0x2a, 0x2a);
+    private static final Color TILE_GREY = new Color(0x26, 0x26, 0x26);   // #3: unselected main-tab tile bg (like the sidebar tiles)
     private static final int   MENU_FIELD_W  = 110;   // P14: uniform width for grey menu input fields
 
     private static void styleMenuFields() {
@@ -925,6 +927,14 @@ public class DialogConfirmAgent {
                         Container par = ch.getParent();
                         if (par != null) { par.invalidate(); par.revalidate(); }
                     }
+                }
+                if (ch.getWidth() > 0 && SB_DIAG.add("f2:" + ch.getClass().getName())) {   // TEMP #2
+                    StringBuilder e = new StringBuilder("FLD2 " + ch.getClass().getSimpleName() + " x=" + ch.getX()
+                        + " w=" + ch.getWidth() + " op=" + ((JComponent) ch).isOpaque());
+                    if (ch instanceof Container) for (Component gc : ((Container) ch).getComponents())
+                        e.append(" || ").append(gc.getClass().getSimpleName()).append(" x=").append(gc.getX())
+                         .append(" w=").append(gc.getWidth());
+                    appendDiag(e + "\n");
                 }
             }
             if (ch instanceof Container) styleMenuFieldsIn((Container) ch, menu);
@@ -1612,6 +1622,11 @@ public class DialogConfirmAgent {
      *  renders SHARP — requesting an in-between size (native*1.4 ≈ 45) forced a soft bilinear upscale of the
      *  32px PNG (the "unscharf" blur, since there are no larger Tabler PNGs). A keyless icon has no Tabler
      *  source, so it is tinted at its native size (still crisp). `factor` is kept for the call site. */
+    private static final java.util.Set<String> SB_DIAG = java.util.Collections.synchronizedSet(new java.util.HashSet<String>());   // TEMP
+    private static void appendDiag(String s) {   // TEMP
+        try { java.nio.file.Files.write(java.nio.file.Paths.get("/config/hl-diag.txt"), s.getBytes("UTF-8"),
+            java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND); } catch (Throwable ignore) { }
+    }
     private static javax.swing.Icon tablerIconScaled(javax.swing.Icon orig, Color tint, Component c, double factor) {
         Integer tkey = Integer.valueOf(tint.getRGB());
         synchronized (SB_ICON_CACHE) {
@@ -2368,6 +2383,12 @@ public class DialogConfirmAgent {
                                     }
                                     if (sbIcon == null) sbIcon = tablerIconScaled(ic, sbTone, kl, SIDEBAR_ICON_SCALE);
                                     kl.setIcon(sbIcon);
+                                    if (SB_DIAG.add(origKey + "|" + sbLc)) appendDiag("SBCELL key=" + origKey   // TEMP
+                                        + " text='" + sbLc + "' override=" + sbOverride
+                                        + " origSize=" + ic.getIconWidth() + "x" + ic.getIconHeight()
+                                        + " finalSize=" + (sbIcon == null ? "null" : sbIcon.getIconWidth() + "x" + sbIcon.getIconHeight())
+                                        + " labelPref=" + kl.getPreferredSize() + " labelSize=" + kl.getSize()
+                                        + " labelH=" + kl.getHeight() + "\n");
                                     // NOTE (P6): the Advanced tile's icon still paints at JD's original 20px size,
                                     // not our 32px override — AppWork's RenderLabel/MigLayout renders from the
                                     // original icon's metrics and ignores a late setIcon here. Confirmed via diag
@@ -2490,6 +2511,27 @@ public class DialogConfirmAgent {
         }
     }
 
+    // Flush the MENU BAR items (File/Settings/Tools/Help) to the ~8px left margin without touching
+    // Menu.margin (which is shared with dropdown submenu JMenus like File>Backup — pulling that left
+    // mis-aligned Backup's icon vs its JMenuItem siblings). Only the top-level JMenus in the bar get
+    // the reduced left margin; submenu JMenus keep the properties Menu.margin (16) so dropdowns align.
+    private static void flushMenuBarItems() {
+        for (Window w : Window.getWindows()) {
+            if (!(w instanceof javax.swing.JFrame) || !w.isShowing()) continue;
+            javax.swing.JMenuBar mb = ((javax.swing.JFrame) w).getJMenuBar();
+            if (mb == null) continue;
+            for (int i = 0; i < mb.getMenuCount(); i++) {
+                javax.swing.JMenu m = mb.getMenu(i);
+                if (m == null) continue;
+                java.awt.Insets mar = m.getMargin();
+                if (mar == null || mar.left != 8) {
+                    int t = mar == null ? 6 : mar.top, b = mar == null ? 6 : mar.bottom;
+                    m.setMargin(new java.awt.Insets(t, 8, b, 12));
+                }
+            }
+        }
+    }
+
     // --- main tabs: readable text on the accent selected tab ------------------
     // FlatLaf's TabbedPane.selectedForeground is defeated when JD sets a per-tab foreground
     // / a custom tab component / an HTML title (JD recolours the LinkGrabber tab for "new
@@ -2576,6 +2618,12 @@ public class DialogConfirmAgent {
             // colour the hovered text/icon in the ACCENT itself to read on the dark strip.
             Color want = new Color((isSel ? selFg : (isHover ? accentColor() : norFg)).getRGB());
             if (!want.equals(tp.getForegroundAt(i))) tp.setForegroundAt(i, want);
+            // #3: give UNSELECTED tabs a grey rounded tile bg (like the Settings sidebar tiles) so they
+            // read as buttons on the dark strip, not just floating text. FlatLaf paints an unselected
+            // tab's bg = getBackgroundAt(i) (rounded via tabArc); the selected tab uses selectedBackground
+            // (accent) and ignores this, so setting the accent on it too is harmless.
+            Color tabBg = isSel ? accentColor() : TILE_GREY;
+            if (!tabBg.equals(tp.getBackgroundAt(i))) tp.setBackgroundAt(i, tabBg);
             Color iconTone = isSel ? accentFg() : (isHover ? accentColor() : SIDEBAR_TEXT);
             javax.swing.Icon slot = tp.getIconAt(i);                      // JD may set the icon via setIconAt(...)
             if (slot != null) {
