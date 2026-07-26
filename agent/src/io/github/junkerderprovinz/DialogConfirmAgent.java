@@ -2587,78 +2587,41 @@ public class DialogConfirmAgent {
         ensureTabIconListener(l);
     }
 
-    /** P15: theme the ClosableTabHeader close button (an AbstractButton, iconKey "close"). Ground truth
-     *  from a direct X-server screenshot + in-JVM diag: it is a FlatButtonUI button and JD punches a dark
-     *  box under it ONLY on the SELECTED (yellow) tab — one that survives borderless + opaque=false +
-     *  transparent bg, and that a plain opaque FlatButton "fill" only replaced with a dark border ring.
-     *  So keep it BORDERLESS (no border) and cover the box with the ICON itself: on the selected tab the
-     *  close icon is a full ACCENT TILE + dark × painted on top of everything, blending into the pill;
-     *  on the dark strip it is a transparent tile + light ×. Margin 0 so the 16×16 icon fills the whole
-     *  16×16 button with no box ring peeking past the tile. Variant is chosen by the passed-in selected
-     *  state, NOT the button foreground (a FlatButton overrides its fg, which mis-picked the light tile). */
+    /** P15: theme the ClosableTabHeader close button. Diag ground truth: ClosableView$1 is a CUSTOM
+     *  AbstractButton that IGNORES setIcon / setOpaque / setContentAreaFilled (right after our setters:
+     *  isMine=false, op=true, caf=true) and manages its own icon + an opaque fill that boxed the button on
+     *  the selected pill. So take over PAINTING with a tiny ButtonUI (CloseUI): flood the exact surrounding
+     *  colour — accent on the pill, the strip bg otherwise — and draw our mono × on top, bypassing the
+     *  button's own icon/opaque logic (no box, no wrong glyph). The tick keeps the jdp.closeSel property
+     *  (which the UI reads at paint) and re-installs the UI if JD swaps it back. */
     private static void installTabCloseButton(final AbstractButton b, boolean sel) {
-        b.putClientProperty("JButton.buttonType", "borderless");
-        b.setContentAreaFilled(false);
-        b.setBorderPainted(false);
-        b.setOpaque(false);
-        b.setFocusPainted(false);
-        b.setRolloverEnabled(false);
-        b.setBackground(new Color(0, 0, 0, 0));
-        b.setMargin(new java.awt.Insets(0, 0, 0, 0));
-        if (b.getClientProperty("jdp.tabClose") == null) {
-            b.putClientProperty("jdp.tabClose", Boolean.TRUE);
-            b.setRolloverIcon(null);                               // no unthemed hover/pressed glyph swap
-            b.setPressedIcon(null);
-        }
-        // Pick the variant by the KNOWN selected state (passed in), NOT the button's foreground: a
-        // FlatButton overrides its foreground to a UI default (#161616 != accentFg), so a paint-time
-        // TabIcon.pick misread it and drew the light/transparent variant on the selected pill, leaving
-        // JD's dark box exposed with a light × on it. The 400ms tick re-runs this with the live sel;
-        // guard on our own marker so we only rebuild on a variant change or a JD icon swap.
-        if (b.getIcon() == null) return;
-        String wantVar = sel ? "sel" : "def";
-        javax.swing.Icon mine = (javax.swing.Icon) b.getClientProperty("jdp.closeIcon");
-        if (b.getIcon() == mine && wantVar.equals(b.getClientProperty("jdp.closeVar"))) return;
-        javax.swing.Icon ic = sel ? closeIcon(16, 16, accentColor(), accentFg())   // pill: accent tile covers box + dark ×
-                                  : closeIcon(16, 16, null, SIDEBAR_TEXT);          // strip: transparent + light ×
-        if (ic == null) return;
-        b.putClientProperty("jdp.closeVar", wantVar);
-        b.putClientProperty("jdp.closeIcon", ic);
-        b.setIcon(ic);
-        if (sel && CLOSE2_N.get() < 4) {   // TEMP: why is the selected close a white square?
-            CLOSE2_N.incrementAndGet();
-            javax.swing.Icon gi = b.getIcon();
-            appendDiag("CLOSE2 acc=" + accentColor() + " accFg=" + accentFg() + " sbText=" + SIDEBAR_TEXT
-                    + " iconSet=" + (gi == null ? "null" : gi.getClass().getName()) + " isMine=" + (gi == ic)
-                    + " icoW=" + ic.getIconWidth() + "x" + ic.getIconHeight()
-                    + " op=" + b.isOpaque() + " caf=" + b.isContentAreaFilled() + " bg=" + b.getBackground()
-                    + " enab=" + b.isEnabled() + " arm=" + b.getModel().isArmed() + " roll=" + b.getModel().isRollover()
-                    + " press=" + b.getModel().isPressed() + " hasFocus=" + b.hasFocus()
-                    + " btnW=" + b.getWidth() + "x" + b.getHeight() + " ins=" + b.getInsets() + "\n");
-        }
-    }
-    private static final java.util.concurrent.atomic.AtomicInteger CLOSE2_N = new java.util.concurrent.atomic.AtomicInteger(0);
-    private static void appendDiag(String s) {
-        try {
-            java.nio.file.Files.write(java.nio.file.Paths.get("/config/hl-diag.txt"), s.getBytes("UTF-8"),
-                    java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
-        } catch (Throwable ignore) { }
+        Boolean now = Boolean.valueOf(sel);
+        boolean changed = !now.equals(b.getClientProperty("jdp.closeSel"));
+        b.putClientProperty("jdp.closeSel", now);
+        if (!(b.getUI() instanceof CloseUI)) { b.setUI(new CloseUI()); b.setBorder(null); changed = true; }
+        if (changed) b.repaint();
     }
 
-    /** Build a close-button icon cell: optionally flood the whole w×h tile with `bg` (covers the dark box
-     *  JD paints under the selected tab's close button — the tile draws on top of it), then the Tabler ×
-     *  tinted `xCol` on top. bg == null leaves it transparent so the dark strip shows through. */
-    private static javax.swing.Icon closeIcon(int w, int h, Color bg, Color xCol) {
-        try {
-            if (w <= 0 || h <= 0) { w = 16; h = 16; }
-            java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_ARGB);
-            Graphics2D g = img.createGraphics();
-            if (bg != null) { g.setColor(bg); g.fillRect(0, 0, w, h); }
-            javax.swing.Icon base = tablerBase("close", w, h);
-            if (base != null) { javax.swing.Icon x = tintSolid(base, xCol); x.paintIcon(null, g, 0, 0); }
-            g.dispose();
-            return new javax.swing.ImageIcon(img);
-        } catch (Throwable t) { return null; }
+    /** A ButtonUI that fully owns the close button's paint (the button ignores setIcon/setOpaque): flood
+     *  the surrounding colour so JD's opaque fill can't punch a box, then centre our mono ×. Fill + tone
+     *  come from the jdp.closeSel client property so one UI serves the selected pill (accent bg, dark ×)
+     *  and the strip (parent bg, light ×). */
+    private static final class CloseUI extends javax.swing.plaf.basic.BasicButtonUI {
+        private boolean sel(JComponent c) { return Boolean.TRUE.equals(c.getClientProperty("jdp.closeSel")); }
+        @Override public void update(Graphics g, JComponent c) {
+            Color fill = sel(c) ? accentColor()
+                    : (c.getParent() != null && c.getParent().getBackground() != null
+                       ? c.getParent().getBackground() : new Color(0x16, 0x16, 0x16));
+            g.setColor(fill);
+            g.fillRect(0, 0, c.getWidth(), c.getHeight());
+            paint(g, c);
+        }
+        @Override public void paint(Graphics g, JComponent c) {
+            javax.swing.Icon x = tintSolid(tablerBase("close", 16, 16), sel(c) ? accentFg() : SIDEBAR_TEXT);
+            if (x == null) return;
+            int ix = (c.getWidth() - x.getIconWidth()) / 2, iy = (c.getHeight() - x.getIconHeight()) / 2;
+            x.paintIcon(c, g, ix, iy);
+        }
     }
     /** Solid-tone silhouette of an icon: render it, then replace every non-transparent pixel's RGB with
      *  `tone` (alpha kept). Reliably recolours a raw keyless ImageIcon that tablerIcon's key lookup can't. */
