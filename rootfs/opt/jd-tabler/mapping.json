@@ -2,6 +2,7 @@
   "_comment": "JD flat icon name -> Tabler (outline) icon name. Tabler Icons are MIT-licensed (see LICENSE in this dir), so the rasterised PNGs may be shipped in this repo. The jd-highlighter agent replaces JD's cached chrome icons with these at render time. A JD name absent here falls back to a mono tint of JD's own icon.",
   "about": "info-circle",
   "speed": "gauge",
+  "logo/dlc": "file-import",
   "add": "plus",
   "addContainer": "file-plus",
   "advancedConfig": "adjustments",

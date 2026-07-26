@@ -909,7 +909,11 @@ public class DialogConfirmAgent {
                     || ch instanceof javax.swing.JComboBox)) {
                 if (!MENU_FIELD_BG.equals(ch.getBackground())) {
                     ch.setBackground(MENU_FIELD_BG);
-                    if (ch instanceof JComponent) ((JComponent) ch).setOpaque(true);
+                    // opaque=FALSE: an opaque field pre-fills its full SQUARE bounds, and FlatLaf only
+                    // overwrites the corners with the parent bg (to reveal the rounded arc) in the ENABLED
+                    // paint path — a DISABLED field kept the square corners ("rendert erst bei aktivierung
+                    // rund"). Non-opaque lets FlatLaf paint the rounded MENU_FIELD_BG itself in both states.
+                    if (ch instanceof JComponent) ((JComponent) ch).setOpaque(false);
                 }
                 // P14: the grey menu input fields (Max. Chunks / Speed Limit spinners) came in at different
                 // widths — pin them all to one uniform width so the dropdown column lines up. Rounding is the
@@ -1048,8 +1052,11 @@ public class DialogConfirmAgent {
         if (depth > 7) return;
         for (Component ch : c.getComponents()) {
             String cn = ch.getClass().getName();
-            if (ch.getWidth() > 120 && (depth <= 2 || cn.contains("ToolBar") || cn.contains("TabbedPane")
-                    || cn.contains("TableHeader") || cn.contains("maintab") || cn.contains("SwingGui"))) {
+            boolean big = ch.getWidth() > 120 && (depth <= 2 || cn.contains("ToolBar") || cn.contains("TabbedPane")
+                    || cn.contains("TableHeader") || cn.contains("maintab") || cn.contains("SwingGui"));
+            boolean small = (ch instanceof AbstractButton && ch.getWidth() >= 8 && ch.getWidth() <= 70)
+                    || cn.contains("TabHeader");
+            if (big || small) {
                 for (int i = 0; i < depth; i++) sb.append("  ");
                 sb.append(cn).append(" absX=").append(absX(ch, root)).append(" w=").append(ch.getWidth())
                   .append(" insets=").append(ch instanceof Container ? ((Container) ch).getInsets().toString() : "-").append('\n');
