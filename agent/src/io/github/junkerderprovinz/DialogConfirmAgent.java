@@ -2601,20 +2601,18 @@ public class DialogConfirmAgent {
         //      so the fill covers the box and blends in); on the strip keep it borderless + transparent.
         //   2) the icon itself is a full accent TILE + dark × on the selected tab, painted on top of
         //      everything — so even a box the fill misses is covered by the glyph tile.
+        // Stay BORDERLESS (a plain FlatButton drew a dark border ring). The dark box JD punches under the
+        // selected close button is covered by the icon itself: on the selected tab the icon is a full
+        // accent TILE painted on top of the button, so it hides the box and blends into the pill. Margin 0
+        // so the 16×16 icon fills the whole 16×16 button (no ring of the box peeking past the tile).
+        b.putClientProperty("JButton.buttonType", "borderless");
+        b.setContentAreaFilled(false);
         b.setBorderPainted(false);
+        b.setOpaque(false);
         b.setFocusPainted(false);
         b.setRolloverEnabled(false);
-        if (sel) {
-            b.putClientProperty("JButton.buttonType", null);       // plain button so the opaque fill paints
-            b.setContentAreaFilled(true);
-            b.setOpaque(true);
-            b.setBackground(accentColor());
-        } else {
-            b.putClientProperty("JButton.buttonType", "borderless");
-            b.setContentAreaFilled(false);
-            b.setOpaque(false);
-            b.setBackground(new Color(0, 0, 0, 0));
-        }
+        b.setBackground(new Color(0, 0, 0, 0));
+        b.setMargin(new java.awt.Insets(0, 0, 0, 0));
         if (b.getClientProperty("jdp.tabClose") == null) {
             b.putClientProperty("jdp.tabClose", Boolean.TRUE);
             b.setRolloverIcon(null);                               // no unthemed hover/pressed glyph swap
