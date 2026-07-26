@@ -19,23 +19,31 @@
 ARG BASE_TAG=ubunturesolute
 
 # ---------------------------------------------------------------------------
-# Builder stage — compiles the tiny dialog-confirm agent. JD FORCES its first-run /
+# Builder stage — compiles the dialog-confirm + theme agent. JD FORCES its first-run /
 # update installer dialogs whenever the GUI is visible (UpdateController), so no
-# config can suppress them; this agent just auto-clicks them. It does NOT touch
-# colours (those come from JD's native colorfor* config).
+# config can suppress them; this agent auto-clicks them, enforces the dark chrome, and
+# (BUG 4) load-time bytecode-guards two latent AppWork/jsyntaxpane NPEs that only fire
+# under FlatLaf and otherwise break the Event Scripter script editor. The bytecode
+# guards need ASM, bundled (shaded) into the agent jar below.
 # ---------------------------------------------------------------------------
 FROM eclipse-temurin:25.0.3_9-jdk AS agent-builder
 WORKDIR /build
+# ASM (BSD-3-Clause) for the load-time bytecode guards. Pinned + SHA-256 verified so a
+# supply-chain swap of the artifact fails the build (never build an unverified download).
+ADD https://repo1.maven.org/maven2/org/ow2/asm/asm/9.7.1/asm-9.7.1.jar /build/asm.jar
 COPY agent/ /build/
-# JDownloader runs on the Java 21 runtime (openjdk-21-jre below), so the agent's
-# class files must target 21. Pin javac --release 21 so a newer build JDK (e.g. a
-# Renovate bump of the temurin tag above to 25) can't ship a class-69 agent that
-# the 21 runtime refuses to load — that crash-looped the GUI with
-# UnsupportedClassVersionError (class file version 69.0 vs 65.0).
+# JDownloader runs on the Java 21 runtime (openjdk-21-jre below), so the agent's class
+# files must target 21. Pin javac --release 21 so a newer build JDK (e.g. a Renovate
+# bump of the temurin tag above) can't ship a higher-classfile agent the 21 runtime
+# refuses to load (UnsupportedClassVersionError). ASM classes are unpacked into out/
+# (shaded) so the -javaagent jar is self-contained; JD keeps its own ASM on a separate
+# launcher loader, so there is no collision.
 RUN set -eux; \
+    echo "8cadd43ac5eb6d09de05faecca38b917a040bb9139c7edeb4cc81c740b713281  /build/asm.jar" | sha256sum -c -; \
     mkdir -p out; \
     find src -name '*.java' > sources.txt; \
-    javac --release 21 -d out @sources.txt; \
+    javac --release 21 -cp asm.jar -d out @sources.txt; \
+    ( cd out && jar xf ../asm.jar && rm -rf META-INF module-info.class ); \
     jar cfm jd-dialog-agent.jar manifest.mf -C out .
 
 FROM ghcr.io/linuxserver/baseimage-selkies:${BASE_TAG}
