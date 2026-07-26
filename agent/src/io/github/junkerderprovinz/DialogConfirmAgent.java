@@ -1679,6 +1679,19 @@ public class DialogConfirmAgent {
         } catch (Throwable ignore) { return false; }
     }
 
+    // P6: same cached-disabled-icon trap as ExtButton, but for AppWork's RenderLabel (its private field is
+    // "customDisabledIcon"). Null it so getDisabledIcon() re-derives from the CURRENT (mono, full-size) icon.
+    private static void invalidateRenderLabelDisabled(javax.swing.JLabel l) {
+        try {
+            Class<?> c = l.getClass();
+            while (c != null && !"org.appwork.utils.swing.renderer.RenderLabel".equals(c.getName())) c = c.getSuperclass();
+            if (c == null) return;
+            java.lang.reflect.Field f = c.getDeclaredField("customDisabledIcon");
+            f.setAccessible(true);
+            f.set(l, null);
+        } catch (Throwable ignore) { }
+    }
+
     private static void monoButtonIcon(javax.swing.AbstractButton b) {
         try {
             javax.swing.Icon cur = b.getIcon();
@@ -2398,14 +2411,19 @@ public class DialogConfirmAgent {
                                     }
                                     if (sbIcon == null) sbIcon = tablerIconScaled(ic, sbTone, kl, SIDEBAR_ICON_SCALE);
                                     kl.setIcon(sbIcon);
+                                    // P6: AppWork's RenderLabel caches a customDisabledIcon derived from getIcon()
+                                    // (like ExtButton) — if the Advanced row was ever rendered disabled while
+                                    // getIcon() was JD's 20x20, that shrunk disabled icon is cached + painted even
+                                    // after our setIcon(32). Null the cache so it re-derives from our 32px icon.
+                                    invalidateRenderLabelDisabled(kl);
                                     if ("advancedConfig".equals(sbOverride) && ADV_LOG_N < 12) {   // TEMP r76 (P6 deep)
                                         ADV_LOG_N++;
-                                        writeDiag("SB-OVR idx=" + idx + " sel=" + sel + " hov=" + (idx == hoverRow)
-                                            + " klClass=" + kl.getClass().getName()
+                                        javax.swing.Icon di = kl.getDisabledIcon();
+                                        writeDiag("SB-OVR idx=" + idx + " sel=" + sel + " en=" + kl.isEnabled()
                                             + " sbIcon=" + (sbIcon == null ? "null" : sbIcon.getIconWidth() + "x" + sbIcon.getIconHeight())
                                             + " orig=" + ic.getIconWidth() + "x" + ic.getIconHeight()
                                             + " afterSet=" + (kl.getIcon() == null ? "null" : kl.getIcon().getIconWidth() + "x" + kl.getIcon().getIconHeight())
-                                            + " prefH=" + kl.getPreferredSize().height);
+                                            + " disIcon=" + (di == null ? "-" : di.getIconWidth() + "x" + di.getIconHeight()));
                                     }
                                 }
                                 // (7a/7b) Icon-only sidebar: hide the tile NAME unless this row is

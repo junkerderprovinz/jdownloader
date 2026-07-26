@@ -84,19 +84,18 @@ MenuBar.borderColor           = #161616
 ToolBar.borderColor           = #161616
 PopupMenu.borderColor         = #161616
 
-# --- rounded (match the tabs: soft corners everywhere for a consistent look) ---
+# --- rounded: ONE uniform corner radius everywhere ("die Ecken sollen ueberall den gleichen Radius
+#     haben"). FlatLaf .arc is a DIAMETER, so arc=12 = 6px radius = the sidebar buttons (SB_BTN_ARC=12)
+#     and the picom dialog corner-radius=6. Popup.borderCornerRadius is a pixel radius -> 6. ---
 Button.arc        = 12
-Component.arc     = 10
-TextComponent.arc = 10
+Component.arc     = 12
+TextComponent.arc = 12
 CheckBox.arc      = 4
-ProgressBar.arc   = 8
-# P10: heavyweight popup WINDOW corners (combobox dropdowns + menus) round via Popup.borderCornerRadius
-# (ComboBox/PopupMenu.borderCornerRadius reference it); FlatLaf default 4 read as too round. PopupMenu.arc
-# is not the key FlatLaf uses for the window corner, so it stays only as the menu-shape hint.
-PopupMenu.arc            = 8
-Popup.borderCornerRadius = 2
-Spinner.arc       = 10
-ComboBox.arc      = 10
+ProgressBar.arc   = 12
+PopupMenu.arc            = 12
+Popup.borderCornerRadius = 6
+Spinner.arc       = 12
+ComboBox.arc      = 12
 
 # --- roomier controls: taller fields + more padded dropdown rows (space, not lines) ---
 # Combo/dropdown popups are JLists, so List.cellMargins is what makes each dropdown
