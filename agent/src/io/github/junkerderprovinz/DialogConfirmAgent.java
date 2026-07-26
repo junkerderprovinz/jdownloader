@@ -2509,6 +2509,26 @@ public class DialogConfirmAgent {
         return -1;
     }
 
+    /** FlatLaf's FlatTabbedPaneUI paints ONE background per tab and the ROLLOVER tab wins over the selected
+     *  one, so its `hoverColor` field REPLACES the selected accent pill while the mouse is on it — the tab
+     *  went dark on hover/click ("beim Klick komplett schwarz"). Null the field on the UI instance so
+     *  FlatLaf skips the hover fill entirely: the selected pill survives rollover, non-selected tabs keep
+     *  the strip, and the agent's accent hover-text stays the (only, clean) hover cue. Re-nulled each tick
+     *  in case JD reinstalls the UI. Cheaper than fighting it via the single global hoverColor property. */
+    private static void killTabHoverColor(javax.swing.JTabbedPane tp) {
+        try {
+            Object ui = tp.getUI();
+            for (Class<?> k = ui.getClass(); k != null; k = k.getSuperclass()) {
+                try {
+                    java.lang.reflect.Field f = k.getDeclaredField("hoverColor");
+                    f.setAccessible(true);
+                    if (f.get(ui) != null) { f.set(ui, null); tp.repaint(); }
+                    return;
+                } catch (NoSuchFieldException nsf) { /* walk up */ }
+            }
+        } catch (Throwable ignore) { }
+    }
+
     private static void recolorTabsIn(Container c, Color selFg, Color norFg) {
         for (Component child : c.getComponents()) {
             if (child instanceof javax.swing.JTabbedPane) {
@@ -2518,6 +2538,7 @@ public class DialogConfirmAgent {
                 // hovered tab's text/icon never flipped dark (light-on-yellow). Read FlatLaf's OWN
                 // rollover-tab (it tracks the hover correctly for custom-component tabs, that is what
                 // paints the yellow bg); fall back to the listener's index for the strip gaps.
+                killTabHoverColor(tp);   // FlatLaf's hover fill covers the selected pill on rollover -> kill it
                 int rov = rolloverTabOf(tp);
                 Object hv = tp.getClientProperty(TAB_HOVER_IDX);
                 int hover = (rov >= 0) ? rov : ((hv instanceof Integer) ? (Integer) hv : -1);
@@ -2537,14 +2558,13 @@ public class DialogConfirmAgent {
         for (int i = 0; i < tp.getTabCount(); i++) {
             boolean isSel = (i == sel);
             boolean isHover = (hover >= 0 && i == hover && !isSel);
-            // onAccent = the tab carries the accent pill: the SELECTED tab, OR the hovered one now that
-            // FlatLaf's hoverColor is the accent (so a hovered tab previews the pill instead of the base
-            // fill blanking the selected pill on rollover). On the pill -> DARK text/icon; on the bare
-            // strip -> light. Keeping tone in lock-step with FlatLaf's fill avoids the dark-on-dark blank.
-            boolean onAccent = isSel || isHover;
-            Color want = new Color((onAccent ? selFg : norFg).getRGB());
+            // Selected tab = the accent pill -> DARK text/icon. A hovered NON-selected tab stays on the
+            // dark strip (JD's opaque custom TabHeader covers FlatLaf's hover fill, and we now null that
+            // fill entirely via killTabHoverColor so it can't blank the SELECTED pill on rollover), so
+            // colour the hovered text/icon in the ACCENT itself to read on the dark strip.
+            Color want = new Color((isSel ? selFg : (isHover ? accentColor() : norFg)).getRGB());
             if (!want.equals(tp.getForegroundAt(i))) tp.setForegroundAt(i, want);
-            Color iconTone = onAccent ? accentFg() : SIDEBAR_TEXT;
+            Color iconTone = isSel ? accentFg() : (isHover ? accentColor() : SIDEBAR_TEXT);
             javax.swing.Icon slot = tp.getIconAt(i);                      // JD may set the icon via setIconAt(...)
             if (slot != null) {
                 String pk = "jdp.tabIcOrig." + i;
@@ -2553,7 +2573,7 @@ public class DialogConfirmAgent {
                 if (o != null) { javax.swing.Icon nw = tablerIcon(o, iconTone, tp); if (nw != tp.getIconAt(i)) tp.setIconAt(i, nw); }
             }
             Component tc = tp.getTabComponentAt(i);   // custom tab component (JLabel etc.)
-            if (tc != null) { setLabelFg(tc, want); tablerTabIcons(tc, iconTone, onAccent); installTabCompHover(tp, tc, selFg, norFg); }
+            if (tc != null) { setLabelFg(tc, want); tablerTabIcons(tc, iconTone, isSel); installTabCompHover(tp, tc, selFg, norFg); }
         }
     }
 

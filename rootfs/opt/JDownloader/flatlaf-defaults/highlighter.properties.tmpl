@@ -111,14 +111,14 @@ List.selectionArc       = 6
 OptionPane.background = #242424
 RootPane.background   = #242424
 
-# --- main tabs: the SELECTED tab is a rounded accent pill; HOVER previews it (accent pill + dark text) ---
-# FlatLaf picks ONE background per tab and the ROLLOVER tab takes precedence over the selected one, so
+# --- main tabs: the SELECTED tab is a rounded accent pill; HOVER = accent text on the dark strip ---
+# FlatLaf picks ONE background per tab and the ROLLOVER tab takes precedence over the selected one, so its
 # hoverColor REPLACES the selected pill while the mouse is on it. hoverColor=base(#161616) therefore made
 # a just-clicked/hovered SELECTED tab go dark until the mouse left it ("beim Klick komplett schwarz",
-# proved on the X server directly). Fix: hoverColor=ACCENT so a hovered tab keeps/gains the pill, and
-# hoverForeground=ACCENT_FG (dark) so the text reads on it; the agent's applyTabForegrounds paints the
-# hovered tab's text+icon dark to match (onAccent = selected||hover), so every hovered tab looks like a
-# clean selection preview — no black flash, no yellow-on-yellow.
+# proved on the X server directly). The real fix lives in the agent (killTabHoverColor nulls the UI's
+# hoverColor field so FlatLaf skips the hover fill entirely -> the selected pill survives rollover). These
+# values are only the FALLBACK if that reflection ever fails: hoverColor=ACCENT (never blanks the pill;
+# JD's opaque TabHeader covers the fill on non-selected tabs anyway) + hoverForeground=ACCENT_FG.
 TabbedPane.selectedBackground = @@ACCENT@@
 TabbedPane.selectedForeground = @@ACCENT_FG@@
 TabbedPane.tabSelectionHeight = 0
