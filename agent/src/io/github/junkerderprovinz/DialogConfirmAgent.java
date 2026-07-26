@@ -2060,17 +2060,10 @@ public class DialogConfirmAgent {
      *  light, precompute a DARK (accentFg) twin, and swap getIcon() between them when the item is
      *  armed/selected — the icon analogue of installBtnHoverFg. Guarded on both variants so the tick
      *  never re-monos our own icon. */
-    private static final java.util.Set<String> MENU_DIAG = java.util.Collections.synchronizedSet(new java.util.HashSet<String>());   // TEMP #4
     private static void monoMenuItemIcon(javax.swing.JMenuItem mi) {
         try {
             javax.swing.Icon cur = mi.getIcon();
             if (cur == null) return;                                   // check/radio glyphs are UI-painted, not getIcon()
-            if (MENU_DIAG.add(String.valueOf(mi.getText()))) {         // TEMP #4: dump each menu item's icon key
-                try { java.nio.file.Files.write(java.nio.file.Paths.get("/config/menu-keys.txt"),
-                    ("[" + mi.getText() + "] key=" + iconKey(cur) + " cls=" + cur.getClass().getName()
-                        + " tabler=" + (iconKey(cur) != null && tablerBase(iconKey(cur), 16, 16) != null) + "\n").getBytes("UTF-8"),
-                    java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND); } catch (Throwable ig) { }
-            }
             Object light = mi.getClientProperty("jdp.miLight");
             if (cur == light || cur == mi.getClientProperty("jdp.miDark")) { installMenuItemHoverIcon(mi); return; }
             javax.swing.Icon lo = tablerIcon(cur, SIDEBAR_TEXT, mi);
@@ -3048,14 +3041,22 @@ public class DialogConfirmAgent {
     private static void roundToolbarButtons() {
         for (Window w : Window.getWindows()) if (w.isShowing()) roundToolbarBtnsIn(w, false);
     }
+    private static final java.util.Set<String> TB_DIAG = java.util.Collections.synchronizedSet(new java.util.HashSet<String>());   // TEMP #8
     private static void roundToolbarBtnsIn(Container c, boolean inTb) {
         boolean tb = inTb || isMainToolbar(c.getClass());
         for (Component ch : c.getComponents()) {
             if (tb && ch instanceof AbstractButton) {
                 AbstractButton b = (AbstractButton) ch;
+                if (TB_DIAG.add(b.getClass().getName())) {              // TEMP #8: dump each toolbar button once
+                    try { java.nio.file.Files.write(java.nio.file.Paths.get("/config/tb-diag.txt"),
+                        ("TB " + b.getClass().getName() + " sel=" + b.isSelected() + " op=" + b.isOpaque()
+                            + " caf=" + b.isContentAreaFilled() + " ui=" + b.getUI().getClass().getName() + "\n").getBytes("UTF-8"),
+                        java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND); } catch (Throwable ig) { }
+                }
                 if (!(b.getUI() instanceof RoundFillUI)) {
                     javax.swing.border.Border ob = b.getBorder();   // preserve JD's sizing/padding
                     b.setContentAreaFilled(false);                  // suppress FlatLaf's square fill
+                    b.setOpaque(false);                             // and any opaque square background
                     b.setUI(new RoundFillUI());
                     if (ob != null) b.setBorder(ob);
                 }
