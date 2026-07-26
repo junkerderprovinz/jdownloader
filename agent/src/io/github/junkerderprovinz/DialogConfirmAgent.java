@@ -1548,10 +1548,28 @@ public class DialogConfirmAgent {
             collectSubIconKeys(owner, original, parts, 0);
             result = pickDominant(parts);
             String cls = (original == null) ? "null" : original.getClass().getName();
-            if (STATUS_DIAG.add(cls))
+            if (STATUS_DIAG.add(cls)) {
                 System.out.println("[jd-agent-diag] status " + cls + " -> " + result + " parts=" + parts);
+                if (result == null && original != null) dumpIconFields(original);
+            }
         }
         return result;
+    }
+
+    // #11b DIAG (temporary): dump an unclassified status icon's fields so the sub-icon storage is visible.
+    private static void dumpIconFields(Object ic) {
+        try {
+            for (Class<?> c = ic.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
+                for (Field f : c.getDeclaredFields()) {
+                    try {
+                        f.setAccessible(true);
+                        Object v = f.get(ic);
+                        System.out.println("[jd-agent-diag]   field " + f.getType().getSimpleName() + " " + f.getName()
+                                + " = " + (v == null ? "null" : v.getClass().getName()));
+                    } catch (Throwable ig) { }
+                }
+            }
+        } catch (Throwable ig) { }
     }
 
     /** The clean key for an icon that IS one of the owning column's named status fields, else null. */
@@ -1569,28 +1587,37 @@ public class DialogConfirmAgent {
         return null;
     }
 
-    /** Walk a composite icon's fields (MergedIcon holds an Icon[] / Collection<Icon>), classifying each part. */
-    private static void collectSubIconKeys(Object owner, javax.swing.Icon ic, java.util.List<String> out, int depth) {
-        if (ic == null || depth > 4) return;
-        for (Class<?> c = ic.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
+    /** Walk a composite icon's object graph (MergedIcon may hold its parts in an Icon[] / Object[] /
+     *  Collection, or nested in another JD holder), classifying each Icon part. Recurses only into
+     *  org.jdownloader / org.appwork / jd typed fields, bounded by depth, so it can't wander the whole heap. */
+    private static void collectSubIconKeys(Object owner, Object node, java.util.List<String> out, int depth) {
+        if (node == null || depth > 5) return;
+        for (Class<?> c = node.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
             for (Field f : c.getDeclaredFields()) {
+                if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) continue;
                 try {
                     f.setAccessible(true);
-                    Object v = f.get(ic);
+                    Object v = f.get(node);
+                    if (v == null || v == node) continue;
                     if (v instanceof javax.swing.Icon) {
-                        addSubIcon(owner, (javax.swing.Icon) v, ic, out, depth);
+                        addSubIcon(owner, (javax.swing.Icon) v, node, out, depth);
                     } else if (v instanceof javax.swing.Icon[]) {
-                        for (javax.swing.Icon s : (javax.swing.Icon[]) v) addSubIcon(owner, s, ic, out, depth);
+                        for (javax.swing.Icon s : (javax.swing.Icon[]) v) addSubIcon(owner, s, node, out, depth);
+                    } else if (v instanceof Object[]) {
+                        for (Object o : (Object[]) v) if (o instanceof javax.swing.Icon) addSubIcon(owner, (javax.swing.Icon) o, node, out, depth);
                     } else if (v instanceof java.util.Collection) {
-                        for (Object o : (java.util.Collection<?>) v)
-                            if (o instanceof javax.swing.Icon) addSubIcon(owner, (javax.swing.Icon) o, ic, out, depth);
+                        for (Object o : (java.util.Collection<?>) v) if (o instanceof javax.swing.Icon) addSubIcon(owner, (javax.swing.Icon) o, node, out, depth);
+                    } else {
+                        String vc = v.getClass().getName();
+                        if (vc.startsWith("org.jdownloader.") || vc.startsWith("org.appwork.") || vc.startsWith("jd."))
+                            collectSubIconKeys(owner, v, out, depth + 1);   // nested JD holder
                     }
                 } catch (Throwable ignore) { }
             }
         }
     }
 
-    private static void addSubIcon(Object owner, javax.swing.Icon sub, javax.swing.Icon parent,
+    private static void addSubIcon(Object owner, javax.swing.Icon sub, Object parent,
                                    java.util.List<String> out, int depth) {
         if (sub == null || sub == parent) return;
         String k = keyFromOwnerFields(owner, sub);
@@ -3959,23 +3986,19 @@ public class DialogConfirmAgent {
         if (!(c instanceof JPopupMenu) && subtreeHasAllViewsItems(c)) return c;
         return null;
     }
+    /** Locale-agnostic host test: the Views host is the tightest subtree holding at least two Views section
+     *  Headers (org.jdownloader.gui.views.components.Header). The old text match ("custom view"/"file type"/
+     *  "hoster") only matched the ENGLISH UI, so on German ("Eigene Ansichten"/"Dateitypen"/"Hoster") the
+     *  host was never found and the whole Views polish (chips, grid + line strip) silently no-op'd. */
     private static boolean subtreeHasAllViewsItems(Container c) {
-        boolean[] found = new boolean[3];
-        scanViewsTexts(c, found);
-        return found[0] && found[1] && found[2];
+        int[] n = { 0 };
+        countViewsHeaders(c, n);
+        return n[0] >= 2;
     }
-    private static void scanViewsTexts(Container c, boolean[] found) {
+    private static void countViewsHeaders(Container c, int[] n) {
         for (Component ch : c.getComponents()) {
-            String t = null;
-            if (ch instanceof javax.swing.JLabel) t = ((javax.swing.JLabel) ch).getText();
-            else if (ch instanceof javax.swing.AbstractButton) t = ((javax.swing.AbstractButton) ch).getText();
-            if (t != null) {
-                String s = t.toLowerCase().replaceAll("<[^>]*>", " ");
-                if (s.contains("custom view")) found[0] = true;
-                if (s.contains("file type")) found[1] = true;
-                if (s.contains("hoster")) found[2] = true;
-            }
-            if (ch instanceof Container) scanViewsTexts((Container) ch, found);
+            if (ch instanceof JComponent && isViewsHeader(ch.getClass())) n[0]++;
+            if (ch instanceof Container) countViewsHeaders((Container) ch, n);
         }
     }
 
