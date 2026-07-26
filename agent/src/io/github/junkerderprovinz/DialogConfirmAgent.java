@@ -185,6 +185,8 @@ public class DialogConfirmAgent {
                         // #11b: swap the download + linkgrabber status-column glyphs for clean Tabler icons.
                         if (TASK_COL.equals(className) || AVAIL_COL.equals(className))
                             return patchStatusColumn(classfileBuffer, loader, className);
+                        // #2: inset FlatLaf's tab-background fill so the primary nav tabs get a real gap.
+                        if (FLAT_TABUI.equals(className)) return patchTabbedPaneUI(classfileBuffer, loader);
                         return null;
                     } catch (Throwable err) {
                         System.out.println("[jd-dialog-agent] bytecode transform skipped for " + className
@@ -380,6 +382,57 @@ public class DialogConfirmAgent {
         return cw.toByteArray();
     }
 
+    // #2: give the primary nav tabs a real gap. FlatLaf paints each tab background edge-to-edge; the only
+    // clean way (the standalone agent can't subclass FlatTabbedPaneUI) is to inset the fill rect. Patch
+    // FlatTabbedPaneUI.paintTabBackground(g,placement,index,x,y,w,h,sel) at entry: x += tabGap(); w -= 2*tabGap().
+    // Gated via the tabGap() hook (0 when not highlighter) so plain-dark tabs are untouched. Fail-safe.
+    private static final String FLAT_TABUI = "com/formdev/flatlaf/ui/FlatTabbedPaneUI";
+    private static final int TAB_GAP = 4;   // px inset per side -> ~8px visible gap between tiles
+    public static int tabGap() { return isHighlighter() ? TAB_GAP : 0; }
+    private static byte[] patchTabbedPaneUI(byte[] original, final ClassLoader loader) {
+        ClassReader cr = new ClassReader(original);
+        ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES) {
+            @Override
+            protected ClassLoader getClassLoader() { return loader != null ? loader : super.getClassLoader(); }
+        };
+        final int[] n = { 0 };
+        final java.util.List<String> methods = new java.util.ArrayList<String>();
+        ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
+            @Override
+            public MethodVisitor visitMethod(int access, String name, String desc, String sig, String[] ex) {
+                methods.add(name + desc);
+                MethodVisitor mv = super.visitMethod(access, name, desc, sig, ex);
+                if (!("paintTabBackground".equals(name) && "(Ljava/awt/Graphics;IIIIIIZ)V".equals(desc))) return mv;
+                n[0]++;
+                return new MethodVisitor(Opcodes.ASM9, mv) {
+                    @Override
+                    public void visitCode() {
+                        super.visitCode();
+                        // x = x + tabGap();
+                        super.visitVarInsn(Opcodes.ILOAD, 4);
+                        super.visitMethodInsn(Opcodes.INVOKESTATIC, AGENT_INTERNAL, "tabGap", "()I", false);
+                        super.visitInsn(Opcodes.IADD);
+                        super.visitVarInsn(Opcodes.ISTORE, 4);
+                        // w = w - 2 * tabGap();
+                        super.visitVarInsn(Opcodes.ILOAD, 6);
+                        super.visitInsn(Opcodes.ICONST_2);
+                        super.visitMethodInsn(Opcodes.INVOKESTATIC, AGENT_INTERNAL, "tabGap", "()I", false);
+                        super.visitInsn(Opcodes.IMUL);
+                        super.visitInsn(Opcodes.ISUB);
+                        super.visitVarInsn(Opcodes.ISTORE, 6);
+                    }
+                };
+            }
+        };
+        cr.accept(cv, 0);
+        if (n[0] == 0) {
+            System.out.println("[jd-dialog-agent] FlatTabbedPaneUI.paintTabBackground not found — methods: " + methods);
+            return null;
+        }
+        System.out.println("[jd-dialog-agent] patched FlatTabbedPaneUI.paintTabBackground -> tab gap (#2)");
+        return cw.toByteArray();
+    }
+
     // --- Package-expander icons (Linkgrabber + download list) --------------------
     // JD's ExtTable draws the package [+]/[-] toggle from the iconset keys
     // tree_plus / tree_minus (IconKey.ICON_PLUS/ICON_MINUS -> FileColumn, shared by
@@ -516,6 +569,7 @@ public class DialogConfirmAgent {
             monoTableRowIcons();    // #11: mono the download/linkgrabber row icons (hoster favicon kept)
             recolorDialogs();
             dimModalBackdrops();
+            hlDiag2();               // DIAG (temporary): folder/Archiv/expander icon keys + menu-bar line source
         }
         if (++lafTick >= 12) {   // every ~5s (ticks run every 400ms)
             lafTick = 0;
@@ -1476,6 +1530,8 @@ public class DialogConfirmAgent {
     // marks the mono replacements WE produced so a keyless mono icon is not re-tinted every tick (no churn).
     private static final java.util.Map<javax.swing.Icon, Boolean> EXT_MONO_MARK =
             java.util.Collections.synchronizedMap(new java.util.WeakHashMap<javax.swing.Icon, Boolean>());
+    private static final java.util.Set<String> EXP_DIAG =
+            java.util.Collections.synchronizedSet(new java.util.HashSet<String>());   // DIAG (temporary)
     private static void recolorExpanderFields(Object col) {
         if (col == null) return;
         for (Class<?> k = col.getClass(); k != null && k != Object.class; k = k.getSuperclass()) {
@@ -1488,6 +1544,9 @@ public class DialogConfirmAgent {
                     javax.swing.Icon ic = (javax.swing.Icon) o;
                     if (EXT_MONO_MARK.containsKey(ic)) continue;                 // already our mono replacement
                     String key = iconKey(ic);
+                    if (EXP_DIAG.add(col.getClass().getSimpleName() + "#" + f.getName()))   // DIAG (temporary)
+                        System.out.println("[jd-agent-diag2] EXPFIELD " + col.getClass().getSimpleName() + "#"
+                                + f.getName() + " key=" + key + " " + ic.getClass().getSimpleName());
                     javax.swing.Icon repl = null;
                     if (key != null && (key.contains("tree_plus") || key.contains("tree_minus")
                             || key.contains("lockColumn") || key.contains("widthLocked"))) {
@@ -1537,6 +1596,8 @@ public class DialogConfirmAgent {
      *  on the column, (2) the icon's own key (AvailabilityColumn / FinalLinkState / PluginProgress glyphs are
      *  keyed), (3) the visible glyph is usually a fresh MergedIcon that fillColumnHelper composed past the
      *  cached fields, so classify its sub-icons and pick the dominant status. */
+    private static final java.util.Set<String> STATUS_DIAG =
+            java.util.Collections.synchronizedSet(new java.util.HashSet<String>());
     private static String classifyStatus(Object owner, javax.swing.Icon original) {
         String result = keyFromOwnerFields(owner, original);
         if (result == null) result = normalizeStatusKey(iconKey(original));
@@ -1544,8 +1605,92 @@ public class DialogConfirmAgent {
             java.util.List<String> parts = new java.util.ArrayList<String>();
             collectSubIconKeys(owner, original, parts, 0);
             result = pickDominant(parts);
+            // DIAG (temporary): log the raw sub-icon keys per distinct status composite, to curate nicer icons.
+            String sig = (original == null ? "null" : original.getClass().getSimpleName()) + parts + result;
+            if (STATUS_DIAG.add(sig)) {
+                java.util.List<String> raw = new java.util.ArrayList<String>();
+                collectRawSubKeys(original, raw, 0);
+                System.out.println("[jd-agent-diag] status parts=" + parts + " -> " + result + " raw=" + raw);
+            }
         }
         return result;
+    }
+
+    // DIAG (temporary): collect the RAW (unnormalized) iconKey of every sub-icon so extract-OK/error/etc.
+    // can be told apart and mapped to distinct nice glyphs.
+    private static void collectRawSubKeys(Object node, java.util.List<String> out, int depth) {
+        if (node == null || depth > 6) return;
+        for (Class<?> c = node.getClass(); c != null && c != Object.class; c = c.getSuperclass())
+            for (Field f : c.getDeclaredFields()) {
+                if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) continue;
+                try { f.setAccessible(true); rawConsume(f.get(node), node, out, depth); } catch (Throwable ig) { }
+            }
+    }
+    private static void rawConsume(Object v, Object node, java.util.List<String> out, int depth) {
+        if (v == null || v == node) return;
+        if (v instanceof javax.swing.Icon) {
+            javax.swing.Icon sub = (javax.swing.Icon) v;
+            String k = iconKey(sub);
+            out.add((k != null ? k : "?") + ":" + sub.getClass().getSimpleName() + " " + sub.getIconWidth() + "x" + sub.getIconHeight());
+            if (k == null) collectRawSubKeys(sub, out, depth + 1);
+        } else if (v instanceof Object[]) { for (Object o : (Object[]) v) rawConsume(o, node, out, depth); }
+        else if (v instanceof java.util.Collection) { for (Object o : (java.util.Collection<?>) v) rawConsume(o, node, out, depth); }
+        else { String vc = v.getClass().getName();
+            if (vc.startsWith("org.jdownloader.") || vc.startsWith("org.appwork.") || vc.startsWith("jd."))
+                collectRawSubKeys(v, out, depth + 1); }
+    }
+
+    // DIAG (temporary): dump the menu-bar neighbourhood (light line under it), the download/Views table row0
+    // cell icons (folder / Archiv keys), and the tree expand icons (#10 [+] / lock). One-shot.
+    private static boolean diag2Done = false;
+    private static void hlDiag2() {
+        if (diag2Done) return;
+        try {
+            boolean any = false;
+            for (Window w : Window.getWindows()) {
+                if (!w.isShowing()) continue;
+                javax.swing.JMenuBar mb = (w instanceof javax.swing.JFrame) ? ((javax.swing.JFrame) w).getJMenuBar() : null;
+                if (mb != null) {
+                    System.out.println("[jd-agent-diag2] MENUBAR " + diagComp(mb));
+                    Container p = mb.getParent();
+                    if (p != null) {
+                        System.out.println("[jd-agent-diag2]  parent " + diagComp(p));
+                        for (Component sib : p.getComponents()) System.out.println("[jd-agent-diag2]   sib " + diagComp(sib));
+                    }
+                    any = true;
+                }
+                java.util.List<JTable> tabs = new java.util.ArrayList<JTable>();
+                collectTables(w, tabs);
+                for (JTable t : tabs) {
+                    if (inConfigPanel(t) || t.getRowCount() == 0) continue;
+                    System.out.println("[jd-agent-diag2] TABLE " + t.getClass().getSimpleName() + " rows=" + t.getRowCount());
+                    for (int c = 0; c < t.getColumnCount(); c++) {
+                        try {
+                            Component cell = t.prepareRenderer(t.getCellRenderer(0, c), 0, c);
+                            javax.swing.Icon ic = diagIconOf(cell);
+                            System.out.println("[jd-agent-diag2]   col" + c + " '" + t.getColumnName(c) + "' icon="
+                                    + (ic == null ? "null" : iconKey(ic) + ":" + ic.getClass().getSimpleName()));
+                        } catch (Throwable ig) { }
+                    }
+                    any = true;
+                }
+            }
+            System.out.println("[jd-agent-diag2] Tree.expandedIcon=" + UIManager.getIcon("Tree.expandedIcon")
+                    + " collapsedIcon=" + UIManager.getIcon("Tree.collapsedIcon"));
+            if (any) diag2Done = true;
+        } catch (Throwable ig) { }
+    }
+    private static String diagComp(Component c) {
+        String b = (c instanceof JComponent) ? String.valueOf(((JComponent) c).getBorder()) : "-";
+        return c.getClass().getName() + " " + c.getBounds() + " opaque=" + c.isOpaque()
+                + " bg=" + c.getBackground() + " border=" + b;
+    }
+    private static javax.swing.Icon diagIconOf(Component c) {
+        if (c instanceof javax.swing.JLabel) return ((javax.swing.JLabel) c).getIcon();
+        if (c instanceof AbstractButton) return ((AbstractButton) c).getIcon();
+        if (c instanceof Container)
+            for (Component ch : ((Container) c).getComponents()) { javax.swing.Icon i = diagIconOf(ch); if (i != null) return i; }
+        return null;
     }
 
     /** The clean key for an icon that IS one of the owning column's named status fields, else null. */
