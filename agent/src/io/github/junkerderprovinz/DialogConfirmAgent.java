@@ -256,6 +256,7 @@ public class DialogConfirmAgent {
             badgeViewsPanel();      // pt5: badge the docked LinkGrabber "Views" headers too
             styleMenuFields();
             wireMenuPopups();       // S8: pre-style popups on open (no unstyled flash)
+            styleVisibleMenuPopups(); // re-style OPEN popups every tick so JD's lazy row re-render can't leave a stale colored icon / uneven field
             cardSettingsSections();
             borderlessConfigTables();
             unifyConfigFields();
@@ -952,34 +953,51 @@ public class DialogConfirmAgent {
         if (pm == null || Boolean.TRUE.equals(pm.getClientProperty(POPUP_WIRED))) return;
         pm.putClientProperty(POPUP_WIRED, Boolean.TRUE);
         pm.addPopupMenuListener(new javax.swing.event.PopupMenuListener() {
-            public void popupMenuWillBecomeVisible(javax.swing.event.PopupMenuEvent e) {
-                try {
-                    styleMenuFieldsIn(pm, true);                       // raise the embedded fields
-                    for (Component ch : pm.getComponents())            // mono the item icons
-                        if (ch instanceof javax.swing.JMenuItem) monoMenuItemIcon((javax.swing.JMenuItem) ch);
-                    for (Component ch : pm.getComponents())            // P3: mono the custom EditorLink rows too
-                        if (!(ch instanceof javax.swing.JMenuItem) && ch instanceof Container) monoRowLabels((Container) ch);
-                    // D2 fix: the Settings-menu input rows (ChunksEditorLink, SpeedlimitEditorLink, ...) are
-                    // custom components (NOT JMenuItems, so MenuItem.margin never reached them) and shipped
-                    // at h=24 vs the h=40 menu items above. Add a vertical EmptyBorder so every row breathes
-                    // the same. Kept horizontal at 0 so the embedded field's own layout stays aligned.
-                    for (Component ch : pm.getComponents()) {
-                        if (ch instanceof JComponent && !(ch instanceof javax.swing.JMenuItem)
-                                && !(ch instanceof javax.swing.JSeparator)) {
-                            JComponent jc = (JComponent) ch;
-                            if (jc.getClientProperty("jdp.menuRowPad") == null) {
-                                jc.putClientProperty("jdp.menuRowPad", Boolean.TRUE);
-                                javax.swing.border.Border pad = new javax.swing.border.EmptyBorder(3, 0, 3, 0);
-                                javax.swing.border.Border old = jc.getBorder();
-                                jc.setBorder(old == null ? pad : new javax.swing.border.CompoundBorder(pad, old));
-                            }
-                        }
-                    }
-                } catch (Throwable ignore) { }
-            }
+            public void popupMenuWillBecomeVisible(javax.swing.event.PopupMenuEvent e) { stylePopupNow(pm); }
             public void popupMenuWillBecomeInvisible(javax.swing.event.PopupMenuEvent e) { }
             public void popupMenuCanceled(javax.swing.event.PopupMenuEvent e) { }
         });
+    }
+
+    /** Full styling for one popup menu: raise+size the embedded fields, mono the item + EditorLink icons,
+     *  pad the custom rows. Applied on-open (no unstyled flash) AND re-applied every tick for VISIBLE popups
+     *  (styleVisibleMenuPopups) — the EditorLink rows (Speed Limit) are built/re-rendered lazily, so a
+     *  one-shot on-open lost the race and left the old colored icon + uneven fields ([[jd-agent-render-path-vs-tick]]). */
+    private static void stylePopupNow(javax.swing.JPopupMenu pm) {
+        try {
+            styleMenuFieldsIn(pm, true);                       // raise + uniform-width the embedded fields
+            for (Component ch : pm.getComponents())            // mono the item icons
+                if (ch instanceof javax.swing.JMenuItem) monoMenuItemIcon((javax.swing.JMenuItem) ch);
+            for (Component ch : pm.getComponents())            // P3: mono the custom EditorLink rows too
+                if (!(ch instanceof javax.swing.JMenuItem) && ch instanceof Container) monoRowLabels((Container) ch);
+            for (Component ch : pm.getComponents()) {          // D2: pad the custom input rows to match
+                if (ch instanceof JComponent && !(ch instanceof javax.swing.JMenuItem)
+                        && !(ch instanceof javax.swing.JSeparator)) {
+                    JComponent jc = (JComponent) ch;
+                    if (jc.getClientProperty("jdp.menuRowPad") == null) {
+                        jc.putClientProperty("jdp.menuRowPad", Boolean.TRUE);
+                        javax.swing.border.Border pad = new javax.swing.border.EmptyBorder(3, 0, 3, 0);
+                        javax.swing.border.Border old = jc.getBorder();
+                        jc.setBorder(old == null ? pad : new javax.swing.border.CompoundBorder(pad, old));
+                    }
+                }
+            }
+        } catch (Throwable ignore) { }
+    }
+
+    // Re-style every VISIBLE popup menu each tick, so JD's lazy re-render of the Speed-Limit / editor rows
+    // can't leave a stale colored icon or uneven field behind (the one-shot on-open lost the race).
+    private static void styleVisibleMenuPopups() {
+        for (Window w : Window.getWindows()) {
+            if (w.isShowing() && w instanceof javax.swing.JPopupMenu) stylePopupNow((javax.swing.JPopupMenu) w);
+            if (w.isShowing() && w instanceof Container) styleVisiblePopupsIn((Container) w);
+        }
+    }
+    private static void styleVisiblePopupsIn(Container c) {
+        for (Component ch : c.getComponents()) {
+            if (ch instanceof javax.swing.JPopupMenu && ch.isShowing()) stylePopupNow((javax.swing.JPopupMenu) ch);
+            if (ch instanceof Container) styleVisiblePopupsIn((Container) ch);
+        }
     }
 
     private static void widenSpeedIn(Container c) {
@@ -2502,12 +2520,58 @@ public class DialogConfirmAgent {
                 int rov = rolloverTabOf(tp);
                 Object hv = tp.getClientProperty(TAB_HOVER_IDX);
                 int hover = (rov >= 0) ? rov : ((hv instanceof Integer) ? (Integer) hv : -1);
+                if (tp.getTabCount() >= 2 && tp.getTabComponentAt(0) != null) diagTabs(tp);   // TEMP: dump TabHeader tree once
                 applyTabForegrounds(tp, selFg, norFg, hover);
                 installTabHoverListener(tp, selFg, norFg);
             }
             if (child instanceof Container) recolorTabsIn((Container) child, selFg, norFg);
         }
     }
+
+    // ===== TEMP tab diagnostic (remove after P15/P16) =====
+    private static final java.util.concurrent.atomic.AtomicBoolean TAB_DIAG_DONE = new java.util.concurrent.atomic.AtomicBoolean(false);
+    private static void appendDiag(String s) {
+        try {
+            java.nio.file.Files.write(java.nio.file.Paths.get("/config/hl-diag.txt"), s.getBytes("UTF-8"),
+                    java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+        } catch (Throwable ignore) { }
+    }
+    private static String cn(Object o) { return o == null ? "null" : o.getClass().getName(); }
+    private static void diagTabs(javax.swing.JTabbedPane tp) {
+        if (!TAB_DIAG_DONE.compareAndSet(false, true)) return;
+        try {
+            StringBuilder sb = new StringBuilder("=== TAB DIAG ===\n");
+            for (int i = 0; i < tp.getTabCount(); i++) {
+                javax.swing.Icon ia = tp.getIconAt(i);
+                sb.append("tab[").append(i).append("] title='").append(tp.getTitleAt(i))
+                  .append("' tip='").append(tp.getToolTipTextAt(i))
+                  .append("' iconAt=").append(cn(ia)).append(" iconKey=").append(iconKey(ia)).append('\n');
+                Component tc = tp.getTabComponentAt(i);
+                sb.append("  tabComp=").append(cn(tc)).append('\n');
+                if (tc instanceof Container) diagTree((Container) tc, sb, "    ");
+            }
+            appendDiag(sb.toString());
+        } catch (Throwable t) { appendDiag("TAB DIAG ERR " + t + "\n"); }
+    }
+    private static void diagTree(Container c, StringBuilder sb, String ind) {
+        for (Component ch : c.getComponents()) {
+            sb.append(ind).append(cn(ch)).append(" opaque=").append(ch.isOpaque())
+              .append(" bg=").append(ch.getBackground()).append(" size=").append(ch.getWidth()).append('x').append(ch.getHeight());
+            if (ch instanceof javax.swing.JLabel) {
+                javax.swing.JLabel jl = (javax.swing.JLabel) ch;
+                sb.append(" [JLabel text='").append(jl.getText()).append("' icon=").append(cn(jl.getIcon()))
+                  .append(" iconKey=").append(iconKey(jl.getIcon())).append(']');
+            }
+            if (ch instanceof AbstractButton) {
+                AbstractButton b = (AbstractButton) ch;
+                sb.append(" [Button text='").append(b.getText()).append("' icon=").append(cn(b.getIcon()))
+                  .append(" iconKey=").append(iconKey(b.getIcon())).append("]");
+            }
+            sb.append('\n');
+            if (ch instanceof Container) diagTree((Container) ch, sb, ind + "  ");
+        }
+    }
+    // ===== end TEMP tab diagnostic =====
 
     /** Dark text/icon on the SELECTED tab (accent fill from FlatLaf), light on the rest. Hover is a
      *  subtle grey fill (TabbedPane.hoverColor) so the text stays light + readable — no custom pill,
