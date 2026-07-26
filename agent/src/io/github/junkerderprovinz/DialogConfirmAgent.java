@@ -988,9 +988,10 @@ public class DialogConfirmAgent {
     // Re-style every VISIBLE popup menu each tick, so JD's lazy re-render of the Speed-Limit / editor rows
     // can't leave a stale colored icon or uneven field behind (the one-shot on-open lost the race).
     private static void styleVisibleMenuPopups() {
+        // JPopupMenu is never a top-level Window — a heavyweight popup lives INSIDE a popup Window,
+        // a lightweight one inside the layered pane — so just recurse every showing window's tree.
         for (Window w : Window.getWindows()) {
-            if (w.isShowing() && w instanceof javax.swing.JPopupMenu) stylePopupNow((javax.swing.JPopupMenu) w);
-            if (w.isShowing() && w instanceof Container) styleVisiblePopupsIn((Container) w);
+            if (w.isShowing()) styleVisiblePopupsIn(w);
         }
     }
     private static void styleVisiblePopupsIn(Container c) {
