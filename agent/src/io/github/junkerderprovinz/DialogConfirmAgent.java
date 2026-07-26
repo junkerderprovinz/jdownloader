@@ -461,6 +461,7 @@ public class DialogConfirmAgent {
             cardSettingsSections();
             borderlessConfigTables();
             unifyConfigFields();
+            monoTableRowIcons();    // #11: mono the download/linkgrabber row icons (hoster favicon kept)
             recolorDialogs();
             dimModalBackdrops();
         }
@@ -1359,6 +1360,7 @@ public class DialogConfirmAgent {
             for (JTable t : tables) {
                 for (Object col : extColumns(t)) {
                     recolorBarFields(col);
+                    recolorExpanderFields(col);   // #10: light [+]/[-] + lock glyphs (render-path override)
                 }
             }
         }
@@ -1400,11 +1402,89 @@ public class DialogConfirmAgent {
                     Object bar = f.get(col);
                     if (bar instanceof JProgressBar) {
                         JProgressBar pb = (JProgressBar) bar;
-                        if (!BAR_FILL.equals(pb.getForeground())) pb.setForeground(BAR_FILL);
+                        // #12: highlighter fills the bar with the ACCENT (the % text is dark-on-accent via the
+                        // ProgressBar.selection* keys); plain Dark keeps the neutral grey fill. Instance-set so
+                        // it beats FlatLaf's per-cell default.
+                        Color fill = isHighlighter() ? accentColor() : BAR_FILL;
+                        if (!fill.equals(pb.getForeground())) pb.setForeground(fill);
                         if (!BAR_TRACK.equals(pb.getBackground())) pb.setBackground(BAR_TRACK);
                     }
                 } catch (Exception ignore) { }
             }
+        }
+    }
+
+    // #10: the download-table package expander ([+]/[-]) + the column-lock glyphs (keys tree_plus/tree_minus/
+    // exttable/lockColumn/exttable/widthLocked) render BLACK because JD re-provisions its own dark bundled
+    // copies and the on-disk restore loses the race. Override the Icon field JD paints from IN MEMORY every
+    // tick (same mechanism as recolorBarFields): re-tint the black glyph to a light tone. Idempotent — our
+    // replacement is a keyless ImageIcon, so iconKey() returns null next tick and it is skipped until JD
+    // re-provisions the black one again.
+    private static final Color EXPANDER_LIGHT = new Color(0xb0, 0xb0, 0xb0);
+    private static void recolorExpanderFields(Object col) {
+        if (col == null) return;
+        for (Class<?> k = col.getClass(); k != null && k != Object.class; k = k.getSuperclass()) {
+            for (Field f : k.getDeclaredFields()) {
+                if (!javax.swing.Icon.class.isAssignableFrom(f.getType())) continue;
+                try {
+                    f.setAccessible(true);
+                    Object ic = f.get(col);
+                    if (ic instanceof javax.swing.Icon) {
+                        String key = iconKey((javax.swing.Icon) ic);
+                        if (key != null && (key.contains("tree_plus") || key.contains("tree_minus")
+                                || key.contains("lockColumn") || key.contains("widthLocked"))) {
+                            javax.swing.Icon light = tintSolid((javax.swing.Icon) ic, EXPANDER_LIGHT);
+                            if (light != ic) f.set(col, light);
+                        }
+                    }
+                } catch (Throwable ignore) { }
+            }
+        }
+    }
+
+    // #11: mono the DOWNLOAD + LINKGRABBER list icons (file-type/.rar/archive/video, package folder, and the
+    // status error-X / extract-OK glyphs) in the RENDER PATH — wrap each content column's cell renderer so
+    // JD's live repaints can't override it (the ExtColumn IS the renderer; we delegate to it, then recolor
+    // the returned label's icon). The hoster favicon column is skipped by its renderer class name, and any
+    // KEYLESS icon (bare favicon / file thumbnail) is left as-is, so the orange hoster "G" stays untouched.
+    private static void monoTableRowIcons() {
+        for (Window w : Window.getWindows()) {
+            if (!w.isShowing()) continue;
+            List<JTable> tables = new ArrayList<>();
+            collectTables(w, tables);
+            for (JTable t : tables) {
+                if (inConfigPanel(t)) continue;                       // settings config tables are themed elsewhere
+                javax.swing.table.TableColumnModel cm = t.getColumnModel();
+                for (int i = 0; i < cm.getColumnCount(); i++) {
+                    javax.swing.table.TableColumn tc = cm.getColumn(i);
+                    javax.swing.table.TableCellRenderer cur = tc.getCellRenderer();
+                    if (cur == null || cur instanceof MonoIconRenderer) continue;
+                    String cn = cur.getClass().getName().toLowerCase();
+                    if (cn.contains("favicon") || cn.contains("hoster")) continue;   // leave the hoster logo alone
+                    tc.setCellRenderer(new MonoIconRenderer(cur));
+                }
+            }
+        }
+    }
+    private static boolean inConfigPanel(Component c) {
+        for (Container p = c.getParent(); p != null; p = p.getParent())
+            if (isConfigPanel(p.getClass())) return true;
+        return false;
+    }
+    private static final class MonoIconRenderer implements javax.swing.table.TableCellRenderer {
+        private final javax.swing.table.TableCellRenderer orig;
+        MonoIconRenderer(javax.swing.table.TableCellRenderer o) { orig = o; }
+        public Component getTableCellRendererComponent(JTable t, Object v, boolean sel, boolean foc, int row, int col) {
+            Component c = orig.getTableCellRendererComponent(t, v, sel, foc, row, col);
+            if (c instanceof javax.swing.JLabel) {
+                javax.swing.JLabel l = (javax.swing.JLabel) c;
+                javax.swing.Icon ic = l.getIcon();
+                if (ic != null && iconKey(ic) != null) {              // keyless (hoster favicon / thumbnail) -> leave
+                    javax.swing.Icon mono = tablerIcon(ic, sel ? accentFg() : SIDEBAR_TEXT, l);
+                    if (mono != ic) l.setIcon(mono);
+                }
+            }
+            return c;
         }
     }
 
@@ -1576,9 +1656,17 @@ public class DialogConfirmAgent {
         // dark track + medium-grey fill + white % text so it is neither washed-out nor
         // white-on-white.
         d.put("ProgressBar.background",          new ColorUIResource(0x26, 0x26, 0x26)); // track
-        d.put("ProgressBar.foreground",          new ColorUIResource(0x4d, 0x4d, 0x4d)); // fill
-        d.put("ProgressBar.selectionForeground", new ColorUIResource(0xf4, 0xf4, 0xf4)); // % over fill
-        d.put("ProgressBar.selectionBackground", new ColorUIResource(0xf4, 0xf4, 0xf4)); // % over track
+        if (isHighlighter()) {
+            // #12: the download bar fills with the ACCENT, so the % text over that fill must be the DARK
+            // accent-fg (light % was invisible on the light/accent bar). Over the dark track it stays light.
+            d.put("ProgressBar.foreground",          new ColorUIResource(accentColor())); // accent fill
+            d.put("ProgressBar.selectionForeground", new ColorUIResource(accentFg()));     // dark % over accent fill
+            d.put("ProgressBar.selectionBackground", new ColorUIResource(0xf4, 0xf4, 0xf4)); // light % over dark track
+        } else {
+            d.put("ProgressBar.foreground",          new ColorUIResource(0x4d, 0x4d, 0x4d)); // grey fill (plain Dark)
+            d.put("ProgressBar.selectionForeground", new ColorUIResource(0xf4, 0xf4, 0xf4)); // % over fill
+            d.put("ProgressBar.selectionBackground", new ColorUIResource(0xf4, 0xf4, 0xf4)); // % over track
+        }
         chromeDone = true;   // set before the refresh so a throw can never cause a retry storm
 
         for (Window w : Window.getWindows()) {
