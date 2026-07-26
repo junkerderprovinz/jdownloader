@@ -182,6 +182,11 @@ public class DialogConfirmAgent {
                     try {
                         if (CPB_UI.equals(className))  return patchCircleBarUI(classfileBuffer, loader);
                         if (SA_CLASS.equals(className)) return patchScriptAction(classfileBuffer, loader);
+                        // #11b DIAG (temporary): dump the status columns' method table so we can locate the
+                        // owner-painted status-glyph render method + its icon source. Never modifies bytes.
+                        if (className != null && (className.endsWith("/TaskColumn")
+                                || className.endsWith("/AvailabilityColumn")))
+                            dumpColumnBytecode(className, classfileBuffer);
                         return null;
                     } catch (Throwable err) {
                         System.out.println("[jd-dialog-agent] bytecode transform skipped for " + className
@@ -326,6 +331,45 @@ public class DialogConfirmAgent {
             System.out.println("[jd-dialog-agent] patched jsyntaxpane ScriptAction (" + patchedCount[0]
                     + " methods, null-engine guard) — Event Scripter code editor opens under FlatLaf"); }
         return cw.toByteArray();
+    }
+
+    // #11b DIAG (temporary): print every method of the status columns plus, per method, any icon/paint/draw/
+    // image/scale/compose call and any Icon/Image field access. Reveals the owner-painted status-glyph render
+    // method and what it reads, so the real replacement patch can target the exact method. Removed once mapped.
+    private static final java.util.Set<String> COLUMN_DUMPED =
+            java.util.Collections.synchronizedSet(new java.util.HashSet<String>());
+    private static void dumpColumnBytecode(String className, byte[] buf) {
+        try {
+            if (!COLUMN_DUMPED.add(className)) return;   // once per class
+            System.out.println("[jd-agent-diag] ===== bytecode: " + className + " =====");
+            new ClassReader(buf).accept(new ClassVisitor(Opcodes.ASM9) {
+                @Override
+                public MethodVisitor visitMethod(int a, final String name, final String desc, String s, String[] e) {
+                    System.out.println("[jd-agent-diag]  M " + name + " " + desc);
+                    return new MethodVisitor(Opcodes.ASM9) {
+                        @Override
+                        public void visitMethodInsn(int op, String owner, String mn, String md, boolean itf) {
+                            String low = mn.toLowerCase();
+                            if (low.contains("icon") || low.contains("paint") || low.contains("draw")
+                                    || low.contains("image") || low.contains("scale") || low.contains("render")
+                                    || low.contains("badge") || low.contains("compos") || low.contains("overlay")
+                                    || low.contains("getscaled") || owner.contains("IconIO") || owner.contains("NewTheme"))
+                                System.out.println("[jd-agent-diag]      -> " + owner + "." + mn + " " + md);
+                        }
+                        @Override
+                        public void visitFieldInsn(int op, String owner, String fn, String fd) {
+                            if (fd.contains("Icon") || fd.contains("Image"))
+                                System.out.println("[jd-agent-diag]      ."
+                                        + (op == Opcodes.GETFIELD || op == Opcodes.GETSTATIC ? "get " : "put ")
+                                        + owner + "#" + fn + " " + fd);
+                        }
+                    };
+                }
+            }, 0);
+            System.out.println("[jd-agent-diag] ===== end " + className + " =====");
+        } catch (Throwable t) {
+            System.out.println("[jd-agent-diag] dump failed for " + className + " (" + t + ")");
+        }
     }
 
     // --- Package-expander icons (Linkgrabber + download list) --------------------
