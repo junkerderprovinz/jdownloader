@@ -31,9 +31,17 @@ import java.awt.RenderingHints;
 import java.awt.Window;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.lang.instrument.ClassFileTransformer;
 import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.security.ProtectionDomain;
+import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.ClassVisitor;
+import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.Label;
+import org.objectweb.asm.MethodVisitor;
+import org.objectweb.asm.Opcodes;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -123,6 +131,9 @@ public class DialogConfirmAgent {
     public static void premain(String agentArgs, Instrumentation inst) {
         System.out.println("[jd-dialog-agent] watching for installer dialogs + enforcing dark chrome");
         INSTRUMENTATION = inst;
+        // BUG 4: arm the load-time bytecode guards (AppWork CircledProgressBar UI + jsyntaxpane
+        // ScriptAction) BEFORE JD lazily loads them — fixes the Event Scripter script-editor under FlatLaf.
+        installBytecodeGuards(inst);
         exposeFlatlafToSystemLoader();
         // Put the light package-expander icons back BEFORE JD's GUI resolves them
         // (premain runs before JD's main()); the tick loop keeps them in place.
@@ -136,6 +147,193 @@ public class DialogConfirmAgent {
         Thread t = new Thread(DialogConfirmAgent::watch, "jd-dialog-agent");
         t.setDaemon(true);
         t.start();
+    }
+
+    // --- BUG 4: Event Scripter script editor won't open under FlatLaf ------------------
+    // AppWork's org.appwork.swing.components.circlebar.BasicCircleProgressBarUI has a latent bug:
+    // getPreferredSize(JComponent c) reads the FIELD circleBar (not the passed component), and
+    // uninstallUI() nulls circleBar BEFORE uninstallListeners(). Under FlatLaf a second updateUI/
+    // setUI pass runs on the transient CircledProgressBar rubber-stamp widget, leaving a UI delegate
+    // whose circleBar is null; the next layout — the Event Scripter script-editor dialog's pack() —
+    // calls getPreferredSize -> NPE in getValueClipPainter -> the dialog's layout aborts -> it never
+    // opens ("edit does nothing"; JD then throws IllegalStateException "Dialog has not been closed yet").
+    // JD's non-FlatLaf LAFs set the LAF once before the GUI is built, so the order bug never fires there.
+    //
+    // This is unreachable by reflection (the widget is a transient renderer, never a persistent tree
+    // child) and by UIManager (CircledProgressBar.updateUI hardcodes setUI(new BasicCircleProgressBarUI())
+    // and never consults a UI key). So we fix it at the root with a LOAD-TIME bytecode transform that
+    // prepends a null-guard to getPreferredSize: if circleBar == null, return a 0x0 Dimension instead of
+    // dereferencing null. Real bars keep circleBar set and size exactly as before; only the broken/
+    // transient null ones are guarded. FAIL-SAFE: any transform error, or a future AppWork rename, leaves
+    // the original bytes untouched — i.e. exactly today's behaviour, never a boot regression.
+    private static final String CPB_UI = "org/appwork/swing/components/circlebar/BasicCircleProgressBarUI";
+    private static final String CPB_FIELD_OWNER = "org/appwork/swing/components/circlebar/CircledProgressBar";
+    private static final String CPB_FIELD_DESC = "L" + CPB_FIELD_OWNER + ";";
+    // BUG 4 issue #2: jsyntaxpane's ScriptAction has a STATIC ScriptEngine `engine` that is null when the
+    // JVM has no javax.script JavaScript engine (Nashorn was removed in Java 15). Its install()/getScriptFromURL()
+    // then deref that null engine -> NPE while the Event Scripter's JavaScriptEditorDialog installs its code-editor
+    // kit (JEditorPane.setEditorKit -> DefaultSyntaxKit.install -> addActions -> ScriptAction.install). That NPE is
+    // swallowed by AppWork's fire-and-forget EDTRunner (logged to LogV3/stderr, not Log.L), so layoutDialogContent
+    // aborts, the modal dialog never maps, and JD throws "Dialog has not been closed yet". Guard both methods to
+    // no-op when engine is null: the (non-functional-anyway) scripted editor action is simply skipped and the
+    // editor opens normally. Same load-time transform technique + fail-safe as the CircledProgressBar fix.
+    private static final String SA_CLASS = "jsyntaxpane/actions/ScriptAction";
+    private static boolean circleBarPatchLogged = false;
+    private static boolean scriptActionPatchLogged = false;
+
+    private static void installBytecodeGuards(Instrumentation inst) {
+        try {
+            ClassFileTransformer t = new ClassFileTransformer() {
+                @Override
+                public byte[] transform(ClassLoader loader, String className, Class<?> classBeingRedefined,
+                                        ProtectionDomain pd, byte[] classfileBuffer) {
+                    try {
+                        if (CPB_UI.equals(className))  return patchCircleBarUI(classfileBuffer, loader);
+                        if (SA_CLASS.equals(className)) return patchScriptAction(classfileBuffer, loader);
+                        return null;
+                    } catch (Throwable err) {
+                        System.out.println("[jd-dialog-agent] bytecode transform skipped for " + className
+                                + " (" + err + ")");
+                        return null;   // fail-safe: original bytes, no regression
+                    }
+                }
+            };
+            inst.addTransformer(t, true);
+            System.out.println("[jd-dialog-agent] bytecode guards armed (BUG 4: CircledProgressBar + ScriptAction)");
+        } catch (Throwable err) {
+            System.out.println("[jd-dialog-agent] could not arm bytecode guards (" + err + ")");
+        }
+    }
+
+    /** For every entry method that dereferences the (possibly-null) circleBar field and receives the
+     *  component, prepend:
+     *      if (circleBar == null && c instanceof CircledProgressBar) circleBar = (CircledProgressBar) c;
+     *      if (circleBar == null) return <0x0 Dimension | void>;
+     *  So the delegate always rebinds to its component (real bars size/paint exactly as before) and
+     *  can never NPE (broken/transient null bars degrade to zero-size / no-paint instead of crashing).
+     *  Covers getPreferredSize (getMinimum/Maximum delegate to it) + paint(g,c) + update(g,c).
+     *  Returns patched bytes, or null (= use original) if none of the expected methods are present. */
+    private static byte[] patchCircleBarUI(byte[] original, final ClassLoader loader) {
+        ClassReader cr = new ClassReader(original);
+        ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES) {
+            @Override
+            protected ClassLoader getClassLoader() {
+                return loader != null ? loader : super.getClassLoader();
+            }
+        };
+        final int[] patchedCount = { 0 };
+        ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
+            @Override
+            public MethodVisitor visitMethod(int access, String name, String desc, String sig, String[] ex) {
+                MethodVisitor mv = super.visitMethod(access, name, desc, sig, ex);
+                final int cIdx;
+                final boolean isVoid;
+                if ("getPreferredSize".equals(name) && "(Ljavax/swing/JComponent;)Ljava/awt/Dimension;".equals(desc)) {
+                    cIdx = 1; isVoid = false;
+                } else if (("paint".equals(name) || "update".equals(name))
+                        && "(Ljava/awt/Graphics;Ljavax/swing/JComponent;)V".equals(desc)) {
+                    cIdx = 2; isVoid = true;
+                } else {
+                    return mv;
+                }
+                patchedCount[0]++;
+                return new MethodVisitor(Opcodes.ASM9, mv) {
+                    @Override
+                    public void visitCode() {
+                        super.visitCode();
+                        // if (circleBar == null && c instanceof CircledProgressBar) circleBar = (CircledProgressBar) c;
+                        Label afterRebind = new Label();
+                        visitVarInsn(Opcodes.ALOAD, 0);
+                        visitFieldInsn(Opcodes.GETFIELD, CPB_UI, "circleBar", CPB_FIELD_DESC);
+                        visitJumpInsn(Opcodes.IFNONNULL, afterRebind);
+                        visitVarInsn(Opcodes.ALOAD, cIdx);
+                        visitTypeInsn(Opcodes.INSTANCEOF, CPB_FIELD_OWNER);
+                        visitJumpInsn(Opcodes.IFEQ, afterRebind);
+                        visitVarInsn(Opcodes.ALOAD, 0);
+                        visitVarInsn(Opcodes.ALOAD, cIdx);
+                        visitTypeInsn(Opcodes.CHECKCAST, CPB_FIELD_OWNER);
+                        visitFieldInsn(Opcodes.PUTFIELD, CPB_UI, "circleBar", CPB_FIELD_DESC);
+                        visitLabel(afterRebind);
+                        // if (circleBar == null) return <zero>;  (fallback: c was not a CircledProgressBar)
+                        Label proceed = new Label();
+                        visitVarInsn(Opcodes.ALOAD, 0);
+                        visitFieldInsn(Opcodes.GETFIELD, CPB_UI, "circleBar", CPB_FIELD_DESC);
+                        visitJumpInsn(Opcodes.IFNONNULL, proceed);
+                        if (isVoid) {
+                            visitInsn(Opcodes.RETURN);
+                        } else {
+                            visitTypeInsn(Opcodes.NEW, "java/awt/Dimension");
+                            visitInsn(Opcodes.DUP);
+                            visitInsn(Opcodes.ICONST_0);
+                            visitInsn(Opcodes.ICONST_0);
+                            visitMethodInsn(Opcodes.INVOKESPECIAL, "java/awt/Dimension", "<init>", "(II)V", false);
+                            visitInsn(Opcodes.ARETURN);
+                        }
+                        visitLabel(proceed);
+                    }
+                };
+            }
+        };
+        cr.accept(cv, 0);
+        if (patchedCount[0] == 0) {
+            if (!circleBarPatchLogged) { circleBarPatchLogged = true;
+                System.out.println("[jd-dialog-agent] BasicCircleProgressBarUI entry methods not found —"
+                        + " left as-is (AppWork changed?)"); }
+            return null;   // nothing matched -> do not touch (fail-safe)
+        }
+        if (!circleBarPatchLogged) { circleBarPatchLogged = true;
+            System.out.println("[jd-dialog-agent] patched BasicCircleProgressBarUI (" + patchedCount[0]
+                    + " methods: getPreferredSize/paint/update, circleBar null-guard) — Event Scripter editor fixed"); }
+        return cw.toByteArray();
+    }
+
+    /** Guard jsyntaxpane.actions.ScriptAction.install() + getScriptFromURL() to no-op when the static
+     *  ScriptEngine `engine` is null (no javax.script JS engine on modern Java — Nashorn removed in 15):
+     *  prevents the NPE that aborts the Event Scripter code-editor kit install. Returns patched bytes,
+     *  or null (= use original) if the expected methods are absent (jsyntaxpane changed). */
+    private static byte[] patchScriptAction(byte[] original, final ClassLoader loader) {
+        ClassReader cr = new ClassReader(original);
+        ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES) {
+            @Override
+            protected ClassLoader getClassLoader() {
+                return loader != null ? loader : super.getClassLoader();
+            }
+        };
+        final int[] patchedCount = { 0 };
+        ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
+            @Override
+            public MethodVisitor visitMethod(int access, String name, String desc, String sig, String[] ex) {
+                MethodVisitor mv = super.visitMethod(access, name, desc, sig, ex);
+                boolean guard =
+                       ("install".equals(name)
+                          && "(Ljavax/swing/JEditorPane;Ljsyntaxpane/util/Configuration;Ljava/lang/String;)V".equals(desc))
+                    || ("getScriptFromURL".equals(name) && "(Ljava/lang/String;)V".equals(desc));
+                if (!guard) return mv;
+                patchedCount[0]++;
+                return new MethodVisitor(Opcodes.ASM9, mv) {
+                    @Override
+                    public void visitCode() {
+                        super.visitCode();
+                        // if (ScriptAction.engine == null) return;
+                        Label proceed = new Label();
+                        visitFieldInsn(Opcodes.GETSTATIC, SA_CLASS, "engine", "Ljavax/script/ScriptEngine;");
+                        visitJumpInsn(Opcodes.IFNONNULL, proceed);
+                        visitInsn(Opcodes.RETURN);
+                        visitLabel(proceed);
+                    }
+                };
+            }
+        };
+        cr.accept(cv, 0);
+        if (patchedCount[0] == 0) {
+            if (!scriptActionPatchLogged) { scriptActionPatchLogged = true;
+                System.out.println("[jd-dialog-agent] ScriptAction methods not found — left as-is (jsyntaxpane changed?)"); }
+            return null;
+        }
+        if (!scriptActionPatchLogged) { scriptActionPatchLogged = true;
+            System.out.println("[jd-dialog-agent] patched jsyntaxpane ScriptAction (" + patchedCount[0]
+                    + " methods, null-engine guard) — Event Scripter code editor opens under FlatLaf"); }
+        return cw.toByteArray();
     }
 
     // --- Package-expander icons (Linkgrabber + download list) --------------------
