@@ -1604,6 +1604,14 @@ public class DialogConfirmAgent {
                 javax.swing.JScrollPane s = (javax.swing.JScrollPane) sp;
                 s.setBorder(javax.swing.BorderFactory.createEmptyBorder());
                 s.setViewportBorder(javax.swing.BorderFactory.createEmptyBorder());
+                // #6: let the table paint its OWN background over the whole viewport so the settings
+                // content column reaches the sidebar bottom instead of ending mid-slot on base #161616.
+                if (!t.getFillsViewportHeight()) t.setFillsViewportHeight(true);
+                javax.swing.JViewport vp = s.getViewport();
+                if (vp != null && t.getBackground() != null
+                        && !t.getBackground().equals(vp.getBackground())) {
+                    vp.setBackground(t.getBackground());
+                }
             }
             accentTableCheckmarks(t);
         } catch (Throwable ignore) { }
@@ -3813,6 +3821,7 @@ public class DialogConfirmAgent {
             if (host == null) continue;
             boolean changed = badgeViewsHeaders(host);
             changed |= stripHeaderScrollDividers(host);
+            changed |= flattenViewsGrids(host);   // #9: kill the sub-row ExtTable grid hairlines
             hideSeparators(host);       // reuse: hide the "title ----" lines (idempotent, self-repaints)
             if (changed) { host.revalidate(); host.repaint(); }
         }
@@ -3861,6 +3870,29 @@ public class DialogConfirmAgent {
                 }
             }
             if (ch instanceof Container) changed |= stripHeaderScrollDividers((Container) ch);
+        }
+        return changed;
+    }
+
+    /** #9: flatten the grid hairlines in the LinkGrabber-Views sub-section ExtTables. Those tables sit on
+     *  the base #161616 (NOT a #242424 card), so blend the grid into each table's OWN background rather
+     *  than DIALOG_BG (which flattenConfigTable uses). Re-applied each tick because JD can re-force
+     *  showHorizontalLines=true, but only reports a change when it actually had to touch something so it
+     *  doesn't churn repaints. */
+    private static boolean flattenViewsGrids(Container c) {
+        boolean changed = false;
+        for (Component ch : c.getComponents()) {
+            if (ch instanceof JTable) {
+                JTable t = (JTable) ch;
+                try {
+                    if (t.getShowHorizontalLines() || t.getShowVerticalLines()) { t.setShowGrid(false); changed = true; }
+                    Color bg = t.getBackground();
+                    if (bg != null && !bg.equals(t.getGridColor())) { t.setGridColor(bg); changed = true; }
+                    Dimension sp = t.getIntercellSpacing();
+                    if (sp == null || sp.width != 0 || sp.height != 0) { t.setIntercellSpacing(new Dimension(0, 0)); changed = true; }
+                } catch (Throwable ignore) { }
+            }
+            if (ch instanceof Container) changed |= flattenViewsGrids((Container) ch);
         }
         return changed;
     }
