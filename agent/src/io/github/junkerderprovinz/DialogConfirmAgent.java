@@ -182,11 +182,9 @@ public class DialogConfirmAgent {
                     try {
                         if (CPB_UI.equals(className))  return patchCircleBarUI(classfileBuffer, loader);
                         if (SA_CLASS.equals(className)) return patchScriptAction(classfileBuffer, loader);
-                        // #11b DIAG (temporary): dump the status columns' method table so we can locate the
-                        // owner-painted status-glyph render method + its icon source. Never modifies bytes.
-                        if (className != null && (className.endsWith("/TaskColumn")
-                                || className.endsWith("/AvailabilityColumn")))
-                            dumpColumnBytecode(className, classfileBuffer);
+                        // #11b: swap the download + linkgrabber status-column glyphs for clean Tabler icons.
+                        if (TASK_COL.equals(className) || AVAIL_COL.equals(className))
+                            return patchStatusColumn(classfileBuffer, loader, className);
                         return null;
                     } catch (Throwable err) {
                         System.out.println("[jd-dialog-agent] bytecode transform skipped for " + className
@@ -333,43 +331,53 @@ public class DialogConfirmAgent {
         return cw.toByteArray();
     }
 
-    // #11b DIAG (temporary): print every method of the status columns plus, per method, any icon/paint/draw/
-    // image/scale/compose call and any Icon/Image field access. Reveals the owner-painted status-glyph render
-    // method and what it reads, so the real replacement patch can target the exact method. Removed once mapped.
-    private static final java.util.Set<String> COLUMN_DUMPED =
-            java.util.Collections.synchronizedSet(new java.util.HashSet<String>());
-    private static void dumpColumnBytecode(String className, byte[] buf) {
-        try {
-            if (!COLUMN_DUMPED.add(className)) return;   // once per class
-            System.out.println("[jd-agent-diag] ===== bytecode: " + className + " =====");
-            new ClassReader(buf).accept(new ClassVisitor(Opcodes.ASM9) {
-                @Override
-                public MethodVisitor visitMethod(int a, final String name, final String desc, String s, String[] e) {
-                    System.out.println("[jd-agent-diag]  M " + name + " " + desc);
-                    return new MethodVisitor(Opcodes.ASM9) {
-                        @Override
-                        public void visitMethodInsn(int op, String owner, String mn, String md, boolean itf) {
-                            String low = mn.toLowerCase();
-                            if (low.contains("icon") || low.contains("paint") || low.contains("draw")
-                                    || low.contains("image") || low.contains("scale") || low.contains("render")
-                                    || low.contains("badge") || low.contains("compos") || low.contains("overlay")
-                                    || low.contains("getscaled") || owner.contains("IconIO") || owner.contains("NewTheme"))
-                                System.out.println("[jd-agent-diag]      -> " + owner + "." + mn + " " + md);
+    // #11b: the download (TaskColumn) + linkgrabber (AvailabilityColumn) status columns both render via
+    // getIcon(AbstractNode):Icon, which returns a pre-composited coloured status glyph (green "Entpacken OK"
+    // check, red error X, extract zip, online/offline). Reflection sweeps missed it because fillColumnHelper
+    // builds fresh MergedIcons past the cached fields. Patch that method's RETURN to route through
+    // cleanTaskIcon (a callback resolved via the system class loader — the -javaagent jar is on it, and JD's
+    // class loaders delegate parent-first), which substitutes a clean mono Tabler glyph. Same fail-safe
+    // technique as the CircledProgressBar/ScriptAction guards: any transform error leaves the bytes untouched.
+    private static final String TASK_COL  = "org/jdownloader/gui/views/downloads/columns/TaskColumn";
+    private static final String AVAIL_COL = "org/jdownloader/gui/views/downloads/columns/AvailabilityColumn";
+    private static final String STATUS_GETICON_DESC =
+            "(Ljd/controlling/packagecontroller/AbstractNode;)Ljavax/swing/Icon;";
+    private static final String AGENT_INTERNAL = "io/github/junkerderprovinz/DialogConfirmAgent";
+    private static byte[] patchStatusColumn(byte[] original, final ClassLoader loader, final String cn) {
+        ClassReader cr = new ClassReader(original);
+        ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES) {
+            @Override
+            protected ClassLoader getClassLoader() { return loader != null ? loader : super.getClassLoader(); }
+        };
+        final int[] n = { 0 };
+        ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
+            @Override
+            public MethodVisitor visitMethod(int access, String name, String desc, String sig, String[] ex) {
+                MethodVisitor mv = super.visitMethod(access, name, desc, sig, ex);
+                if (!("getIcon".equals(name) && STATUS_GETICON_DESC.equals(desc))) return mv;
+                n[0]++;
+                return new MethodVisitor(Opcodes.ASM9, mv) {
+                    @Override
+                    public void visitInsn(int op) {
+                        if (op == Opcodes.ARETURN) {
+                            // stack [icon] -> [this, icon] -> cleanTaskIcon(this, icon) -> [cleanIcon]
+                            super.visitVarInsn(Opcodes.ALOAD, 0);
+                            super.visitInsn(Opcodes.SWAP);
+                            super.visitMethodInsn(Opcodes.INVOKESTATIC, AGENT_INTERNAL, "cleanTaskIcon",
+                                    "(Ljava/lang/Object;Ljavax/swing/Icon;)Ljavax/swing/Icon;", false);
                         }
-                        @Override
-                        public void visitFieldInsn(int op, String owner, String fn, String fd) {
-                            if (fd.contains("Icon") || fd.contains("Image"))
-                                System.out.println("[jd-agent-diag]      ."
-                                        + (op == Opcodes.GETFIELD || op == Opcodes.GETSTATIC ? "get " : "put ")
-                                        + owner + "#" + fn + " " + fd);
-                        }
-                    };
-                }
-            }, 0);
-            System.out.println("[jd-agent-diag] ===== end " + className + " =====");
-        } catch (Throwable t) {
-            System.out.println("[jd-agent-diag] dump failed for " + className + " (" + t + ")");
+                        super.visitInsn(op);
+                    }
+                };
+            }
+        };
+        cr.accept(cv, 0);
+        if (n[0] == 0) {
+            System.out.println("[jd-dialog-agent] " + cn + ".getIcon(AbstractNode) not found — status icons left as-is");
+            return null;   // fail-safe
         }
+        System.out.println("[jd-dialog-agent] patched " + cn + ".getIcon -> clean Tabler status icons (#11b)");
+        return cw.toByteArray();
     }
 
     // --- Package-expander icons (Linkgrabber + download list) --------------------
@@ -1470,8 +1478,6 @@ public class DialogConfirmAgent {
             java.util.Collections.synchronizedMap(new java.util.WeakHashMap<javax.swing.Icon, Boolean>());
     private static void recolorExpanderFields(Object col) {
         if (col == null) return;
-        String cn = col.getClass().getName();
-        boolean statusCol = cn.contains("TaskColumn") || cn.contains("AvailabilityColumn");   // download + linkgrabber status
         for (Class<?> k = col.getClass(); k != null && k != Object.class; k = k.getSuperclass()) {
             for (Field f : k.getDeclaredFields()) {
                 if (!javax.swing.Icon.class.isAssignableFrom(f.getType())) continue;
@@ -1486,22 +1492,94 @@ public class DialogConfirmAgent {
                     if (key != null && (key.contains("tree_plus") || key.contains("tree_minus")
                             || key.contains("lockColumn") || key.contains("widthLocked"))) {
                         repl = tintSolid(ic, EXPANDER_LIGHT);                    // #10 expander/lock -> light
-                    } else if (isHighlighter() && key != null && (key.contains("extract") || key.equals("error")
-                            || key.equals("true") || key.equals("false") || key.equals("true-orange")
-                            || key.equals("false-orange") || key.equals("run") || key.equals("wait")
-                            || key.equals("help") || key.contains("warning"))) {
-                        // #11: keyed status glyph -> mono Tabler PNG (or mono tint if no PNG)
-                        javax.swing.Icon base = tablerBase(key, ic.getIconWidth(), ic.getIconHeight());
-                        repl = (base != null) ? tintIcon(base, SIDEBAR_TEXT, null) : tintSolid(ic, SIDEBAR_TEXT);
-                    } else if (isHighlighter() && key == null && statusCol && ic.getIconWidth() > 0) {
-                        // #11: the *Extracted / *Failed status composites (the visible "Entpacken OK" / error
-                        // glyphs) are KEYLESS coloured ImageIcons -> mono-tint; the check/X shape stays.
-                        repl = tintSolid(ic, SIDEBAR_TEXT);
                     }
+                    // #11b: status-column glyphs are handled in the RENDER PATH (cleanTaskIcon via the
+                    // getIcon bytecode patch), not by mutating fields here — fillColumnHelper builds fresh
+                    // MergedIcons past these fields, and leaving the fields intact keeps cleanTaskIcon's
+                    // field-name identity match reliable.
                     if (repl != null && repl != ic) { f.set(col, repl); EXT_MONO_MARK.put(repl, Boolean.TRUE); }
                 } catch (Throwable ignore) { }
             }
         }
+    }
+
+    // #11b: render-path hook for the status columns (installed by patchStatusColumn). Classifies the status
+    // glyph the column is about to return and swaps in a clean mono Tabler icon of the matching shape.
+    // Classification (cached per original icon): match the owning column's named Icon fields by identity
+    // (exact status: *ExtractedFailed -> error, *Extracted/true/ok -> done, extracting -> zip, ...), else
+    // fall back to the icon's own key (FinalLinkState/PluginProgress glyphs are keyed). Unknown -> mono-tint
+    // the original so it is at least monochrome, never coloured. FAIL-SAFE: any error returns the original.
+    private static final java.util.Map<javax.swing.Icon, String> STATUS_CLASS =
+            java.util.Collections.synchronizedMap(new java.util.WeakHashMap<javax.swing.Icon, String>());
+    private static final java.util.Map<String, javax.swing.Icon> STATUS_CLEAN =
+            new java.util.concurrent.ConcurrentHashMap<String, javax.swing.Icon>();
+
+    public static javax.swing.Icon cleanTaskIcon(Object owner, javax.swing.Icon original) {
+        try {
+            if (original == null || !isHighlighter()) return original;
+            String key = STATUS_CLASS.get(original);
+            if (key == null) { key = classifyStatus(owner, original); STATUS_CLASS.put(original, key == null ? "" : key); }
+            int w = original.getIconWidth(), h = original.getIconHeight();
+            if (w <= 0 || h <= 0) return original;
+            if (key == null || key.isEmpty()) return tintSolid(original, SIDEBAR_TEXT);   // unclassified -> keep mono
+            String ck = key + "@" + w + "x" + h;
+            javax.swing.Icon clean = STATUS_CLEAN.get(ck);
+            if (clean == null) {
+                javax.swing.Icon base = tablerBase(key, w, h);
+                clean = (base != null) ? tintIcon(base, SIDEBAR_TEXT, null) : tintSolid(original, SIDEBAR_TEXT);
+                STATUS_CLEAN.put(ck, clean);
+            }
+            return clean;
+        } catch (Throwable t) { return original; }
+    }
+
+    /** Classify a status glyph into a clean Tabler key, or null when unknown. A named-field identity match
+     *  wins only when it maps to a key; otherwise fall through to the icon's own key (AvailabilityColumn's
+     *  glyphs, FinalLinkState/PluginProgress glyphs are keyed). */
+    private static String classifyStatus(Object owner, javax.swing.Icon original) {
+        if (owner != null) {
+            for (Class<?> k = owner.getClass(); k != null && k != Object.class; k = k.getSuperclass()) {
+                for (Field f : k.getDeclaredFields()) {
+                    if (!javax.swing.Icon.class.isAssignableFrom(f.getType())) continue;
+                    try {
+                        f.setAccessible(true);
+                        if (f.get(owner) == original) {
+                            String fk = statusKeyForField(f.getName());
+                            if (fk != null) return fk;
+                        }
+                    } catch (Throwable ignore) { }
+                }
+            }
+        }
+        return normalizeStatusKey(iconKey(original));
+    }
+
+    private static String statusKeyForField(String n) {
+        if (n == null) return null;
+        if (n.contains("Failed")) return "error";                       // download ok but extraction failed
+        if (n.startsWith("false")) return "error";                      // download failed
+        if (n.contains("Extracted") || n.startsWith("true") || n.startsWith("ok")) return "true";  // done ok
+        if (n.equals("extracting")) return "extract";
+        if (n.equals("startingIcon")) return "run";
+        if (n.equals("finalizingIcon")) return "wait";
+        if (n.equals("trueIcon")) return "true";
+        if (n.equals("online")) return "true";                          // AvailabilityColumn
+        if (n.equals("offline")) return "error";
+        if (n.equals("unknown")) return "help";
+        if (n.equals("mixed")) return "true";
+        return null;
+    }
+
+    private static String normalizeStatusKey(String ik) {
+        if (ik == null) return null;
+        String s = ik.toLowerCase();
+        if (s.contains("error") || s.contains("false") || s.contains("offline") || s.contains("fail")) return "error";
+        if (s.contains("extract")) return "extract";
+        if (s.contains("ok") || s.contains("true") || s.contains("finish") || s.contains("online")) return "true";
+        if (s.contains("wait") || s.contains("final") || s.contains("hourglass")) return "wait";
+        if (s.contains("start") || s.equals("run")) return "run";
+        if (s.contains("help") || s.contains("unknown") || s.contains("question")) return "help";
+        return null;
     }
 
     // #11: mono the DOWNLOAD + LINKGRABBER list icons (file-type/.rar/archive/video, package folder, and the
@@ -3867,6 +3945,7 @@ public class DialogConfirmAgent {
             changed |= stripHeaderScrollDividers(host);
             changed |= flattenViewsGrids(host);   // #9: kill the sub-row ExtTable grid hairlines
             hideSeparators(host);       // reuse: hide the "title ----" lines (idempotent, self-repaints)
+            clearLinesIn(host, 0);      // #9: strip MatteBorder/LineBorder section + row separator lines
             if (changed) { host.revalidate(); host.repaint(); }
         }
     }
