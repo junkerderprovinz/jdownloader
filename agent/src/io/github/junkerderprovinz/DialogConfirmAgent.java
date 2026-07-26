@@ -2521,58 +2521,12 @@ public class DialogConfirmAgent {
                 int rov = rolloverTabOf(tp);
                 Object hv = tp.getClientProperty(TAB_HOVER_IDX);
                 int hover = (rov >= 0) ? rov : ((hv instanceof Integer) ? (Integer) hv : -1);
-                if (tp.getTabCount() >= 2 && tp.getTabComponentAt(0) != null) diagTabs(tp);   // TEMP: dump TabHeader tree once
                 applyTabForegrounds(tp, selFg, norFg, hover);
                 installTabHoverListener(tp, selFg, norFg);
             }
             if (child instanceof Container) recolorTabsIn((Container) child, selFg, norFg);
         }
     }
-
-    // ===== TEMP tab diagnostic (remove after P15/P16) =====
-    private static final java.util.concurrent.atomic.AtomicBoolean TAB_DIAG_DONE = new java.util.concurrent.atomic.AtomicBoolean(false);
-    private static void appendDiag(String s) {
-        try {
-            java.nio.file.Files.write(java.nio.file.Paths.get("/config/hl-diag.txt"), s.getBytes("UTF-8"),
-                    java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
-        } catch (Throwable ignore) { }
-    }
-    private static String cn(Object o) { return o == null ? "null" : o.getClass().getName(); }
-    private static void diagTabs(javax.swing.JTabbedPane tp) {
-        if (!TAB_DIAG_DONE.compareAndSet(false, true)) return;
-        try {
-            StringBuilder sb = new StringBuilder("=== TAB DIAG ===\n");
-            for (int i = 0; i < tp.getTabCount(); i++) {
-                javax.swing.Icon ia = tp.getIconAt(i);
-                sb.append("tab[").append(i).append("] title='").append(tp.getTitleAt(i))
-                  .append("' tip='").append(tp.getToolTipTextAt(i))
-                  .append("' iconAt=").append(cn(ia)).append(" iconKey=").append(iconKey(ia)).append('\n');
-                Component tc = tp.getTabComponentAt(i);
-                sb.append("  tabComp=").append(cn(tc)).append('\n');
-                if (tc instanceof Container) diagTree((Container) tc, sb, "    ");
-            }
-            appendDiag(sb.toString());
-        } catch (Throwable t) { appendDiag("TAB DIAG ERR " + t + "\n"); }
-    }
-    private static void diagTree(Container c, StringBuilder sb, String ind) {
-        for (Component ch : c.getComponents()) {
-            sb.append(ind).append(cn(ch)).append(" opaque=").append(ch.isOpaque())
-              .append(" bg=").append(ch.getBackground()).append(" size=").append(ch.getWidth()).append('x').append(ch.getHeight());
-            if (ch instanceof javax.swing.JLabel) {
-                javax.swing.JLabel jl = (javax.swing.JLabel) ch;
-                sb.append(" [JLabel text='").append(jl.getText()).append("' icon=").append(cn(jl.getIcon()))
-                  .append(" iconKey=").append(iconKey(jl.getIcon())).append(']');
-            }
-            if (ch instanceof AbstractButton) {
-                AbstractButton b = (AbstractButton) ch;
-                sb.append(" [Button text='").append(b.getText()).append("' icon=").append(cn(b.getIcon()))
-                  .append(" iconKey=").append(iconKey(b.getIcon())).append("]");
-            }
-            sb.append('\n');
-            if (ch instanceof Container) diagTree((Container) ch, sb, ind + "  ");
-        }
-    }
-    // ===== end TEMP tab diagnostic =====
 
     /** Dark text/icon on the SELECTED tab (accent fill from FlatLaf), light on the rest. Hover is a
      *  subtle grey fill (TabbedPane.hoverColor) so the text stays light + readable — no custom pill,
@@ -2608,7 +2562,8 @@ public class DialogConfirmAgent {
      *  flips to accentFg on the selected tab and JD does NOT override), plus a "icon" property listener
      *  that re-wraps the instant JD swaps the icon. `tone` is now unused (the wrapper self-picks). */
     private static void tablerTabIcons(Component c, Color tone) {
-        if (c instanceof javax.swing.JLabel) installTabIconWrap((javax.swing.JLabel) c);
+        if (c instanceof AbstractButton) installTabCloseButton((AbstractButton) c);   // ClosableTabHeader close × button
+        else if (c instanceof javax.swing.JLabel) installTabIconWrap((javax.swing.JLabel) c);
         if (c instanceof Container) for (Component ch : ((Container) c).getComponents()) tablerTabIcons(ch, tone);
     }
 
@@ -2616,16 +2571,60 @@ public class DialogConfirmAgent {
         javax.swing.Icon cur = l.getIcon();
         if (cur instanceof TabIcon) { ensureTabIconListener(l); return; }   // already wrapped
         if (cur == null) return;                                            // text-only tab label
-        // Diagnostic proved the tab glyph is a RAW keyless ImageIcon (iconAt=ImageIcon/k=null) that
-        // tablerIcon can't key-lookup + retint — so the selected-tab icon stayed light. Pixel-tint it
-        // to a solid-tone silhouette instead (keep alpha, replace RGB) for the light + dark twins.
-        javax.swing.Icon light  = tintSolid(cur, SIDEBAR_TEXT);
-        javax.swing.Icon dark   = tintSolid(cur, accentFg());
-        javax.swing.Icon accent = tintSolid(cur, accentColor());            // hovered tab: accent glyph on the dark strip
-        if (light == cur || light == null) return;                          // tint failed -> leave it
+        // The tab glyph is a KEYED AbstractIcon (download / logo/myjdownloader / ...). Prefer the theme's
+        // Tabler PNG for it — so the My.JDownloader tab shows the mono CLOUD like the menu, not a grey
+        // silhouette of JD's colored JD-circle logo — and fall back to pixel-tinting the raw glyph when
+        // it carries no key. Then build the light/dark/accent twins the TabIcon self-picks from at paint.
+        javax.swing.Icon base = cur;
+        String tk = iconKey(cur);
+        if (tk != null) { javax.swing.Icon tb = tablerBase(tk, cur.getIconWidth(), cur.getIconHeight()); if (tb != null) base = tb; }
+        javax.swing.Icon light  = tintSolid(base, SIDEBAR_TEXT);
+        javax.swing.Icon dark   = tintSolid(base, accentFg());
+        javax.swing.Icon accent = tintSolid(base, accentColor());           // hovered tab: accent glyph on the dark strip
+        if (light == base || light == null) return;                         // tint failed -> leave it
         l.putClientProperty("jdp.tabOrig", cur);
         l.setIcon(new TabIcon(light, dark, accent));
         ensureTabIconListener(l);
+    }
+
+    /** P15: the ClosableTabHeader close button (an AbstractButton, iconKey "close") ships a FlatLaf rounded
+     *  content box (#2b2b2b) that reads as a black box — subtle on the dark strip, jarring on the yellow
+     *  selected tab. Kill the box (borderless, no content-area fill, no rollover/pressed swap) and theme
+     *  its × with the same light/dark/accent twins the tab icons use (self-picked from the button's
+     *  foreground, which setLabelFg flips per tab state) so it goes dark on the pill, light on the strip. */
+    private static void installTabCloseButton(final AbstractButton b) {
+        if (b.getClientProperty("jdp.tabClose") == null) {
+            b.putClientProperty("jdp.tabClose", Boolean.TRUE);
+            b.putClientProperty("JButton.buttonType", "borderless");   // FlatLaf: no bg box, no hover fill
+            b.setContentAreaFilled(false);
+            b.setBorderPainted(false);
+            b.setOpaque(false);
+            b.setFocusPainted(false);
+            b.setRolloverIcon(null);                                   // no unthemed hover glyph swap
+            b.setPressedIcon(null);
+        }
+        javax.swing.Icon cur = b.getIcon();
+        if (cur instanceof TabIcon) { ensureCloseIconListener(b); return; }
+        if (cur == null) return;
+        javax.swing.Icon base = cur;
+        String tk = iconKey(cur);
+        if (tk != null) { javax.swing.Icon tb = tablerBase(tk, cur.getIconWidth(), cur.getIconHeight()); if (tb != null) base = tb; }
+        javax.swing.Icon light  = tintSolid(base, SIDEBAR_TEXT);
+        javax.swing.Icon dark   = tintSolid(base, accentFg());
+        javax.swing.Icon accent = tintSolid(base, accentColor());
+        if (light == base || light == null) return;
+        b.putClientProperty("jdp.tabOrig", cur);
+        b.setIcon(new TabIcon(light, dark, accent));
+        ensureCloseIconListener(b);
+    }
+    private static void ensureCloseIconListener(final AbstractButton b) {
+        if (b.getClientProperty("jdp.tabCloseL") != null) return;
+        b.putClientProperty("jdp.tabCloseL", Boolean.TRUE);
+        b.addPropertyChangeListener("icon", new java.beans.PropertyChangeListener() {
+            public void propertyChange(java.beans.PropertyChangeEvent e) {
+                if (!(b.getIcon() instanceof TabIcon)) installTabCloseButton(b);   // JD swapped it -> re-theme
+            }
+        });
     }
 
     /** Solid-tone silhouette of an icon: render it, then replace every non-transparent pixel's RGB with
