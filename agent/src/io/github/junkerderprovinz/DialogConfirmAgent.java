@@ -1001,11 +1001,16 @@ public class DialogConfirmAgent {
             else if (ch instanceof Container && !(ch instanceof javax.swing.JSeparator)) hasRow = true;
         }
         if (!(hasItem && hasRow)) return;                       // only the Settings-style menu
+        if (pm.getWidth() <= 0) return;                         // wait until laid out (on-open call is pre-layout)
         if (!MENU_DIAG.compareAndSet(false, true)) return;
         StringBuilder sb = new StringBuilder("=== MENU DIAG (popup w=" + pm.getWidth() + " insets=" + pm.getInsets() + ") ===\n");
         for (Component ch : pm.getComponents()) {
             sb.append("ROW ").append(ch.getClass().getName()).append(" x=").append(ch.getX())
               .append(" w=").append(ch.getWidth()).append(" h=").append(ch.getHeight());
+            if (ch instanceof Container && !(ch instanceof javax.swing.JMenuItem)) {
+                java.awt.LayoutManager lm = ((Container) ch).getLayout();
+                sb.append(" layout=").append(lm == null ? "null" : lm.getClass().getName());
+            }
             if (ch instanceof javax.swing.JMenuItem) {
                 javax.swing.JMenuItem mi = (javax.swing.JMenuItem) ch;
                 sb.append(" [MenuItem '").append(mi.getText()).append("' margin=").append(mi.getMargin())
