@@ -980,6 +980,7 @@ public class DialogConfirmAgent {
     private static void stylePopupNow(javax.swing.JPopupMenu pm) {
         try {
             styleMenuFieldsIn(pm, true);                       // raise + uniform-width the embedded fields
+            uniformMenuSpinnerWidths(pm);                      // #2: all spinner boxes to ONE width
             for (Component ch : pm.getComponents())            // mono the item icons
                 if (ch instanceof javax.swing.JMenuItem) monoMenuItemIcon((javax.swing.JMenuItem) ch);
             for (Component ch : pm.getComponents())            // P3: mono the custom EditorLink rows too
@@ -1051,9 +1052,11 @@ public class DialogConfirmAgent {
         LayoutManager lm = editor.getLayout();
         if (lm == null || !lm.getClass().getName().contains("MigLayout")) return;
 
-        // Mirror JD's own formula (label width + 30 for the spinner arrows/insets) but
-        // with a long sample so the field fits any realistic limit incl. its unit.
-        int w = new JLabel("99999,99 MiB/s").getPreferredSize().width + 30;
+        // #2: ONE uniform width for EVERY grey menu spinner (speed + the number ExtSpinners),
+        // so the dropdown's field column lines up ("eingabefelder alle gleich breit"). The speed
+        // box was widened here to fit "99999,99 MiB/s" while the number boxes kept JD's narrower
+        // hardcoded cell -> visibly different widths. Both now use uniformFieldW().
+        int w = uniformFieldW();
         try {
             Method m = lm.getClass().getMethod("setComponentConstraints",
                     Component.class, Object.class);
@@ -1069,6 +1072,67 @@ public class DialogConfirmAgent {
             }
         } catch (Exception ignore) {
             // setComponentConstraints absent / layout differs -> leave the field as-is
+        }
+    }
+
+    // #2: the single width shared by every grey menu spinner. Sized to fit a realistic speed
+    // value with its unit ("999,99 MiB/s") + 30px for the arrows/insets, so the speed never
+    // clips and the one-digit number spinners get the SAME box (right-aligned column lines up).
+    private static int UNIFORM_FIELD_W = -1;
+    private static int uniformFieldW() {
+        if (UNIFORM_FIELD_W < 0) UNIFORM_FIELD_W = new JLabel("999,99 MiB/s").getPreferredSize().width + 30;
+        return UNIFORM_FIELD_W;
+    }
+
+    /** #2: pin EVERY JSpinner in a menu popup (number ExtSpinners AND the speed spinner) to one
+     *  MigLayout width, so their grey boxes are all identical. JD's MenuEditor hardcodes a
+     *  narrower cell for the number spinners than for the speed field, so setPreferredSize alone
+     *  is overridden — we must rewrite the MigLayout component constraint (same reflective path as
+     *  widenEditor). Guarded per-instance so it only relays a field once. Popup regrown after. */
+    private static void uniformMenuSpinnerWidths(Container c) {
+        boolean touched = uniformSpinnersIn(c);
+        if (touched) {
+            JPopupMenu pm = (c instanceof JPopupMenu) ? (JPopupMenu) c
+                          : (JPopupMenu) SwingUtilities.getAncestorOfClass(JPopupMenu.class, c);
+            if (pm != null) { pm.revalidate(); Dimension pref = pm.getPreferredSize(); pm.setPopupSize(pref.width, pref.height); }
+        }
+    }
+    private static boolean uniformSpinnersIn(Container c) {
+        boolean any = false;
+        for (Component ch : c.getComponents()) {
+            if (ch instanceof JSpinner) {
+                Container par = ch.getParent();
+                LayoutManager lm = (par == null) ? null : par.getLayout();
+                boolean mig = lm != null && lm.getClass().getName().contains("MigLayout");
+                JComponent sp = (JComponent) ch;
+                if (mig && !Boolean.TRUE.equals(sp.getClientProperty("jdp.fieldW"))) {
+                    try {
+                        Method m = lm.getClass().getMethod("setComponentConstraints", Component.class, Object.class);
+                        m.invoke(lm, ch, "width " + uniformFieldW() + "!");
+                        sp.putClientProperty("jdp.fieldW", Boolean.TRUE);
+                        par.revalidate();
+                        any = true;
+                    } catch (Exception ignore) { }
+                }
+                if (SB_DIAG.add("uw:" + ch.getClass().getName())) appendDiag("UWID " + ch.getClass().getSimpleName()   // TEMP #2
+                    + " parentLayout=" + (lm == null ? "null" : lm.getClass().getSimpleName()) + " mig=" + mig
+                    + " uniW=" + uniformFieldW() + "\n");
+            }
+            if (ch instanceof Container) any |= uniformSpinnersIn((Container) ch);
+        }
+        return any;
+    }
+
+    /** #4: brute-force set every Icon-typed field in the label's class hierarchy to our 32px icon.
+     *  AppWork's sidebar RenderLabel paints advancedConfig from JD's ORIGINAL 20x20 icon and ignores
+     *  a late JLabel.setIcon — if it holds the icon in its own (non-JLabel) field, this reaches it. */
+    private static void forceIconFields(Object o, javax.swing.Icon ic) {
+        for (Class<?> k = o.getClass(); k != null && k != Object.class; k = k.getSuperclass()) {
+            for (java.lang.reflect.Field f : k.getDeclaredFields()) {
+                if (javax.swing.Icon.class.isAssignableFrom(f.getType())) {
+                    try { f.setAccessible(true); f.set(o, ic); } catch (Throwable ignore) { }
+                }
+            }
         }
     }
 
@@ -2383,6 +2447,15 @@ public class DialogConfirmAgent {
                                     }
                                     if (sbIcon == null) sbIcon = tablerIconScaled(ic, sbTone, kl, SIDEBAR_ICON_SCALE);
                                     kl.setIcon(sbIcon);
+                                    // #4: advancedConfig ships a 20x20 original that RenderLabel keeps painting
+                                    // at 20px despite the setIcon above. Reflectively overwrite EVERY Icon field
+                                    // on the label (in case it caches the icon outside JLabel.defaultIcon).
+                                    if (sbIcon != null && ("advancedConfig".equals(origKey) || sbLc.contains("advanced"))) {
+                                        forceIconFields(kl, sbIcon);
+                                        if (SB_DIAG.add("adv:" + kl.getClass().getName()))   // TEMP #4
+                                            appendDiag("ADVLBL cls=" + kl.getClass().getName()
+                                                + " iconAfter=" + (kl.getIcon() == null ? "null" : kl.getIcon().getIconWidth()) + "\n");
+                                    }
                                     if (SB_DIAG.add(origKey + "|" + sbLc)) appendDiag("SBCELL key=" + origKey   // TEMP
                                         + " text='" + sbLc + "' override=" + sbOverride
                                         + " origSize=" + ic.getIconWidth() + "x" + ic.getIconHeight()
