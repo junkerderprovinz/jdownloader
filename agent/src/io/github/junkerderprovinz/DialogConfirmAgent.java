@@ -452,6 +452,7 @@ public class DialogConfirmAgent {
             flushMenuBarItems();
             darkenChromeBars();
             monoChromeIcons();
+            roundToolbarButtons();      // #8: rounded accent fill on the toolbar buttons (own UI, no square)
             badgeViewsMenu();
             badgeViewsPanel();      // pt5: badge the docked LinkGrabber "Views" headers too
             styleMenuFields();
@@ -1210,7 +1211,14 @@ public class DialogConfirmAgent {
         for (Component ch : pm.getComponents()) {
             if (ch instanceof javax.swing.JSeparator || !(ch instanceof JComponent) || !ch.isVisible()) continue;
             java.awt.Dimension pr = ch.getPreferredSize();
-            if (pr.height < max) ((JComponent) ch).setPreferredSize(new java.awt.Dimension(pr.width, max));
+            if (pr.height != max) {
+                JComponent jc = (JComponent) ch;
+                // JMenuItem caps its maximumSize.height at its own preferred height, so setPreferredSize alone
+                // does NOT grow it — pin preferred + minimum + maximum height so the popup lays every row at `max`.
+                jc.setPreferredSize(new java.awt.Dimension(pr.width, max));
+                jc.setMinimumSize(new java.awt.Dimension(0, max));
+                jc.setMaximumSize(new java.awt.Dimension(Integer.MAX_VALUE, max));
+            }
         }
     }
 
@@ -3016,6 +3024,43 @@ public class DialogConfirmAgent {
             if (x == null) return;
             int ix = (c.getWidth() - x.getIconWidth()) / 2, iy = (c.getHeight() - x.getIconHeight()) / 2;
             x.paintIcon(c, g, ix, iy);
+        }
+    }
+
+    /** #8: the main-toolbar buttons' accent fill (hover / selected toggle) was painted SQUARE — the AppWork
+     *  ExtButtons carry no FlatButtonBorder, so FlatLaf's fill has 0 arc. Own the fill with a rounded UI:
+     *  paint an accent RoundRect (SB_BTN_ARC = 6px radius) only when the button is hovered/selected/pressed,
+     *  else nothing (the dark toolbar shows through the non-content-filled button). paint() stays
+     *  BasicButtonUI's so the state-appropriate mono/dark glyph still draws. */
+    private static final class RoundFillUI extends javax.swing.plaf.basic.BasicButtonUI {
+        @Override public void update(Graphics g, JComponent c) {
+            javax.swing.ButtonModel m = ((AbstractButton) c).getModel();
+            if (m.isSelected() || m.isPressed() || m.isRollover()) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(accentColor());
+                g2.fillRoundRect(0, 0, c.getWidth(), c.getHeight(), SB_BTN_ARC, SB_BTN_ARC);
+                g2.dispose();
+            }
+            paint(g, c);
+        }
+    }
+    private static void roundToolbarButtons() {
+        for (Window w : Window.getWindows()) if (w.isShowing()) roundToolbarBtnsIn(w, false);
+    }
+    private static void roundToolbarBtnsIn(Container c, boolean inTb) {
+        boolean tb = inTb || isMainToolbar(c.getClass());
+        for (Component ch : c.getComponents()) {
+            if (tb && ch instanceof AbstractButton) {
+                AbstractButton b = (AbstractButton) ch;
+                if (!(b.getUI() instanceof RoundFillUI)) {
+                    javax.swing.border.Border ob = b.getBorder();   // preserve JD's sizing/padding
+                    b.setContentAreaFilled(false);                  // suppress FlatLaf's square fill
+                    b.setUI(new RoundFillUI());
+                    if (ob != null) b.setBorder(ob);
+                }
+            }
+            if (ch instanceof Container) roundToolbarBtnsIn((Container) ch, tb);
         }
     }
     /** Solid-tone silhouette of an icon: render it, then replace every non-transparent pixel's RGB with
