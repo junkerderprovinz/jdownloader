@@ -2337,17 +2337,12 @@ public class DialogConfirmAgent {
                                     }
                                     if (sbIcon == null) sbIcon = tablerIconScaled(ic, sbTone, kl, SIDEBAR_ICON_SCALE);
                                     kl.setIcon(sbIcon);
-                                    // P6 (re-layout): the RenderLabel's bounds in JD's MigLayout are sized from
-                                    // JD's ORIGINAL icon (Advanced ships 20x20) and RenderLabel.validate() is a
-                                    // no-op, so they never grow for our 32px override -> the glyph paints shrunk.
-                                    // Force the tile to re-lay-out so the label bounds fit the 32px icon. Guarded
-                                    // to the override tiles + only while the label is narrower than its icon, so
-                                    // it settles after one growth instead of re-laying-out every paint.
-                                    if (sbOverride != null && kl.getIcon() != null
-                                            && kl.getWidth() > 0 && kl.getWidth() < kl.getIcon().getIconWidth()) {
-                                        Container par = kl.getParent();
-                                        if (par != null) { par.invalidate(); par.doLayout(); }
-                                    }
+                                    // NOTE (P6): the Advanced tile's icon still paints at JD's original 20px size,
+                                    // not our 32px override — AppWork's RenderLabel/MigLayout renders from the
+                                    // original icon's metrics and ignores a late setIcon here. Confirmed via diag
+                                    // (icon=32 on an enabled label) and exhausted (padding/cache/disabled/glyph/
+                                    // re-layout all ineffective). Left with the bolder wizard glyph; not fixable
+                                    // from the agent. Tray works because JD's original there is already 32px.
                                 }
                                 // (7a/7b) Icon-only sidebar: hide the tile NAME unless this row is
                                 // hovered, so the sidebar reads as a strip of CENTRED glyphs that reveal
