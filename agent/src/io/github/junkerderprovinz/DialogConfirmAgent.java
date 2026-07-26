@@ -71,8 +71,11 @@ public class DialogConfirmAgent {
     private static final ColorUIResource SEL    = new ColorUIResource(0x52, 0x52, 0x52);
 
     // Plain (non-UIResource) colours set directly on the table progress-bar instances so a
-    // later updateUI cannot override them. Fill must be visible on the dark track.
-    private static final Color BAR_FILL  = new Color(0x55, 0x55, 0x55);
+    // later updateUI cannot override them. The fill is the LIGHT #c6c6c6 the registered
+    // FlatDarkLaf.properties already uses (@accentBaseColor) — same value as the UIManager
+    // fallback (installProgressBarDefaults) so the two mechanisms can never disagree into a
+    // grey flash on scroll (BUG 3). % text is dark over the fill, white over the track.
+    private static final Color BAR_FILL  = new Color(0xc6, 0xc6, 0xc6);
     private static final Color BAR_TRACK = new Color(0x26, 0x26, 0x26);
 
     // Chrome is enforced exactly ONCE per JVM, and only after JD's main window is shown
@@ -124,6 +127,11 @@ public class DialogConfirmAgent {
         // Put the light package-expander icons back BEFORE JD's GUI resolves them
         // (premain runs before JD's main()); the tick loop keeps them in place.
         restoreExpanderIcons();
+        // BUG 3: seed the progress-bar developer overrides + a LAF-change listener before JD
+        // installs its LAF, so the light fill is the render-time fallback from the first paint
+        // and is re-asserted on every reinstall (no scroll grey-flash).
+        ensureLafChangeListener();
+        installProgressBarDefaults();
         writeFile(PID_FILE, Long.toString(ProcessHandle.current().pid()));
         Thread t = new Thread(DialogConfirmAgent::watch, "jd-dialog-agent");
         t.setDaemon(true);
@@ -165,6 +173,136 @@ public class DialogConfirmAgent {
                 System.out.println("[jd-dialog-agent] restored light package-expander icon: " + name);
             } catch (Throwable ignore) { /* best effort — retried next tick */ }
         }
+    }
+
+    // --- BUG 2: rebuild FileColumn's cached [+]/[-] merged toggle icons ---------------
+    // restoreExpanderIcons() keeps the LIGHT tree_plus/tree_minus SVGs on disk, but JD's
+    // FileColumn bakes the package toggle into four PRIVATE FINAL merged-icon fields in
+    // its constructor and never re-reads them, AND loads the toggle with useCache=false
+    // (so clearing NewTheme's cache never touches it either). Once JD resolved the DARK
+    // bundled fallback (a self-update dropped the two files after the boot seed), the light
+    // disk copy changes nothing on screen -> the recurring "black [+]" report. Fix: rebuild
+    // the four merged icons from the now-light SVGs (useCache=false = fresh disk read),
+    // exactly as FileColumn's ctor does, and overwrite the final fields on every live
+    // FileColumn. A non-static final INSTANCE field is writable after setAccessible(true)
+    // on JDK 21. Icons are built ONCE and cached; each tick only re-sets fields if reverted.
+    private static Object[] toggleIcons = null;   // {packageOpen, packageClosed, archive, archiveOpen}
+
+    private static void healPackageToggle() {
+        try {
+            for (Window w : Window.getWindows()) {
+                if (!w.isShowing()) continue;
+                List<JTable> tables = new ArrayList<>();
+                collectTables(w, tables);
+                for (JTable t : tables) {
+                    boolean changed = false;
+                    for (Object col : extColumns(t)) {
+                        if (col == null || !"FileColumn".equals(col.getClass().getSimpleName())) continue;
+                        // Build the light merged icons ONCE, using JD's OWN classloader (a live
+                        // FileColumn gives it to us) — Class.forName on the agent's system loader
+                        // can't see org.jdownloader.*/org.appwork.* (they live on JD's launcher
+                        // loader), which is why the disk-restore-only fix never fired.
+                        if (toggleIcons == null) {
+                            toggleIcons = buildToggleIcons(col.getClass().getClassLoader());
+                            if (toggleIcons == null) return;   // not resolvable yet -> retry next tick
+                        }
+                        changed |= patchFileColumn(col);
+                    }
+                    if (changed) t.repaint();
+                }
+            }
+        } catch (Throwable ignore) { /* best effort */ }
+    }
+
+    /** Build FileColumn's four cell icons LIGHT by composing our OWN guaranteed-light [+]/[-]
+     *  boxIcon with JD's package/rar icon — instead of rebuilding from JD's tree_plus/tree_minus
+     *  (which can be dark-cached) via ExtMergedIcon. Only JD's package/rar icons are read (via
+     *  getIcon), so there is no dependency on the on-disk toggle SVG, a useCache overload, or
+     *  ExtMergedIcon's ctor signature. Returns null until NewTheme + the package icons resolve. */
+    private static boolean toggleWarnLogged = false;
+
+    private static Object[] buildToggleIcons(ClassLoader cl) {
+        try {
+            Class<?> newThemeCls = Class.forName("org.jdownloader.images.NewTheme", true, cl);
+            Object   newTheme    = newThemeCls.getMethod("I").invoke(null);
+            Class<?> iconKey     = Class.forName("org.jdownloader.gui.IconKey", true, cl);
+            String kPOpen  = (String) iconKey.getField("ICON_PACKAGE_OPEN").get(null);
+            String kPClose = (String) iconKey.getField("ICON_PACKAGE_CLOSED").get(null);
+            String kRar    = (String) iconKey.getField("ICON_RAR").get(null);
+
+            // getIcon(String,int) is the current API; an older AppWork snapshot also had a
+            // getIcon(String,int,boolean useCache) overload. Discover whichever exists.
+            Method getIcon = null; boolean cacheArg = false;
+            for (Method m : newThemeCls.getMethods()) {
+                if (!"getIcon".equals(m.getName())) continue;
+                Class<?>[] p = m.getParameterTypes();
+                if (p.length >= 2 && p[0] == String.class && p[1] == int.class) {
+                    if (p.length == 3 && p[2] == boolean.class) { getIcon = m; cacheArg = true; break; }
+                    if (p.length == 2 && getIcon == null) getIcon = m;
+                }
+            }
+            if (getIcon == null) return null;
+
+            javax.swing.Icon pOpen  = getIc(getIcon, cacheArg, newTheme, kPOpen, 16);
+            javax.swing.Icon pClose = getIc(getIcon, cacheArg, newTheme, kPClose, 16);
+            javax.swing.Icon rar    = getIc(getIcon, cacheArg, newTheme, kRar, 16);
+            if (pOpen == null || pClose == null) return null;   // not resolvable yet -> retry
+
+            // Order must match patchFileColumn: {packageOpen, packageClosed, archive, archiveOpen}.
+            // boxIcon(true) = "+" (collapsed), boxIcon(false) = "-" (expanded).
+            Object iconPackageOpen   = mergedToggle(false, pOpen);   // expanded package
+            Object iconPackageClosed = mergedToggle(true,  pClose);  // collapsed package
+            Object iconArchive       = mergedToggle(true,  rar);     // collapsed archive
+            Object iconArchiveOpen   = mergedToggle(false, rar);     // expanded archive
+            System.out.println("[jd-dialog-agent] rebuilt light package-toggle icons for FileColumn");
+            return new Object[] { iconPackageOpen, iconPackageClosed, iconArchive, iconArchiveOpen };
+        } catch (Throwable t) {
+            if (!toggleWarnLogged) { toggleWarnLogged = true;
+                System.out.println("[jd-dialog-agent] package-toggle rebuild unavailable: " + t); }
+            return null;
+        }
+    }
+
+    /** Invoke NewTheme.getIcon(key,size) or getIcon(key,size,false) depending on the API. */
+    private static javax.swing.Icon getIc(Method m, boolean cacheArg, Object theme, String key, int size) throws Exception {
+        Object r = cacheArg ? m.invoke(theme, key, size, false) : m.invoke(theme, key, size);
+        return (r instanceof javax.swing.Icon) ? (javax.swing.Icon) r : null;
+    }
+
+    /** A FileColumn cell icon: our light [+]/[-] box (centered in a 16px slot) + JD's package/
+     *  rar icon to its right, matching JD's ExtMergedIcon(toggle,0,0).add(pkg,16,0) geometry. */
+    private static javax.swing.Icon mergedToggle(final boolean plus, final javax.swing.Icon pkg) {
+        final javax.swing.Icon toggle = boxIcon(plus);   // 11x11 light [+]/[-]
+        return new javax.swing.Icon() {
+            public int getIconWidth()  { return 16 + (pkg != null ? pkg.getIconWidth() : 0); }
+            public int getIconHeight() { return Math.max(16, pkg != null ? pkg.getIconHeight() : 0); }
+            public void paintIcon(Component c, java.awt.Graphics g, int x, int y) {
+                toggle.paintIcon(c, g, x + 2, y + 2);   // center the 11px box in the 16px slot
+                if (pkg != null) pkg.paintIcon(c, g, x + 16, y);
+            }
+        };
+    }
+
+    /** Overwrite col's four cached toggle icons if it is a FileColumn. Returns true if any
+     *  field changed (needs a repaint). Identity-compared -> idempotent per tick. */
+    private static boolean patchFileColumn(Object col) {
+        if (col == null || !"FileColumn".equals(col.getClass().getSimpleName())) return false;
+        boolean changed = false;
+        changed |= setFinalIfDiff(col, "iconPackageOpen",   toggleIcons[0]);
+        changed |= setFinalIfDiff(col, "iconPackageClosed", toggleIcons[1]);
+        changed |= setFinalIfDiff(col, "iconArchive",       toggleIcons[2]);
+        changed |= setFinalIfDiff(col, "iconArchiveOpen",   toggleIcons[3]);
+        return changed;
+    }
+
+    private static boolean setFinalIfDiff(Object target, String name, Object val) {
+        try {
+            Field f = target.getClass().getDeclaredField(name);   // declared on FileColumn
+            f.setAccessible(true);
+            if (f.get(target) == val) return false;               // already ours
+            f.set(target, val);                                   // non-static final instance -> OK after setAccessible
+            return true;
+        } catch (Throwable ignore) { return false; }
     }
 
     // --------------------------------------------- flatlaf on the system classpath
@@ -232,6 +370,7 @@ public class DialogConfirmAgent {
     private static void tick() {
         exposeFlatlafToSystemLoader();
         restoreExpanderIcons();
+        healPackageToggle();          // BUG 2: rebuild FileColumn's cached [+]/[-] toggle icons
         handleDialogs();
         registerDefaultsSource();
         applyCustomDefaults();
@@ -991,6 +1130,40 @@ public class DialogConfirmAgent {
         }
     }
 
+    // --- BUG 3: progress-bar render-time defaults (bars grey out on scroll) -----------
+    // The download-list RendererProgressBars are rubber-stamp fields with a no-op repaint()
+    // and a final renderer entry point, so a 400 ms tick that sets their colour loses the
+    // scroll race for freshly-stamped cells. FlatProgressBarUI paints fill=getForeground()/
+    // track=getBackground(), falling back to the ProgressBar.* UIManager keys whenever a bar
+    // still holds the UIResource default. So set those keys via UIManager.put (DEVELOPER
+    // overrides -> outrank the LAF defaults AND survive setLookAndFeel; getDefaults().put in
+    // enforceDarkChrome did NOT and got wiped by every LAF reinstall) using the SAME light
+    // fill the registered FlatDarkLaf.properties already intends (@accentBaseColor #c6c6c6).
+    // Now the render-time fallback is always our light fill, so losing the retint race just
+    // shows the same colour instead of a grey flash. recolorBarFields stays as a per-instance
+    // belt-and-suspenders layer and uses the SAME light fill (BAR_FILL) so they can't disagree.
+    private static void installProgressBarDefaults() {
+        UIManager.put("ProgressBar.foreground",          new ColorUIResource(0xc6, 0xc6, 0xc6)); // light fill
+        UIManager.put("ProgressBar.background",          new ColorUIResource(0x26, 0x26, 0x26)); // dark track
+        UIManager.put("ProgressBar.selectionForeground", new ColorUIResource(0x16, 0x16, 0x16)); // % over the fill (dark on light)
+        UIManager.put("ProgressBar.selectionBackground", new ColorUIResource(0xf4, 0xf4, 0xf4)); // % over the track (white on dark)
+    }
+
+    private static boolean lafListenerAdded = false;
+    /** Re-assert the progress defaults + instance colours the instant JD (or our own
+     *  applyCustomDefaults) reinstalls the LAF, so a reinstall never reverts the fill to
+     *  FlatLaf's stock accent for freshly-scrolled cells. Registered once; the handler only
+     *  re-applies colours (never setLookAndFeel), so it cannot recurse. */
+    private static void ensureLafChangeListener() {
+        if (lafListenerAdded) return;
+        lafListenerAdded = true;
+        UIManager.addPropertyChangeListener(evt -> {
+            if ("lookAndFeel".equals(evt.getPropertyName())) {
+                SwingUtilities.invokeLater(() -> { installProgressBarDefaults(); retintProgressBars(); });
+            }
+        });
+    }
+
     // ---------------------------------------------------------------- chrome
 
     /**
@@ -1052,15 +1225,11 @@ public class DialogConfirmAgent {
                 "Tree.icon.leafColor", "Tree.icon.closedColor", "Tree.icon.openColor" }) {
             d.put(k, new ColorUIResource(0xb0, 0xb0, 0xb0));
         }
-        // Progress bars (download list + account traffic) are FlatLaf JProgressBars
-        // (AppWork RendererProgressBar; ExtProgressColumn sets no colours), so these
-        // UIManager keys win. The blue->grey sweep had turned the fill light; force a
-        // dark track + medium-grey fill + white % text so it is neither washed-out nor
-        // white-on-white.
-        d.put("ProgressBar.background",          new ColorUIResource(0x26, 0x26, 0x26)); // track
-        d.put("ProgressBar.foreground",          new ColorUIResource(0x4d, 0x4d, 0x4d)); // fill
-        d.put("ProgressBar.selectionForeground", new ColorUIResource(0xf4, 0xf4, 0xf4)); // % over fill
-        d.put("ProgressBar.selectionBackground", new ColorUIResource(0xf4, 0xf4, 0xf4)); // % over track
+        // Progress bars (download list): set via UIManager.put (developer overrides that
+        // OUTRANK LAF defaults and SURVIVE setLookAndFeel), not this wipe-prone getDefaults()
+        // table — the old d.put lines here reverted on every FlatLaf reinstall and caused the
+        // scroll grey-flash. Single source of truth now: installProgressBarDefaults() (BUG 3).
+        installProgressBarDefaults();
         chromeDone = true;   // set before the refresh so a throw can never cause a retry storm
 
         for (Window w : Window.getWindows()) {
