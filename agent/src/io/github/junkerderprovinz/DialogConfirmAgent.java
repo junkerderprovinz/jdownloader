@@ -2587,24 +2587,16 @@ public class DialogConfirmAgent {
         ensureTabIconListener(l);
     }
 
-    /** P15: the ClosableTabHeader close button (an AbstractButton, iconKey "close") ships a FlatLaf rounded
-     *  content box (#2b2b2b) that reads as a black box — subtle on the dark strip, jarring on the yellow
-     *  selected tab. Kill the box (borderless, no content-area fill, no rollover/pressed swap) and theme
-     *  its × with the same light/dark/accent twins the tab icons use (self-picked from the button's
-     *  foreground, which setLabelFg flips per tab state) so it goes dark on the pill, light on the strip. */
+    /** P15: theme the ClosableTabHeader close button (an AbstractButton, iconKey "close"). Ground truth
+     *  from a direct X-server screenshot + in-JVM diag: it is a FlatButtonUI button and JD punches a dark
+     *  box under it ONLY on the SELECTED (yellow) tab — one that survives borderless + opaque=false +
+     *  transparent bg, and that a plain opaque FlatButton "fill" only replaced with a dark border ring.
+     *  So keep it BORDERLESS (no border) and cover the box with the ICON itself: on the selected tab the
+     *  close icon is a full ACCENT TILE + dark × painted on top of everything, blending into the pill;
+     *  on the dark strip it is a transparent tile + light ×. Margin 0 so the 16×16 icon fills the whole
+     *  16×16 button with no box ring peeking past the tile. Variant is chosen by the passed-in selected
+     *  state, NOT the button foreground (a FlatButton overrides its fg, which mis-picked the light tile). */
     private static void installTabCloseButton(final AbstractButton b, boolean sel) {
-        // The close button boxed ONLY on the SELECTED (yellow) tab. Ground truth (X-server screenshot +
-        // in-JVM diag): FlatButtonUI, our × applied, model states all false — yet JD punches a dark box
-        // under it on selection that survives borderless + opaque=false + transparent bg (an earlier
-        // bg=accent did nothing because opaque=false never fills the bg). Two coverings, belt + suspenders:
-        //   1) on the selected tab, make it a PLAIN opaque FlatButton filled with the accent (== the pill,
-        //      so the fill covers the box and blends in); on the strip keep it borderless + transparent.
-        //   2) the icon itself is a full accent TILE + dark × on the selected tab, painted on top of
-        //      everything — so even a box the fill misses is covered by the glyph tile.
-        // Stay BORDERLESS (a plain FlatButton drew a dark border ring). The dark box JD punches under the
-        // selected close button is covered by the icon itself: on the selected tab the icon is a full
-        // accent TILE painted on top of the button, so it hides the box and blends into the pill. Margin 0
-        // so the 16×16 icon fills the whole 16×16 button (no ring of the box peeking past the tile).
         b.putClientProperty("JButton.buttonType", "borderless");
         b.setContentAreaFilled(false);
         b.setBorderPainted(false);
@@ -2618,17 +2610,21 @@ public class DialogConfirmAgent {
             b.setRolloverIcon(null);                               // no unthemed hover/pressed glyph swap
             b.setPressedIcon(null);
         }
-        javax.swing.Icon cur = b.getIcon();
-        if (cur instanceof TabIcon) { ensureCloseIconListener(b); return; }
-        if (cur == null) return;
-        int w = cur.getIconWidth(), h = cur.getIconHeight();
-        javax.swing.Icon light  = closeIcon(w, h, null, SIDEBAR_TEXT);          // strip: transparent + light ×
-        javax.swing.Icon dark   = closeIcon(w, h, accentColor(), accentFg());   // pill: accent tile covers box + dark ×
-        javax.swing.Icon accent = closeIcon(w, h, null, accentColor());         // hovered strip tab: transparent + accent ×
-        if (light == null) return;
-        b.putClientProperty("jdp.tabOrig", cur);
-        b.setIcon(new TabIcon(light, dark, accent));
-        ensureCloseIconListener(b);
+        // Pick the variant by the KNOWN selected state (passed in), NOT the button's foreground: a
+        // FlatButton overrides its foreground to a UI default (#161616 != accentFg), so a paint-time
+        // TabIcon.pick misread it and drew the light/transparent variant on the selected pill, leaving
+        // JD's dark box exposed with a light × on it. The 400ms tick re-runs this with the live sel;
+        // guard on our own marker so we only rebuild on a variant change or a JD icon swap.
+        if (b.getIcon() == null) return;
+        String wantVar = sel ? "sel" : "def";
+        javax.swing.Icon mine = (javax.swing.Icon) b.getClientProperty("jdp.closeIcon");
+        if (b.getIcon() == mine && wantVar.equals(b.getClientProperty("jdp.closeVar"))) return;
+        javax.swing.Icon ic = sel ? closeIcon(16, 16, accentColor(), accentFg())   // pill: accent tile covers box + dark ×
+                                  : closeIcon(16, 16, null, SIDEBAR_TEXT);          // strip: transparent + light ×
+        if (ic == null) return;
+        b.putClientProperty("jdp.closeVar", wantVar);
+        b.putClientProperty("jdp.closeIcon", ic);
+        b.setIcon(ic);
     }
 
     /** Build a close-button icon cell: optionally flood the whole w×h tile with `bg` (covers the dark box
@@ -2646,16 +2642,6 @@ public class DialogConfirmAgent {
             return new javax.swing.ImageIcon(img);
         } catch (Throwable t) { return null; }
     }
-    private static void ensureCloseIconListener(final AbstractButton b) {
-        if (b.getClientProperty("jdp.tabCloseL") != null) return;
-        b.putClientProperty("jdp.tabCloseL", Boolean.TRUE);
-        b.addPropertyChangeListener("icon", new java.beans.PropertyChangeListener() {
-            public void propertyChange(java.beans.PropertyChangeEvent e) {
-                if (!(b.getIcon() instanceof TabIcon)) installTabCloseButton(b, false);   // JD swapped it -> re-theme (tick re-runs with real sel)
-            }
-        });
-    }
-
     /** Solid-tone silhouette of an icon: render it, then replace every non-transparent pixel's RGB with
      *  `tone` (alpha kept). Reliably recolours a raw keyless ImageIcon that tablerIcon's key lookup can't. */
     private static javax.swing.Icon tintSolid(javax.swing.Icon ic, Color tone) {
