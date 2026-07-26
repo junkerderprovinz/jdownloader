@@ -895,6 +895,7 @@ public class DialogConfirmAgent {
     // removed their frame. Give them a raised #2a2a2a pill (same shade as config buttons) so they
     // read as editable without reintroducing a line. Chrome-only: scoped to JPopupMenu subtrees.
     private static final Color MENU_FIELD_BG = new Color(0x2a, 0x2a, 0x2a);
+    private static final int   MENU_FIELD_W  = 110;   // P14: uniform width for grey menu input fields
 
     private static void styleMenuFields() {
         for (Window w : Window.getWindows()) if (w.isShowing()) styleMenuFieldsIn(w, false);
@@ -908,6 +909,18 @@ public class DialogConfirmAgent {
                 if (!MENU_FIELD_BG.equals(ch.getBackground())) {
                     ch.setBackground(MENU_FIELD_BG);
                     if (ch instanceof JComponent) ((JComponent) ch).setOpaque(true);
+                }
+                // P14: the grey menu input fields (Max. Chunks / Speed Limit spinners) came in at different
+                // widths — pin them all to one uniform width so the dropdown column lines up. Rounding is the
+                // FlatLaf arc (Spinner/ComboBox/TextComponent.arc), left intact (menus don't hit the border strip).
+                if (ch instanceof JComponent) {
+                    java.awt.Dimension pr = ch.getPreferredSize();
+                    if (pr != null && pr.width != MENU_FIELD_W) {
+                        java.awt.Dimension d = new java.awt.Dimension(MENU_FIELD_W, pr.height);
+                        ch.setPreferredSize(d); ch.setMinimumSize(d); ch.setMaximumSize(d);
+                        Container par = ch.getParent();
+                        if (par != null) { par.invalidate(); par.revalidate(); }
+                    }
                 }
             }
             if (ch instanceof Container) styleMenuFieldsIn((Container) ch, menu);
@@ -2074,6 +2087,7 @@ public class DialogConfirmAgent {
     }
     private static String hex2(Color c) { return c == null ? "null" : String.format("#%06x", c.getRGB() & 0xffffff); }
     private static final java.util.Set<String> DIAG_SEEN = new java.util.HashSet<>();
+    private static int ADV_LOG_N = 0;   // TEMP r76 (P6 deep)
     private static void diagCornersAndLists() {
         try {
             for (Window w : Window.getWindows()) {
@@ -2083,11 +2097,18 @@ public class DialogConfirmAgent {
                     Container cp = (w instanceof javax.swing.RootPaneContainer) ? ((javax.swing.RootPaneContainer) w).getContentPane() : null;
                     writeDiag("WIN " + w.getClass().getName()
                         + " undec=" + (w instanceof Dialog ? ((Dialog) w).isUndecorated() : (w instanceof Frame ? ((Frame) w).isUndecorated() : "?"))
+                        + " lafDecorDlg=" + javax.swing.JDialog.isDefaultLookAndFeelDecorated()
+                        + " lafDecorFrm=" + javax.swing.JFrame.isDefaultLookAndFeelDecorated()
+                        + " prop=" + System.getProperty("flatlaf.useWindowDecorations")
                         + " shape=" + (w.getShape() == null ? "-" : w.getShape().getClass().getSimpleName())
                         + " rpUI=" + (rp == null ? "-" : rp.getUI().getClass().getSimpleName())
-                        + " rpWinStyle=" + (rp == null ? "-" : rp.getClientProperty("JRootPane.titleBarBackground") + "/" + rp.getClientProperty("FlatLaf.internal.rootPaneStyle"))
-                        + " rpBorder=" + (rp == null || rp.getBorder() == null ? "-" : rp.getBorder().getClass().getName())
-                        + " cpBorder=" + (cp instanceof JComponent && ((JComponent) cp).getBorder() != null ? ((JComponent) cp).getBorder().getClass().getName() : "-"));
+                        + " rpBorder=" + (rp == null || rp.getBorder() == null ? "-" : rp.getBorder().getClass().getSimpleName())
+                        + " cpBorder=" + (cp instanceof JComponent && ((JComponent) cp).getBorder() != null ? ((JComponent) cp).getBorder().getClass().getSimpleName() : "-"));
+                }
+                if (w instanceof Dialog && DIAG_SEEN.add("dtree:" + w.getClass().getName())) {   // P10: what rounds the dialog?
+                    writeDiag("=== DIALOG TREE " + w.getClass().getName() + " ===");
+                    if (w instanceof javax.swing.RootPaneContainer)
+                        diagTree(((javax.swing.RootPaneContainer) w).getRootPane(), 0);
                 }
                 diagLists(w);                                            // P11: combobox popup list selection colors
             }
@@ -2102,6 +2123,19 @@ public class DialogConfirmAgent {
                     + " cellRend=" + (l.getCellRenderer() == null ? "-" : l.getCellRenderer().getClass().getName()));
             }
             if (ch instanceof Container) diagLists((Container) ch);
+        }
+    }
+    private static void diagTree(Container c, int depth) {   // P10: dump dialog component tree to find the rounded element
+        if (depth > 5) return;
+        for (Component ch : c.getComponents()) {
+            javax.swing.border.Border bd = (ch instanceof JComponent) ? ((JComponent) ch).getBorder() : null;
+            Object style = (ch instanceof JComponent) ? ((JComponent) ch).getClientProperty("FlatLaf.style") : null;
+            writeDiag("  T" + depth + " " + ch.getClass().getName()
+                + " op=" + (ch instanceof JComponent && ((JComponent) ch).isOpaque())
+                + " bg=" + hex2(ch.getBackground())
+                + " bd=" + (bd == null ? "-" : bd.getClass().getSimpleName())
+                + (style != null ? " style=" + style : ""));
+            if (ch instanceof Container) diagTree((Container) ch, depth + 1);
         }
     }
     // ===== END TEMP DIAG =====
@@ -2364,13 +2398,14 @@ public class DialogConfirmAgent {
                                     }
                                     if (sbIcon == null) sbIcon = tablerIconScaled(ic, sbTone, kl, SIDEBAR_ICON_SCALE);
                                     kl.setIcon(sbIcon);
-                                    if (sbOverride != null && DIAG_SEEN.add("sb:" + sbOverride)) {   // TEMP r74 (P6)
-                                        javax.swing.Icon tbDbg = tablerBase(sbOverride, 32, 32);
-                                        writeDiag("SB-OVR key=" + sbOverride
-                                            + " tablerBase=" + (tbDbg == null ? "null" : tbDbg.getIconWidth() + "x" + tbDbg.getIconHeight())
+                                    if ("advancedConfig".equals(sbOverride) && ADV_LOG_N < 12) {   // TEMP r76 (P6 deep)
+                                        ADV_LOG_N++;
+                                        writeDiag("SB-OVR idx=" + idx + " sel=" + sel + " hov=" + (idx == hoverRow)
+                                            + " klClass=" + kl.getClass().getName()
                                             + " sbIcon=" + (sbIcon == null ? "null" : sbIcon.getIconWidth() + "x" + sbIcon.getIconHeight())
                                             + " orig=" + ic.getIconWidth() + "x" + ic.getIconHeight()
-                                            + " afterSet=" + (kl.getIcon() == null ? "null" : kl.getIcon().getIconWidth() + "x" + kl.getIcon().getIconHeight()));
+                                            + " afterSet=" + (kl.getIcon() == null ? "null" : kl.getIcon().getIconWidth() + "x" + kl.getIcon().getIconHeight())
+                                            + " prefH=" + kl.getPreferredSize().height);
                                     }
                                 }
                                 // (7a/7b) Icon-only sidebar: hide the tile NAME unless this row is
