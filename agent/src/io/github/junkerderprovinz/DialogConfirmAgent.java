@@ -1480,28 +1480,36 @@ public class DialogConfirmAgent {
         MonoIconRenderer(javax.swing.table.TableCellRenderer o) { orig = o; }
         public Component getTableCellRendererComponent(JTable t, Object v, boolean sel, boolean foc, int row, int col) {
             Component c = orig.getTableCellRendererComponent(t, v, sel, foc, row, col);
-            if (c instanceof javax.swing.JLabel) {
-                javax.swing.JLabel l = (javax.swing.JLabel) c;
-                javax.swing.Icon ic = l.getIcon();
-                if (ic != null) {
-                    // The hoster-favicon COLUMN is already excluded upstream, so every icon we see here is a
-                    // themeable content glyph: keyed ones (file-type/folder) swap to the mono Tabler, keyless
-                    // ones (the coloured status error-X / extract-OK) get mono-tinted to one tone.
-                    Color tone = sel ? accentFg() : SIDEBAR_TEXT;
-                    javax.swing.Icon mono;
-                    if (iconKey(ic) != null) {
-                        mono = tablerIcon(ic, tone, l);
-                    } else if (sel) {
-                        mono = tintSolid(ic, tone);
-                    } else {
-                        mono = ROW_MONO.get(ic);
-                        if (mono == null) { mono = tintSolid(ic, tone); ROW_MONO.put(ic, mono); }
-                    }
-                    if (mono != ic) l.setIcon(mono);
-                }
-            }
+            // Recurse: the Name column's shared JLabel carries the folder/file glyph directly, but JD's
+            // Status/Task column returns a CUSTOM component that holds its status glyph on an INNER label -
+            // walk the whole returned tree and mono every JLabel/AbstractButton icon. The hoster-favicon
+            // COLUMN is already excluded upstream, so every icon reached here is a themeable content glyph.
+            monoRowIconsIn(c, sel);
             return c;
         }
+    }
+    private static void monoRowIconsIn(Component c, boolean sel) {
+        javax.swing.Icon ic = null;
+        if (c instanceof javax.swing.JLabel) ic = ((javax.swing.JLabel) c).getIcon();
+        else if (c instanceof javax.swing.AbstractButton) ic = ((javax.swing.AbstractButton) c).getIcon();
+        if (ic != null) {
+            javax.swing.Icon mono = monoRowIcon(ic, sel);
+            if (mono != ic) {
+                if (c instanceof javax.swing.JLabel) ((javax.swing.JLabel) c).setIcon(mono);
+                else ((javax.swing.AbstractButton) c).setIcon(mono);
+            }
+        }
+        if (c instanceof Container) for (Component ch : ((Container) c).getComponents()) monoRowIconsIn(ch, sel);
+    }
+    /** keyed content glyph -> mono Tabler; keyless -> mono-tint of its own shape (cached for the non-selected
+     *  common case so a repaint does not re-render per row). */
+    private static javax.swing.Icon monoRowIcon(javax.swing.Icon ic, boolean sel) {
+        Color tone = sel ? accentFg() : SIDEBAR_TEXT;
+        if (iconKey(ic) != null) return tablerIcon(ic, tone, null);
+        if (sel) return tintSolid(ic, tone);
+        javax.swing.Icon m = ROW_MONO.get(ic);
+        if (m == null) { m = tintSolid(ic, tone); ROW_MONO.put(ic, m); }
+        return m;
     }
 
     // ------------------------------------------------------ borderless config tables (round 14)
