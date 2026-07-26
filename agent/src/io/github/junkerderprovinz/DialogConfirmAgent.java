@@ -2651,7 +2651,7 @@ public class DialogConfirmAgent {
         b.putClientProperty("jdp.tabCloseL", Boolean.TRUE);
         b.addPropertyChangeListener("icon", new java.beans.PropertyChangeListener() {
             public void propertyChange(java.beans.PropertyChangeEvent e) {
-                if (!(b.getIcon() instanceof TabIcon)) installTabCloseButton(b);   // JD swapped it -> re-theme
+                if (!(b.getIcon() instanceof TabIcon)) installTabCloseButton(b, false);   // JD swapped it -> re-theme (tick re-runs with real sel)
             }
         });
     }
