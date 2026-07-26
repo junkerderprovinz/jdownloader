@@ -2592,34 +2592,20 @@ public class DialogConfirmAgent {
      *  selected tab. Kill the box (borderless, no content-area fill, no rollover/pressed swap) and theme
      *  its × with the same light/dark/accent twins the tab icons use (self-picked from the button's
      *  foreground, which setLabelFg flips per tab state) so it goes dark on the pill, light on the strip. */
-    private static final java.util.concurrent.atomic.AtomicInteger CLOSE_DIAG_N = new java.util.concurrent.atomic.AtomicInteger(0);
     private static void installTabCloseButton(final AbstractButton b, boolean sel) {
-        // TEMP diag: dump the SELECTED tab's close button in full — the box only shows on the yellow pill,
-        // so gate on sel to guarantee we log that exact button (UI class reveals custom paint; border +
-        // isTabIcon reveal whether our × even took).
-        if (sel && CLOSE_DIAG_N.get() < 6) {
-            CLOSE_DIAG_N.incrementAndGet();
-            javax.swing.Icon ic = b.getIcon();
-            appendDiag("CLOSEBTN[sel] cls=" + b.getClass().getName()
-                    + " ui=" + (b.getUI() == null ? "null" : b.getUI().getClass().getName())
-                    + " btype=" + b.getClientProperty("JButton.buttonType")
-                    + " icon=" + (ic == null ? "null" : ic.getClass().getName()) + " isTabIcon=" + (ic instanceof TabIcon)
-                    + " op=" + b.isOpaque() + " caf=" + b.isContentAreaFilled() + " bp=" + b.isBorderPainted()
-                    + " bg=" + b.getBackground() + " fg=" + b.getForeground()
-                    + " border=" + (b.getBorder() == null ? "null" : b.getBorder().getClass().getName())
-                    + " arm=" + b.getModel().isArmed() + " roll=" + b.getModel().isRollover()
-                    + " press=" + b.getModel().isPressed() + " selM=" + b.getModel().isSelected() + "\n");
-        }
-        // Re-assert the box-kill EVERY call (NOT once): JD flips the close button opaque / content-filled
-        // when its tab becomes the selected yellow pill, which repainted a #2b2b2b box over the accent. A
-        // one-shot kill stuck on the dark strip but lost on selection. These setters are idempotent.
-        b.putClientProperty("JButton.buttonType", "borderless");   // FlatLaf: no bg box, no hover fill
+        // The close button boxed only on the SELECTED (yellow) tab. Diag ground truth: FlatButtonUI +
+        // borderless, our × applied — but JD flips the button opaque=true on selection and its repaints
+        // out-race our 400ms tick, so AT RENDER it is opaque with a transparent bg → an opaque component
+        // that paints nothing = a BLACK hole punched over the yellow pill. Rather than fight the opaque
+        // flip, hand the button the pill's OWN colour: accent when selected (opaque fill == the pill, box
+        // invisible; our dark × reads on top) / transparent on the dark strip (parent shows, clean light ×).
+        b.putClientProperty("JButton.buttonType", "borderless");
         b.setContentAreaFilled(false);
         b.setBorderPainted(false);
         b.setOpaque(false);
         b.setFocusPainted(false);
         b.setRolloverEnabled(false);
-        b.setBackground(new Color(0, 0, 0, 0));                     // transparent, in case a UI paints b.getBackground()
+        b.setBackground(sel ? accentColor() : new Color(0, 0, 0, 0));
         if (b.getClientProperty("jdp.tabClose") == null) {
             b.putClientProperty("jdp.tabClose", Boolean.TRUE);
             b.setRolloverIcon(null);                               // no unthemed hover/pressed glyph swap
@@ -2639,12 +2625,6 @@ public class DialogConfirmAgent {
         b.putClientProperty("jdp.tabOrig", cur);
         b.setIcon(new TabIcon(light, dark, accent));
         ensureCloseIconListener(b);
-    }
-    private static void appendDiag(String s) {
-        try {
-            java.nio.file.Files.write(java.nio.file.Paths.get("/config/hl-diag.txt"), s.getBytes("UTF-8"),
-                    java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
-        } catch (Throwable ignore) { }
     }
     private static void ensureCloseIconListener(final AbstractButton b) {
         if (b.getClientProperty("jdp.tabCloseL") != null) return;
