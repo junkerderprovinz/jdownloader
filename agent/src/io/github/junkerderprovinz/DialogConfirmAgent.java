@@ -2625,6 +2625,24 @@ public class DialogConfirmAgent {
         b.putClientProperty("jdp.closeVar", wantVar);
         b.putClientProperty("jdp.closeIcon", ic);
         b.setIcon(ic);
+        if (sel && CLOSE2_N.get() < 4) {   // TEMP: why is the selected close a white square?
+            CLOSE2_N.incrementAndGet();
+            javax.swing.Icon gi = b.getIcon();
+            appendDiag("CLOSE2 acc=" + accentColor() + " accFg=" + accentFg() + " sbText=" + SIDEBAR_TEXT
+                    + " iconSet=" + (gi == null ? "null" : gi.getClass().getName()) + " isMine=" + (gi == ic)
+                    + " icoW=" + ic.getIconWidth() + "x" + ic.getIconHeight()
+                    + " op=" + b.isOpaque() + " caf=" + b.isContentAreaFilled() + " bg=" + b.getBackground()
+                    + " enab=" + b.isEnabled() + " arm=" + b.getModel().isArmed() + " roll=" + b.getModel().isRollover()
+                    + " press=" + b.getModel().isPressed() + " hasFocus=" + b.hasFocus()
+                    + " btnW=" + b.getWidth() + "x" + b.getHeight() + " ins=" + b.getInsets() + "\n");
+        }
+    }
+    private static final java.util.concurrent.atomic.AtomicInteger CLOSE2_N = new java.util.concurrent.atomic.AtomicInteger(0);
+    private static void appendDiag(String s) {
+        try {
+            java.nio.file.Files.write(java.nio.file.Paths.get("/config/hl-diag.txt"), s.getBytes("UTF-8"),
+                    java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+        } catch (Throwable ignore) { }
     }
 
     /** Build a close-button icon cell: optionally flood the whole w×h tile with `bg` (covers the dark box
