@@ -3041,18 +3041,11 @@ public class DialogConfirmAgent {
     private static void roundToolbarButtons() {
         for (Window w : Window.getWindows()) if (w.isShowing()) roundToolbarBtnsIn(w, false);
     }
-    private static final java.util.Set<String> TB_DIAG = java.util.Collections.synchronizedSet(new java.util.HashSet<String>());   // TEMP #8
     private static void roundToolbarBtnsIn(Container c, boolean inTb) {
         boolean tb = inTb || isMainToolbar(c.getClass());
         for (Component ch : c.getComponents()) {
             if (tb && ch instanceof AbstractButton) {
                 AbstractButton b = (AbstractButton) ch;
-                if (TB_DIAG.add(b.getClass().getName())) {              // TEMP #8: dump each toolbar button once
-                    try { java.nio.file.Files.write(java.nio.file.Paths.get("/config/tb-diag.txt"),
-                        ("TB " + b.getClass().getName() + " sel=" + b.isSelected() + " op=" + b.isOpaque()
-                            + " caf=" + b.isContentAreaFilled() + " ui=" + b.getUI().getClass().getName() + "\n").getBytes("UTF-8"),
-                        java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND); } catch (Throwable ig) { }
-                }
                 if (!(b.getUI() instanceof RoundFillUI)) {
                     javax.swing.border.Border ob = b.getBorder();   // preserve JD's sizing/padding
                     b.setContentAreaFilled(false);                  // suppress FlatLaf's square fill
