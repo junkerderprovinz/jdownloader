@@ -1,4 +1,4 @@
 Manifest-Version: 1.0
 Premain-Class: io.github.junkerderprovinz.DialogConfirmAgent
 Can-Redefine-Classes: false
-Can-Retransform-Classes: false
+Can-Retransform-Classes: true
