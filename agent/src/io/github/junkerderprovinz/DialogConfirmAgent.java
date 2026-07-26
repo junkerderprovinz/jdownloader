@@ -251,7 +251,6 @@ public class DialogConfirmAgent {
             styleSidebar();
             stripSectionUnderlines();
             recolorMainTabs();
-            diagMainWin();   // TEMP: main-window left alignment
             monoChromeIcons();
             badgeViewsMenu();
             badgeViewsPanel();      // pt5: badge the docked LinkGrabber "Views" headers too
@@ -990,81 +989,8 @@ public class DialogConfirmAgent {
                     }
                 }
             }
-            diagMenuItems(pm);   // TEMP: dump menu-item icon keys
         } catch (Throwable ignore) { }
     }
-
-    // ===== TEMP diag: menu icon keys + main-window left alignment + disabled field =====
-    private static final java.util.Set<String> DIAG_SEEN = java.util.Collections.synchronizedSet(new java.util.HashSet<String>());
-    private static final java.util.concurrent.atomic.AtomicBoolean MAIN_DIAG = new java.util.concurrent.atomic.AtomicBoolean(false);
-    private static void appendDiag(String s) {
-        try { java.nio.file.Files.write(java.nio.file.Paths.get("/config/hl-diag.txt"), s.getBytes("UTF-8"),
-            java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND); } catch (Throwable ignore) { }
-    }
-    private static void diagMenuItems(javax.swing.JPopupMenu pm) {
-        for (Component ch : pm.getComponents()) {
-            if (ch instanceof javax.swing.JMenuItem) {
-                javax.swing.JMenuItem mi = (javax.swing.JMenuItem) ch;
-                String t = mi.getText();
-                if (t != null && DIAG_SEEN.add("mi:" + t))
-                    appendDiag("MENUITEM '" + t + "' iconKey=" + iconKey(mi.getIcon())
-                        + " icon=" + (mi.getIcon() == null ? "null" : mi.getIcon().getClass().getName()) + "\n");
-            }
-            // disabled embedded field (Speed/perHost when unchecked): why square corners?
-            if (ch instanceof Container && !(ch instanceof javax.swing.JMenuItem)) diagDisabledField((Container) ch);
-        }
-    }
-    private static void diagDisabledField(Container row) {
-        for (Component ch : row.getComponents()) {
-            if (ch instanceof javax.swing.JSpinner || ch instanceof javax.swing.text.JTextComponent) {
-                if (DIAG_SEEN.add("df:" + ch.getClass().getName() + ":" + ch.isEnabled())) {
-                    JComponent jc = (JComponent) ch;
-                    appendDiag("FIELD " + ch.getClass().getName() + " enabled=" + ch.isEnabled() + " opaque=" + ch.isOpaque()
-                        + " bg=" + ch.getBackground() + " border=" + (jc.getBorder() == null ? "null" : jc.getBorder().getClass().getName())
-                        + " arc=" + jc.getClientProperty("JComponent.roundRect") + "/" + jc.getClientProperty("Component.arc") + "\n");
-                }
-            }
-            if (ch instanceof Container) diagDisabledField((Container) ch);
-        }
-    }
-    private static int absX(Component c, Component root) {
-        try { return javax.swing.SwingUtilities.convertPoint(c.getParent() == null ? c : c.getParent(), c.getX(), c.getY(), root).x; }
-        catch (Throwable t) { return -999; }
-    }
-    private static void diagMainWin() {
-        if (MAIN_DIAG.get()) return;
-        try {
-            for (Window w : Window.getWindows()) {
-                if (!(w instanceof javax.swing.JFrame) || !w.isShowing() || w.getWidth() < 700) continue;
-                if (!MAIN_DIAG.compareAndSet(false, true)) return;   // set the once-flag ONLY when a frame is found
-                javax.swing.JFrame f = (javax.swing.JFrame) w;
-                StringBuilder sb = new StringBuilder("=== MAIN DIAG frame=" + f.getWidth() + "x" + f.getHeight() + " ===\n");
-                javax.swing.JMenuBar mb = f.getJMenuBar();
-                if (mb != null) sb.append("JMenuBar absX=" + absX(mb, f) + " insets=" + mb.getInsets()
-                    + " item0X=" + (mb.getComponentCount() > 0 ? absX(mb.getComponent(0), f) : -1) + "\n");
-                diagWinTree(f.getContentPane(), f, sb, 0);
-                appendDiag(sb.toString());
-                return;
-            }
-        } catch (Throwable t) { appendDiag("MAIN DIAG ERR " + t + "\n"); }
-    }
-    private static void diagWinTree(Container c, Component root, StringBuilder sb, int depth) {
-        if (depth > 7) return;
-        for (Component ch : c.getComponents()) {
-            String cn = ch.getClass().getName();
-            boolean big = ch.getWidth() > 120 && (depth <= 2 || cn.contains("ToolBar") || cn.contains("TabbedPane")
-                    || cn.contains("TableHeader") || cn.contains("maintab") || cn.contains("SwingGui"));
-            boolean small = (ch instanceof AbstractButton && ch.getWidth() >= 8 && ch.getWidth() <= 70)
-                    || cn.contains("TabHeader");
-            if (big || small) {
-                for (int i = 0; i < depth; i++) sb.append("  ");
-                sb.append(cn).append(" absX=").append(absX(ch, root)).append(" w=").append(ch.getWidth())
-                  .append(" insets=").append(ch instanceof Container ? ((Container) ch).getInsets().toString() : "-").append('\n');
-            }
-            if (ch instanceof Container) diagWinTree((Container) ch, root, sb, depth + 1);
-        }
-    }
-    // ===== end TEMP diag =====
 
     // Re-style every VISIBLE popup menu each tick, so JD's lazy re-render of the Speed-Limit / editor rows
     // can't leave a stale colored icon or uneven field behind (the one-shot on-open lost the race).
@@ -1862,8 +1788,6 @@ public class DialogConfirmAgent {
             javax.swing.Icon cur = mi.getIcon();
             if (cur == null) return;                                   // check/radio glyphs are UI-painted, not getIcon()
             Object light = mi.getClientProperty("jdp.miLight");
-            if (light == null && mi.getText() != null && DIAG_SEEN.add("mio:" + mi.getText()))   // TEMP: original key
-                appendDiag("MENUITEM-ORIG '" + mi.getText() + "' iconKey=" + iconKey(cur) + " icon=" + cur.getClass().getName() + "\n");
             if (cur == light || cur == mi.getClientProperty("jdp.miDark")) { installMenuItemHoverIcon(mi); return; }
             javax.swing.Icon lo = tablerIcon(cur, SIDEBAR_TEXT, mi);
             javax.swing.Icon hi = tablerIcon(cur, accentFg(), mi);
