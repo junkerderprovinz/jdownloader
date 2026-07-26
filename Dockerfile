@@ -39,12 +39,13 @@ COPY agent/ /build/
 # (shaded) so the -javaagent jar is self-contained; JD keeps its own ASM on a separate
 # launcher loader, so there is no collision.
 RUN set -eux; \
-    echo "8cadd43ac5eb6d09de05faecca38b917a040bb9139c7edeb4cc81c740b713281  /build/asm.jar" | sha256sum -c -; \
+    echo "8cadd43ac5eb6d09de05faecca38b917a040bb9139c7edeb4cc81c740b713281  /build/asm.jar" > asm.jar.sha256; \
+    sha256sum -c asm.jar.sha256; \
     mkdir -p out; \
     find src -name '*.java' > sources.txt; \
     javac --release 21 -cp asm.jar -d out @sources.txt; \
-    ( cd out && jar xf ../asm.jar && rm -rf META-INF module-info.class ); \
-    jar cfm jd-dialog-agent.jar manifest.mf -C out .
+    jar xf asm.jar org/objectweb/asm; \
+    jar cfm jd-dialog-agent.jar manifest.mf -C out . org
 
 FROM ghcr.io/linuxserver/baseimage-selkies:${BASE_TAG}
 
