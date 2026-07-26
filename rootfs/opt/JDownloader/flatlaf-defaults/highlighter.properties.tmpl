@@ -111,12 +111,14 @@ List.selectionArc       = 6
 OptionPane.background = #242424
 RootPane.background   = #242424
 
-# --- main tabs: the SELECTED tab is a rounded accent pill; HOVER is the accent too ---
-# P9: the hovered tab is dark bg + ACCENT text/icon (NOT a yellow fill). FlatLaf's hoverColor=accent
-# painted a yellow background that flashed BEFORE the custom TabHeader repainted its dark bg — and the
-# agent's applyTabForegrounds sets the hovered text to the accent (yellow), so the yellow fill briefly
-# gave yellow-on-yellow (unreadable), then settled to dark+yellow. Pin hoverColor to the base (no yellow
-# fill) and hoverForeground to the accent so FlatLaf and the agent AGREE = clean instant accent text.
+# --- main tabs: the SELECTED tab is a rounded accent pill; HOVER previews it (accent pill + dark text) ---
+# FlatLaf picks ONE background per tab and the ROLLOVER tab takes precedence over the selected one, so
+# hoverColor REPLACES the selected pill while the mouse is on it. hoverColor=base(#161616) therefore made
+# a just-clicked/hovered SELECTED tab go dark until the mouse left it ("beim Klick komplett schwarz",
+# proved on the X server directly). Fix: hoverColor=ACCENT so a hovered tab keeps/gains the pill, and
+# hoverForeground=ACCENT_FG (dark) so the text reads on it; the agent's applyTabForegrounds paints the
+# hovered tab's text+icon dark to match (onAccent = selected||hover), so every hovered tab looks like a
+# clean selection preview — no black flash, no yellow-on-yellow.
 TabbedPane.selectedBackground = @@ACCENT@@
 TabbedPane.selectedForeground = @@ACCENT_FG@@
 TabbedPane.tabSelectionHeight = 0
@@ -124,8 +126,8 @@ TabbedPane.tabSelectionHeight = 0
 # tab strip and the tab content). showContentSeparator=false removes it; height=0 belt-and-suspenders.
 TabbedPane.showContentSeparator   = false
 TabbedPane.contentSeparatorHeight = 0
-TabbedPane.hoverColor         = #161616
-TabbedPane.hoverForeground    = @@ACCENT@@
+TabbedPane.hoverColor         = @@ACCENT@@
+TabbedPane.hoverForeground    = @@ACCENT_FG@@
 TabbedPane.background         = #161616
 TabbedPane.tabArc             = 12
 TabbedPane.cardTabArc         = 12

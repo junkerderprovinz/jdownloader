@@ -2537,12 +2537,14 @@ public class DialogConfirmAgent {
         for (int i = 0; i < tp.getTabCount(); i++) {
             boolean isSel = (i == sel);
             boolean isHover = (hover >= 0 && i == hover && !isSel);
-            // Selected tab = the yellow pill -> DARK text/icon. Hovered (non-selected) tab: JD's custom
-            // TabHeader components do NOT reliably paint the hover FILL, so dark text would be dark-on-dark
-            // (unreadable). Colour the hovered text/icon in the ACCENT itself so it reads on the dark strip.
-            Color want = new Color((isSel ? selFg : (isHover ? accentColor() : norFg)).getRGB());
+            // onAccent = the tab carries the accent pill: the SELECTED tab, OR the hovered one now that
+            // FlatLaf's hoverColor is the accent (so a hovered tab previews the pill instead of the base
+            // fill blanking the selected pill on rollover). On the pill -> DARK text/icon; on the bare
+            // strip -> light. Keeping tone in lock-step with FlatLaf's fill avoids the dark-on-dark blank.
+            boolean onAccent = isSel || isHover;
+            Color want = new Color((onAccent ? selFg : norFg).getRGB());
             if (!want.equals(tp.getForegroundAt(i))) tp.setForegroundAt(i, want);
-            Color iconTone = isSel ? accentFg() : (isHover ? accentColor() : SIDEBAR_TEXT);
+            Color iconTone = onAccent ? accentFg() : SIDEBAR_TEXT;
             javax.swing.Icon slot = tp.getIconAt(i);                      // JD may set the icon via setIconAt(...)
             if (slot != null) {
                 String pk = "jdp.tabIcOrig." + i;
@@ -2551,7 +2553,7 @@ public class DialogConfirmAgent {
                 if (o != null) { javax.swing.Icon nw = tablerIcon(o, iconTone, tp); if (nw != tp.getIconAt(i)) tp.setIconAt(i, nw); }
             }
             Component tc = tp.getTabComponentAt(i);   // custom tab component (JLabel etc.)
-            if (tc != null) { setLabelFg(tc, want); tablerTabIcons(tc, iconTone, isSel); installTabCompHover(tp, tc, selFg, norFg); }
+            if (tc != null) { setLabelFg(tc, want); tablerTabIcons(tc, iconTone, onAccent); installTabCompHover(tp, tc, selFg, norFg); }
         }
     }
 
