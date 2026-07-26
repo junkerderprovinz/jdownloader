@@ -172,15 +172,6 @@ public class DialogConfirmAgent {
     private static final String SA_CLASS = "jsyntaxpane/actions/ScriptAction";
     private static boolean circleBarPatchLogged = false;
     private static boolean scriptActionPatchLogged = false;
-    // #4: JD ships advancedConfig at 20x20 (every other sidebar tile is 32x32), and AppWork's sidebar
-    // RenderLabel sizes+paints from that ORIGINAL icon, ignoring any late setIcon in the render path (5+
-    // render-path attempts failed). Fix at the SOURCE: patch AppWork's Theme.getIcon(key,size) so a request
-    // for "advancedConfig" below 32px returns 32px — then JD's own original IS 32px and the tile renders
-    // full-size. Class-name match = self-update robust (same load-time technique as the CircleBarUI guard).
-    private static final String AWT_THEME   = "org/appwork/resources/Theme";
-    private static final String AWT_ICONREF = "org/appwork/resources/IconRefImpl";
-    private static final String ADV_KEY     = "advancedConfig";
-    private static boolean advIconPatchLogged = false;
 
     private static void installBytecodeGuards(Instrumentation inst) {
         try {
@@ -191,8 +182,6 @@ public class DialogConfirmAgent {
                     try {
                         if (CPB_UI.equals(className))  return patchCircleBarUI(classfileBuffer, loader);
                         if (SA_CLASS.equals(className)) return patchScriptAction(classfileBuffer, loader);
-                        if (AWT_THEME.equals(className) || AWT_ICONREF.equals(className))
-                            return patchAdvancedIconSize(classfileBuffer, loader, className);
                         return null;
                     } catch (Throwable err) {
                         System.out.println("[jd-dialog-agent] bytecode transform skipped for " + className
@@ -202,7 +191,7 @@ public class DialogConfirmAgent {
                 }
             };
             inst.addTransformer(t, true);
-            System.out.println("[jd-dialog-agent] bytecode guards armed (BUG 4: CircledProgressBar + ScriptAction; advancedConfig icon size)");
+            System.out.println("[jd-dialog-agent] bytecode guards armed (BUG 4: CircledProgressBar + ScriptAction)");
         } catch (Throwable err) {
             System.out.println("[jd-dialog-agent] could not arm bytecode guards (" + err + ")");
         }
@@ -336,61 +325,6 @@ public class DialogConfirmAgent {
         if (!scriptActionPatchLogged) { scriptActionPatchLogged = true;
             System.out.println("[jd-dialog-agent] patched jsyntaxpane ScriptAction (" + patchedCount[0]
                     + " methods, null-engine guard) — Event Scripter code editor opens under FlatLaf"); }
-        return cw.toByteArray();
-    }
-
-    /** #4: at the top of every getIcon(String key, int size):Icon in the AppWork icon factory, insert
-     *      if ("advancedConfig".equals(key) && size < 32) size = 32;
-     *  so JD's 20px request for the Advanced-Settings sidebar tile returns a 32px icon and the tile
-     *  renders full-size like its siblings (the RenderLabel sizes/paints from this original icon).
-     *  Only the advancedConfig key at a sub-32 size is touched; every other icon/size is untouched.
-     *  Returns patched bytes, or null (= original) when the method is absent (fail-safe on AppWork change). */
-    private static byte[] patchAdvancedIconSize(byte[] original, final ClassLoader loader, final String className) {
-        ClassReader cr = new ClassReader(original);
-        ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES) {
-            @Override
-            protected ClassLoader getClassLoader() {
-                return loader != null ? loader : super.getClassLoader();
-            }
-        };
-        final int[] patchedCount = { 0 };
-        ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
-            @Override
-            public MethodVisitor visitMethod(int access, String name, String desc, String sig, String[] ex) {
-                MethodVisitor mv = super.visitMethod(access, name, desc, sig, ex);
-                if (!"getIcon".equals(name) || !"(Ljava/lang/String;I)Ljavax/swing/Icon;".equals(desc)) return mv;
-                boolean isStatic = (access & Opcodes.ACC_STATIC) != 0;
-                final int keyIdx  = isStatic ? 0 : 1;   // String key
-                final int sizeIdx = isStatic ? 1 : 2;   // int size
-                patchedCount[0]++;
-                return new MethodVisitor(Opcodes.ASM9, mv) {
-                    @Override
-                    public void visitCode() {
-                        super.visitCode();
-                        Label done = new Label();
-                        // if (!"advancedConfig".equals(key)) goto done;   (constant.equals -> null-safe)
-                        visitLdcInsn(ADV_KEY);
-                        visitVarInsn(Opcodes.ALOAD, keyIdx);
-                        visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/String", "equals",
-                                "(Ljava/lang/Object;)Z", false);
-                        visitJumpInsn(Opcodes.IFEQ, done);
-                        // if (size >= 32) goto done;
-                        visitVarInsn(Opcodes.ILOAD, sizeIdx);
-                        visitIntInsn(Opcodes.BIPUSH, 32);
-                        visitJumpInsn(Opcodes.IF_ICMPGE, done);
-                        // size = 32;
-                        visitIntInsn(Opcodes.BIPUSH, 32);
-                        visitVarInsn(Opcodes.ISTORE, sizeIdx);
-                        visitLabel(done);
-                    }
-                };
-            }
-        };
-        cr.accept(cv, 0);
-        if (patchedCount[0] == 0) return null;   // no matching getIcon here -> leave class untouched (fail-safe)
-        if (!advIconPatchLogged) { advIconPatchLogged = true;
-            System.out.println("[jd-dialog-agent] patched " + className
-                    + ".getIcon(String,int) (advancedConfig -> min 32px) — Advanced Settings sidebar tile"); }
         return cw.toByteArray();
     }
 
@@ -2454,15 +2388,19 @@ public class DialogConfirmAgent {
                         Object dim = f.get(null);
                         if (dim instanceof Dimension && ((Dimension) dim).height < SIDEBAR_ROW_PX) {
                             ((Dimension) dim).height = SIDEBAR_ROW_PX;
-                            // a variable-height JList caches cell heights; the DIMENSION change alone
-                            // does NOT invalidate that cache. Toggling fixedCellHeight fires the
-                            // property change that forces the UI to recompute, then back to variable.
+                        }
+                        // #4 (Advanced tile): JD's sidebar is uniform-height by design (DIMENSION 0x35),
+                        // but a variable-height JList caches per-cell heights — and advancedConfig ships a
+                        // 20x20 icon, so its row was cached SHORT (a thin strip) before our 32px override
+                        // ran, and the DIMENSION bump alone never invalidated that cache. PIN the list to
+                        // one fixed cell height so every row — advancedConfig included — is full-size; this
+                        // matches JD's own uniform design, so no row needs a different height. Idempotent.
+                        if (list.getFixedCellHeight() != SIDEBAR_ROW_PX) {
                             list.setFixedCellHeight(SIDEBAR_ROW_PX);
-                            list.setFixedCellHeight(-1);
                             list.revalidate();
                             list.repaint();
                             System.out.println("[jd-dialog-agent] jd-highlighter: settings sidebar row height -> "
-                                    + SIDEBAR_ROW_PX + "px");
+                                    + SIDEBAR_ROW_PX + "px (fixed)");
                         }
                     } catch (Throwable t) {
                         System.out.println("[jd-dialog-agent] sidebar height bump failed: " + t);
@@ -2683,12 +2621,11 @@ public class DialogConfirmAgent {
                                     if (sbIcon == null) sbIcon = tablerIconScaled(ic, sbTone, kl, SIDEBAR_ICON_SCALE);
                                     kl.setIcon(sbIcon);
                                     // #4 (Advanced tile): the RenderLabel PAINTS our setIcon fine (the other
-                                    // mono tiles prove it), but its CELL is sized from JD's ORIGINAL icon — and
-                                    // advancedConfig ships that at 20x20, so the row is a thin strip that clips
-                                    // our 32px glyph. The size is fixed at the SOURCE by the load-time
-                                    // patchAdvancedIconSize guard (advancedConfig original -> 32px); this
-                                    // render-path override then supplies the mono Tabler "wizard" glyph on the
-                                    // now-full-height cell. Nothing to special-case here anymore.
+                                    // mono tiles prove it), but advancedConfig ships a 20x20 original so the
+                                    // JList cached its ROW as a thin strip that clips our 32px glyph. The row
+                                    // is forced full-size by pinning the list's fixed cell height in
+                                    // styleSidebarIn; this override just supplies the mono Tabler "wizard"
+                                    // glyph, which now has room to render. Nothing to special-case here.
                                 }
                                 // (7a/7b) Icon-only sidebar: hide the tile NAME unless this row is
                                 // hovered, so the sidebar reads as a strip of CENTRED glyphs that reveal
