@@ -1459,6 +1459,8 @@ public class DialogConfirmAgent {
             uniformMenuSpinnerWidths(pm);                      // #2: all spinner boxes to ONE width
             for (Component ch : pm.getComponents())            // mono the item icons
                 if (ch instanceof javax.swing.JMenuItem) monoMenuItemIcon((javax.swing.JMenuItem) ch);
+            for (Component ch : pm.getComponents())            // #3: accent hover (the corner customize menu renders GREY)
+                if (ch instanceof javax.swing.JMenuItem) forceMenuItemAccent((javax.swing.JMenuItem) ch);
             for (Component ch : pm.getComponents())            // P3: mono the custom EditorLink rows too
                 if (!(ch instanceof javax.swing.JMenuItem) && ch instanceof Container) monoRowLabels((Container) ch);
             for (Component ch : pm.getComponents()) {          // D2: pad the custom input rows to match
@@ -2411,7 +2413,7 @@ public class DialogConfirmAgent {
     // the tallest header cell) and paints the hovered column's text in the accent. Hover tracked on the header
     // via a MouseMotionListener + client property. Installed once per header (guarded). Only the two main
     // content tables (config tables keep the separate flat DARK_HEADER treatment).
-    private static final int HEADER_PAD_V = 6;   // top+bottom padding -> ~text(15)+12 = ~27-28px header
+    private static final int HEADER_H = 28;
     private static void growTableHeaders() {
         for (Window w : Window.getWindows()) {
             if (!w.isShowing()) continue;
@@ -2421,7 +2423,19 @@ public class DialogConfirmAgent {
                 String sn = t.getClass().getSimpleName();
                 if (!(sn.contains("DownloadsTable") || sn.contains("LinkGrabberTable"))) continue;
                 javax.swing.table.JTableHeader h = t.getTableHeader();
-                if (h != null) installHeaderHover(h);
+                if (h == null) continue;
+                installHeaderHover(h);
+                // #11 taller: the ExtTable header ignores TableHeader.height + didn't grow from renderer padding,
+                // so pin the preferred HEIGHT to 28. Track WIDTH to the table so horizontal scroll/column resize
+                // stay intact (re-applied when the table width changes). Cheap: only touches on a real change.
+                int tw = t.getWidth();
+                if (tw > 0) {
+                    Dimension ps = h.getPreferredSize();
+                    if (ps == null || ps.height != HEADER_H || ps.width != tw) {
+                        h.setPreferredSize(new Dimension(tw, HEADER_H));
+                        h.revalidate();
+                    }
+                }
             }
         }
     }
@@ -2469,16 +2483,7 @@ public class DialogConfirmAgent {
             try {
                 Object hc = hdr.getClientProperty("jdp.hoverCol");
                 boolean hot = (hc instanceof Integer) && ((Integer) hc).intValue() == col;
-                if (c != null) c.setForeground(hot ? accentColor() : SIDEBAR_TEXT);
-                // add vertical padding so the header row grows a touch taller (#11 "etwas größer").
-                if (c instanceof JComponent) {
-                    JComponent jc = (JComponent) c;
-                    javax.swing.border.Border cur = jc.getBorder();
-                    java.awt.Insets in = (cur == null) ? new java.awt.Insets(0, 0, 0, 0) : cur.getBorderInsets(jc);
-                    if (in.top < HEADER_PAD_V)
-                        jc.setBorder(javax.swing.BorderFactory.createEmptyBorder(HEADER_PAD_V,
-                                Math.max(in.left, 6), HEADER_PAD_V, Math.max(in.right, 6)));
-                }
+                if (c != null) c.setForeground(hot ? accentColor() : SIDEBAR_TEXT);   // #11: accent the hovered title
             } catch (Throwable ig) { }
             return c;
         }
@@ -3205,6 +3210,26 @@ public class DialogConfirmAgent {
             mi.setIconTextGap(10);                                     // 6a: uniform gap
             mi.setVerticalAlignment(javax.swing.SwingConstants.CENTER);
             installMenuItemHoverIcon(mi);
+        } catch (Throwable ignore) { }
+    }
+
+    // #3: the bottom-right "Bodenleiste anpassen" customize popup renders its armed row GREY (@selectionBackground)
+    // instead of the accent, so the dark armed icon (monoMenuItemIcon) landed on grey and read as "gone". Force
+    // the accent on the item's UI: BasicMenuItemUI holds selectionBackground/selectionForeground as fields; set
+    // them to accent / accentFg so the armed row fills accent and the dark glyph reads on it. A one-shot diag
+    // records the item + UI class so a resistant menu (FlatMenuItemUI reading UIManager) shows in the log.
+    private static void forceMenuItemAccent(javax.swing.JMenuItem mi) {
+        try {
+            Object ui = mi.getUI();
+            if (ui != null) {
+                setUiColorField(ui, "selectionBackground", accentColor());
+                setUiColorField(ui, "selectionForeground", accentFg());
+            }
+            if (DIAG3.add("MI:" + mi.getClass().getName() + "|" + (ui == null ? "-" : ui.getClass().getName())))
+                System.out.println("[jd-agent-diag4] MENUITEM cls=" + mi.getClass().getName()
+                        + " ui=" + (ui == null ? "-" : ui.getClass().getName())
+                        + " itemBg=" + mi.getBackground()
+                        + " UIM.selBg=" + javax.swing.UIManager.getColor("MenuItem.selectionBackground"));
         } catch (Throwable ignore) { }
     }
 
