@@ -1855,7 +1855,13 @@ public class DialogConfirmAgent {
             if (key == null) { key = classifyStatus(owner, original); STATUS_CLASS.put(original, key == null ? "" : key); }
             int w = original.getIconWidth(), h = original.getIconHeight();
             if (w <= 0 || h <= 0) return original;
-            if (key == null || key.isEmpty()) return tintSolid(original, SIDEBAR_TEXT);   // unclassified -> keep mono
+            if (key == null || key.isEmpty()) {
+                // unclassified -> mono, but still flip dark on the accent mouseover row (cache per original)
+                javax.swing.Icon fl = STATUS_FLIP.get(original);
+                if (fl == null) { fl = new RowFlipIcon(tintSolid(original, SIDEBAR_TEXT), tintSolid(original, accentFg()));
+                    STATUS_FLIP.put(original, fl); }
+                return fl;
+            }
             // Tabler glyphs are SQUARE; JD's package icon is not, so scaling to w x h stretched the folder.
             // Render the glyph square (min side) so it never distorts.
             int s = Math.min(w, h); if (s <= 0) s = Math.max(w, h);
@@ -1863,11 +1869,40 @@ public class DialogConfirmAgent {
             javax.swing.Icon clean = STATUS_CLEAN.get(ck);
             if (clean == null) {
                 javax.swing.Icon base = tablerBase(key, s, s);
-                clean = (base != null) ? tintIcon(base, SIDEBAR_TEXT, null) : tintSolid(original, SIDEBAR_TEXT);
+                // #Flip: the download/linkgrabber mouseover row is ACCENT (colorfortablemouseoverrowbackground)
+                // with dark text — so the Name/status glyph must go dark on it too, else it read light-on-yellow.
+                // RowFlipIcon paints the light twin normally and the dark twin when the cell background is accent.
+                javax.swing.Icon light = (base != null) ? tintIcon(base, SIDEBAR_TEXT, null) : tintSolid(original, SIDEBAR_TEXT);
+                javax.swing.Icon dark  = (base != null) ? tintIcon(base, accentFg(), null)   : tintSolid(original, accentFg());
+                clean = new RowFlipIcon(light, dark);
                 STATUS_CLEAN.put(ck, clean);
             }
             return clean;
         } catch (Throwable t) { return original; }
+    }
+
+    // Cache of paint-time-flipping icons for unclassified status glyphs (keyed by the original icon).
+    private static final java.util.Map<javax.swing.Icon, javax.swing.Icon> STATUS_FLIP =
+            java.util.Collections.synchronizedMap(new java.util.WeakHashMap<javax.swing.Icon, javax.swing.Icon>());
+    /** Paint-time tone flip for table Name/status glyphs: the LIGHT twin on a normal row, the DARK twin when the
+     *  cell background is the accent (the mouseover row) — the icon analogue of colorfortablemouseoverrowforeground. */
+    private static final class RowFlipIcon implements javax.swing.Icon {
+        private final javax.swing.Icon light, dark;
+        RowFlipIcon(javax.swing.Icon l, javax.swing.Icon d) { light = l; dark = d; }
+        public int getIconWidth() { return light.getIconWidth(); }
+        public int getIconHeight() { return light.getIconHeight(); }
+        public void paintIcon(Component c, Graphics g, int x, int y) {
+            boolean hot = false;
+            try {
+                Color bg = (c != null) ? c.getBackground() : null;
+                if (bg != null) {
+                    Color acc = accentColor();
+                    hot = Math.abs(bg.getRed() - acc.getRed()) < 40 && Math.abs(bg.getGreen() - acc.getGreen()) < 40
+                            && Math.abs(bg.getBlue() - acc.getBlue()) < 40;
+                }
+            } catch (Throwable ignore) { }
+            (hot ? dark : light).paintIcon(c, g, x, y);
+        }
     }
 
     /** Classify a status glyph into a clean Tabler key, or null when unknown. Order: (1) named-field identity
