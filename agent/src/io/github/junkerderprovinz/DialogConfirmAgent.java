@@ -769,11 +769,12 @@ public class DialogConfirmAgent {
     private static void styleCornerProgressIn(Component c) {
         String cn = c.getClass().getName();
         // ExtractorProgress: its zip glyph is a TEMPLATE the painter tints by foreground -> foreground recolour
-        //   alone monos it (no image swap). UpdateProgress: its globe is a COLOURED image drawn AS-IS (and
-        //   AbstractIcon.paintIcon(null,...) fails, so it can't be re-tinted), so swap the image for a fresh
-        //   light Tabler "update" glyph instead.
+        //   monos it (grey idle, accent fill while extracting = the "loading animation"). UpdateProgress: its
+        //   green globe is drawn via a custom/cached paint path the painters don't cover (foreground + image
+        //   swap both had no effect), so per the user it's HIDDEN — it is a self-update indicator that CA/Unraid
+        //   handles anyway ([[no-self-update-check-on-unraid]]).
         if (cn.endsWith("ExtractorProgress")) recolorCircleProgress(c, null);
-        else if (cn.endsWith("UpdateProgress")) recolorCircleProgress(c, "update");
+        else if (cn.endsWith("UpdateProgress")) { if (c.isVisible()) c.setVisible(false); }
         if (c instanceof Container) for (Component ch : ((Container) c).getComponents()) styleCornerProgressIn(ch);
     }
     private static void recolorCircleProgress(Component c, String replaceKey) {
@@ -3050,10 +3051,12 @@ public class DialogConfirmAgent {
         mi.getModel().addChangeListener(new javax.swing.event.ChangeListener() {
             public void stateChanged(javax.swing.event.ChangeEvent e) {
                 javax.swing.ButtonModel m = mi.getModel();
-                // #3: ARMED = the accent-highlighted row (dark glyph). NOT isSelected() — for a CHECKBOX item
-                // selected means "checked", not highlighted, so the old `|| isSelected()` forced a dark glyph
-                // onto a non-highlighted (dark) row and it vanished. Keep the light glyph unless armed.
-                boolean hot = mi.isEnabled() && m.isArmed();
+                // #3: which glyph tone shows through FlatLaf's FlatMenuItemRenderer.getIconForPainting() +
+                // paintIcon(). For a CHECKED checkbox item (isSelected), paintIcon fills the icon slot with a
+                // dark check-selection background, so the glyph there must stay LIGHT even while armed; the dark
+                // glyph is only right on a non-selected ARMED row (which shows the accent fill). So dark iff
+                // armed AND not selected; light otherwise. (Derived from the FlatLaf source, no bytecode needed.)
+                boolean hot = mi.isEnabled() && m.isArmed() && !m.isSelected();
                 Object want = mi.getClientProperty(hot ? "jdp.miDark" : "jdp.miLight");
                 if (want instanceof javax.swing.Icon) {
                     javax.swing.Icon wi = (javax.swing.Icon) want;
