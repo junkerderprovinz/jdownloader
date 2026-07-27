@@ -187,11 +187,12 @@ public class DialogConfirmAgent {
                             return patchStatusColumn(classfileBuffer, loader, className);
                         // #2: inset FlatLaf's tab-background fill so the primary nav tabs get a real gap.
                         if (FLAT_TABUI.equals(className)) return patchTabbedPaneUI(classfileBuffer, loader);
-                        // D: recolour JD's expander/lock/extract glyphs at the icon lookup — NewTheme (JD icons)
-                        // AND AWUTheme (the AppWork base theme, which loads exttable/widthLocked for the header
-                        // width-lock padlock, a path NewTheme never sees).
-                        if (NEW_THEME.equals(className) || AWU_THEME.equals(className))
-                            return patchNewTheme(classfileBuffer, loader);
+                        // D: recolour JD's expander/lock/extract glyphs at the NewTheme icon lookup.
+                        if (NEW_THEME.equals(className)) return patchNewTheme(classfileBuffer, loader);
+                        // D (header padlock): the per-column width-lock indicator is drawn from an icon field
+                        // reachable via NO getIcon path (loaded deep in AppWork, cached), so it can't be
+                        // recoloured — hide the redundant dark indicator instead (isPaintWidthLockIcon -> false).
+                        if (EXT_COLUMN.equals(className)) return patchExtColumn(classfileBuffer, loader);
                         return null;
                     } catch (Throwable err) {
                         System.out.println("[jd-dialog-agent] bytecode transform skipped for " + className
@@ -349,7 +350,7 @@ public class DialogConfirmAgent {
     private static final String AVAIL_COL = "org/jdownloader/gui/views/downloads/columns/AvailabilityColumn";
     private static final String FILE_COL  = "org/jdownloader/gui/views/downloads/columns/FileColumn";
     private static final String NEW_THEME = "org/jdownloader/images/NewTheme";
-    private static final String AWU_THEME = "org/appwork/resources/AWUTheme";
+    private static final String EXT_COLUMN = "org/appwork/swing/exttable/ExtColumn";
     private static final String STATUS_GETICON_DESC =
             "(Ljd/controlling/packagecontroller/AbstractNode;)Ljavax/swing/Icon;";
     private static final String AGENT_INTERNAL = "io/github/junkerderprovinz/DialogConfirmAgent";
@@ -485,6 +486,50 @@ public class DialogConfirmAgent {
             return null;
         }
         System.out.println("[jd-dialog-agent] patched NewTheme.getIcon -> light expander/lock (D)");
+        return cw.toByteArray();
+    }
+
+    /** Public hook for bytecode patches (private isHighlighter* is not callable across class loaders). */
+    public static boolean hlActive() { return isHighlighterFast(); }
+
+    // D (header padlock): AppWork's ExtTableHeaderRenderer.paintComponent draws the per-column width-lock
+    // padlock only when ExtColumn.isPaintWidthLockIcon() is true, from an icon reachable via no getIcon path.
+    // Since it can't be recoloured, make that gate return false under highlighter -> the dark padlock is gone
+    // and the header reads clean. Fail-safe: any transform error leaves the original bytes.
+    private static byte[] patchExtColumn(byte[] original, final ClassLoader loader) {
+        ClassReader cr = new ClassReader(original);
+        ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES) {
+            @Override
+            protected ClassLoader getClassLoader() { return loader != null ? loader : super.getClassLoader(); }
+        };
+        final int[] n = { 0 };
+        ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
+            @Override
+            public MethodVisitor visitMethod(int access, String name, String desc, String sig, String[] ex) {
+                MethodVisitor mv = super.visitMethod(access, name, desc, sig, ex);
+                if (!("isPaintWidthLockIcon".equals(name) && "()Z".equals(desc))) return mv;
+                n[0]++;
+                return new MethodVisitor(Opcodes.ASM9, mv) {
+                    @Override
+                    public void visitCode() {
+                        super.visitCode();
+                        // if (hlActive()) return false;
+                        super.visitMethodInsn(Opcodes.INVOKESTATIC, AGENT_INTERNAL, "hlActive", "()Z", false);
+                        Label proceed = new Label();
+                        super.visitJumpInsn(Opcodes.IFEQ, proceed);
+                        super.visitInsn(Opcodes.ICONST_0);
+                        super.visitInsn(Opcodes.IRETURN);
+                        super.visitLabel(proceed);
+                    }
+                };
+            }
+        };
+        cr.accept(cv, 0);
+        if (n[0] == 0) {
+            System.out.println("[jd-dialog-agent] ExtColumn.isPaintWidthLockIcon not found — padlock left as-is");
+            return null;
+        }
+        System.out.println("[jd-dialog-agent] patched ExtColumn.isPaintWidthLockIcon -> hide dark width-lock padlock (D)");
         return cw.toByteArray();
     }
 
