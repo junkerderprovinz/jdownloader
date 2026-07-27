@@ -745,9 +745,9 @@ public class DialogConfirmAgent {
             monoSectionHeaders();   // #6: mono every section-header icon (extensions/packagizer headers too)
             monoCornerIcons();      // #10: mono any keyless corner status glyphs we can reach via setIcon
             growTableHeaders();     // #11: accent-on-hover column title
+            styleCornerProgress();  // #10: mono glyph + accent loading fill on the corner update/extractor rings
             recolorDialogs();
             dimModalBackdrops();
-            hlProbe();              // DIAG (temporary): #10 corner-widget API + #3 armed checkbox icon states
         }
         if (++lafTick >= 12) {   // every ~5s (ticks run every 400ms)
             lafTick = 0;
@@ -756,68 +756,45 @@ public class DialogConfirmAgent {
         }
     }
 
-    // DIAG (temporary): #10 map the corner progress-widget API (setIcon? setForeground? model?) + its painters,
-    // and #3 the armed checkbox menu item's icon states — so both follow-ups (mono icon + spinner; checkbox
-    // hover icon) can be implemented from ground truth. Removed after use.
-    private static final java.util.Set<String> PROBE =
-            java.util.Collections.synchronizedSet(new java.util.HashSet<String>());
-    private static void hlProbe() {
-        try {
-            for (Window w : Window.getWindows()) {
-                if (!w.isShowing()) continue;
-                probeWalk(w);
-            }
-        } catch (Throwable ig) { }
+    // #10: the two bottom-right status rings — org.jdownloader.updatev2.UpdateProgress (update check) and
+    // org.jdownloader.extensions.extraction.gui.ExtractorProgress (extraction) — are AppWork CircledProgressBars
+    // (via IconedProcessIndicator) that draw a glyph via ImagePainters and fill it as progress advances. The glyph
+    // was GREEN/grey ("alte Logos"). Each painter carries its OWN `foreground` tint Color: the value/fill painters
+    // held green, the nonvalue/base painters grey. Recolour them so the IDLE glyph reads mono-light and the running
+    // FILL reads accent — i.e. a clean mono icon whose accent fill IS the "loading animation when it runs" (the
+    // user's ask). The widget's own foreground (the ring) goes accent too. Idempotent (skip once the tint matches).
+    private static void styleCornerProgress() {
+        for (Window w : Window.getWindows()) if (w.isShowing()) styleCornerProgressIn(w);
     }
-    private static void probeWalk(Component c) {
+    private static void styleCornerProgressIn(Component c) {
+        String cn = c.getClass().getName();
+        if (cn.endsWith("ExtractorProgress") || cn.endsWith("UpdateProgress")) recolorCircleProgress(c);
+        if (c instanceof Container) for (Component ch : ((Container) c).getComponents()) styleCornerProgressIn(ch);
+    }
+    private static void recolorCircleProgress(Component c) {
         try {
-            String cn = c.getClass().getName();
-            if ((cn.endsWith("ExtractorProgress") || cn.endsWith("UpdateProgress")) && PROBE.add("W:" + cn)) {
-                StringBuilder ms = new StringBuilder();
-                java.util.Set<String> seen = new java.util.HashSet<String>();
-                for (Class<?> k = c.getClass(); k != null && k != Object.class; k = k.getSuperclass())
-                    for (java.lang.reflect.Method m : k.getDeclaredMethods()) {
-                        String nm = m.getName();
-                        if ((nm.startsWith("setIcon") || nm.startsWith("setForeground") || nm.startsWith("setColor")
-                                || nm.startsWith("setValue") || nm.startsWith("setIndeterminate") || nm.equals("getModel")
-                                || nm.startsWith("setEnabled") || nm.startsWith("setVisible") || nm.equals("getValue")
-                                || nm.startsWith("setActive") || nm.startsWith("setTitle")) && seen.add(nm + m.getParameterCount()))
-                            ms.append(nm).append("(").append(m.getParameterCount()).append(") ");
-                    }
-                Object model = null;
-                try { model = c.getClass().getMethod("getModel").invoke(c); } catch (Throwable ig) { }
-                System.out.println("[jd-agent-probe] WIDGET " + cn + " methods=[" + ms + "] model=" + (model == null ? "-" : model.getClass().getName()));
-                // painter internals: what does valuePainter/activeValuePainter/valueClipPainter hold?
-                for (Class<?> k = c.getClass(); k != null && k != Object.class; k = k.getSuperclass())
-                    for (java.lang.reflect.Field f : k.getDeclaredFields()) {
-                        String fn = f.getName();
-                        if (!(fn.contains("Painter"))) continue;
-                        try { f.setAccessible(true); Object pv = f.get(c);
-                            if (pv == null) continue;
-                            StringBuilder inner = new StringBuilder();
-                            for (java.lang.reflect.Field pf : pv.getClass().getDeclaredFields()) {
-                                try { pf.setAccessible(true); inner.append(pf.getName()).append("=").append(String.valueOf(pf.get(pv))).append("; "); } catch (Throwable ig) { }
-                            }
-                            System.out.println("[jd-agent-probe]   PAINTER " + fn + " (" + pv.getClass().getSimpleName() + ") " + inner);
-                        } catch (Throwable ig) { }
-                    }
-            }
-            if (c instanceof javax.swing.JCheckBoxMenuItem || cn.endsWith("ExtCheckBoxMenuItem")) {
-                javax.swing.AbstractButton b = (javax.swing.AbstractButton) c;
-                if (b.getModel().isArmed() && PROBE.add("CB:" + cn)) {
-                    System.out.println("[jd-agent-probe] ARMEDCHK " + cn
-                            + " icon=" + idOf(b.getIcon()) + " rollover=" + idOf(b.getRolloverIcon())
-                            + " pressed=" + idOf(b.getPressedIcon()) + " selected=" + idOf(b.getSelectedIcon())
-                            + " disabled=" + idOf(b.getDisabledIcon())
-                            + " rolloverEnabled=" + b.isRolloverEnabled() + " selected?=" + b.isSelected()
-                            + " ui=" + (b.getUI() == null ? "-" : b.getUI().getClass().getName()));
+            if (!accentColor().equals(c.getForeground())) c.setForeground(accentColor());   // the progress ring
+            boolean changed = false;
+            for (Class<?> k = c.getClass(); k != null && k != Object.class; k = k.getSuperclass())
+                for (Field f : k.getDeclaredFields()) {
+                    if (!f.getName().contains("Painter")) continue;
+                    try {
+                        f.setAccessible(true);
+                        Object p = f.get(c);
+                        if (p == null) continue;
+                        java.lang.reflect.Field fg;
+                        try { fg = p.getClass().getDeclaredField("foreground"); } catch (NoSuchFieldException e) { continue; }
+                        fg.setAccessible(true);
+                        Object cur = fg.get(p);
+                        if (!(cur instanceof Color)) continue;
+                        // value/fill painters -> accent (the running "loading" fill); nonvalue/base -> mono light glyph.
+                        boolean nonValue = f.getName().toLowerCase().contains("nonvalue");
+                        Color want = nonValue ? EXPANDER_LIGHT : accentColor();
+                        if (!want.equals(cur)) { fg.set(p, want); changed = true; }
+                    } catch (Throwable ig) { }
                 }
-            }
+            if (changed) c.repaint();
         } catch (Throwable ig) { }
-        if (c instanceof Container) for (Component ch : ((Container) c).getComponents()) probeWalk(ch);
-    }
-    private static String idOf(javax.swing.Icon ic) {
-        return ic == null ? "null" : (ic.getClass().getSimpleName() + "@" + Integer.toHexString(System.identityHashCode(ic)));
     }
 
     // Opt-in geometry logging (JD_DEBUG_GEO=1). Off by default so a box test / the
@@ -3016,6 +2993,11 @@ public class DialogConfirmAgent {
             mi.putClientProperty("jdp.miLight", lo);
             mi.putClientProperty("jdp.miDark", hi);
             mi.setIcon(lo);
+            // #3: CHECKBOX menu items (ExtCheckBoxMenuItem / FlatCheckBoxMenuItemUI) paint the SELECTED icon when
+            // checked and the PRESSED icon when armed — with those null, a checked/hovered row lost its glyph.
+            // Keep selectedIcon in sync (light) + pin pressedIcon dark (armed row is always the accent fill).
+            mi.setSelectedIcon(lo);
+            mi.setPressedIcon(hi);
             mi.setIconTextGap(10);                                     // 6a: uniform gap
             mi.setVerticalAlignment(javax.swing.SwingConstants.CENTER);
             installMenuItemHoverIcon(mi);
@@ -3043,9 +3025,16 @@ public class DialogConfirmAgent {
         mi.getModel().addChangeListener(new javax.swing.event.ChangeListener() {
             public void stateChanged(javax.swing.event.ChangeEvent e) {
                 javax.swing.ButtonModel m = mi.getModel();
-                boolean hot = mi.isEnabled() && (m.isArmed() || m.isSelected());
+                // #3: ARMED = the accent-highlighted row (dark glyph). NOT isSelected() — for a CHECKBOX item
+                // selected means "checked", not highlighted, so the old `|| isSelected()` forced a dark glyph
+                // onto a non-highlighted (dark) row and it vanished. Keep the light glyph unless armed.
+                boolean hot = mi.isEnabled() && m.isArmed();
                 Object want = mi.getClientProperty(hot ? "jdp.miDark" : "jdp.miLight");
-                if (want instanceof javax.swing.Icon && mi.getIcon() != want) mi.setIcon((javax.swing.Icon) want);
+                if (want instanceof javax.swing.Icon) {
+                    javax.swing.Icon wi = (javax.swing.Icon) want;
+                    if (mi.getIcon() != wi) mi.setIcon(wi);
+                    if (mi.getSelectedIcon() != wi) mi.setSelectedIcon(wi);   // checkbox items paint selectedIcon when checked
+                }
             }
         });
     }
