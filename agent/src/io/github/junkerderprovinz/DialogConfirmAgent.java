@@ -497,7 +497,8 @@ public class DialogConfirmAgent {
                     && CHROME_DIAG.add("K:" + key))
                 System.out.println("[jd-agent-diag] NTKEY " + key + " size=" + size);
             String tab = null;
-            if (k.contains("lockcolumn") || k.contains("widthlocked") || k.contains("lock")) tab = "lock";
+            if (k.contains("lockcolumn") || k.contains("widthlocked") || k.contains("lock")
+                    || k.contains("columnbutton")) tab = "lock";   // the per-column header button JD renders dark
             if (tab == null) return original;
             int w = original.getIconWidth() > 0 ? original.getIconWidth() : size;
             int h = original.getIconHeight() > 0 ? original.getIconHeight() : size;
@@ -4216,6 +4217,9 @@ public class DialogConfirmAgent {
                 for (int i = 0; i < cm.getColumnCount(); i++) {
                     javax.swing.table.TableColumn tc = cm.getColumn(i);
                     javax.swing.table.TableCellRenderer cur = tc.getCellRenderer();
+                    if (VIEWS_WRAP_DIAG.add(t.getClass().getSimpleName() + ".c" + i))   // DIAG (temporary)
+                        System.out.println("[jd-agent-diag] VWRAP " + t.getClass().getSimpleName() + ".c" + i
+                                + " renderer=" + (cur == null ? "null" : cur.getClass().getName()));
                     if (cur == null || cur instanceof MonoIconRenderer) continue;
                     String cn = cur.getClass().getName().toLowerCase();
                     if (cn.contains("favicon") || cn.contains("hoster") || cn.contains("domain")) continue;   // keep hoster
@@ -4224,6 +4228,8 @@ public class DialogConfirmAgent {
             }
         } catch (Throwable ignore) { }
     }
+    private static final java.util.Set<String> VIEWS_WRAP_DIAG =
+            java.util.Collections.synchronizedSet(new java.util.HashSet<String>());   // DIAG (temporary)
 
     /** #9: flatten the grid hairlines in the LinkGrabber-Views sub-section ExtTables. Those tables sit on
      *  the base #161616 (NOT a #242424 card), so blend the grid into each table's OWN background rather
