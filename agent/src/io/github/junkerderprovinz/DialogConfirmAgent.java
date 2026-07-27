@@ -189,10 +189,6 @@ public class DialogConfirmAgent {
                         if (FLAT_TABUI.equals(className)) return patchTabbedPaneUI(classfileBuffer, loader);
                         // D: recolour JD's expander/lock/extract glyphs at the NewTheme icon lookup.
                         if (NEW_THEME.equals(className)) return patchNewTheme(classfileBuffer, loader);
-                        // D (header padlock): the per-column width-lock indicator is drawn from an icon field
-                        // reachable via NO getIcon path (loaded deep in AppWork, cached), so it can't be
-                        // recoloured — hide the redundant dark indicator instead (isPaintWidthLockIcon -> false).
-                        if (EXT_COLUMN.equals(className)) return patchExtColumn(classfileBuffer, loader);
                         return null;
                     } catch (Throwable err) {
                         System.out.println("[jd-dialog-agent] bytecode transform skipped for " + className
@@ -350,7 +346,6 @@ public class DialogConfirmAgent {
     private static final String AVAIL_COL = "org/jdownloader/gui/views/downloads/columns/AvailabilityColumn";
     private static final String FILE_COL  = "org/jdownloader/gui/views/downloads/columns/FileColumn";
     private static final String NEW_THEME = "org/jdownloader/images/NewTheme";
-    private static final String EXT_COLUMN = "org/appwork/swing/exttable/ExtColumn";
     private static final String STATUS_GETICON_DESC =
             "(Ljd/controlling/packagecontroller/AbstractNode;)Ljavax/swing/Icon;";
     private static final String AGENT_INTERNAL = "io/github/junkerderprovinz/DialogConfirmAgent";
@@ -489,48 +484,46 @@ public class DialogConfirmAgent {
         return cw.toByteArray();
     }
 
-    /** Public hook for bytecode patches (private isHighlighter* is not callable across class loaders). */
-    public static boolean hlActive() { return isHighlighterFast(); }
-
-    // D (header padlock): AppWork's ExtTableHeaderRenderer.paintComponent draws the per-column width-lock
-    // padlock only when ExtColumn.isPaintWidthLockIcon() is true, from an icon reachable via no getIcon path.
-    // Since it can't be recoloured, make that gate return false under highlighter -> the dark padlock is gone
-    // and the header reads clean. Fail-safe: any transform error leaves the original bytes.
-    private static byte[] patchExtColumn(byte[] original, final ClassLoader loader) {
-        ClassReader cr = new ClassReader(original);
-        ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES) {
-            @Override
-            protected ClassLoader getClassLoader() { return loader != null ? loader : super.getClassLoader(); }
-        };
-        final int[] n = { 0 };
-        ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
-            @Override
-            public MethodVisitor visitMethod(int access, String name, String desc, String sig, String[] ex) {
-                MethodVisitor mv = super.visitMethod(access, name, desc, sig, ex);
-                if (!("isPaintWidthLockIcon".equals(name) && "()Z".equals(desc))) return mv;
-                n[0]++;
-                return new MethodVisitor(Opcodes.ASM9, mv) {
-                    @Override
-                    public void visitCode() {
-                        super.visitCode();
-                        // if (hlActive()) return false;
-                        super.visitMethodInsn(Opcodes.INVOKESTATIC, AGENT_INTERNAL, "hlActive", "()Z", false);
-                        Label proceed = new Label();
-                        super.visitJumpInsn(Opcodes.IFEQ, proceed);
-                        super.visitInsn(Opcodes.ICONST_0);
-                        super.visitInsn(Opcodes.IRETURN);
-                        super.visitLabel(proceed);
+    // D (header padlock): the per-column width-lock icon is painted by ExtTableHeaderRenderer.paintComponent
+    // from an Icon FIELD (reachable via no getIcon path). Find a live header renderer, reflect its class's
+    // Icon fields, and swap the width-lock one for a clean light Tabler lock. Logs the fields (temporary diag).
+    private static boolean widthLockDone = false;
+    private static void fixWidthLockIcon() {
+        if (widthLockDone || !isHighlighterFast()) return;
+        try {
+            for (Window w : Window.getWindows()) {
+                if (!w.isShowing()) continue;
+                List<JTable> tabs = new ArrayList<JTable>();
+                collectTables(w, tabs);
+                for (JTable t : tabs) {
+                    javax.swing.table.JTableHeader h = t.getTableHeader();
+                    if (h == null) continue;
+                    javax.swing.table.TableCellRenderer hr = h.getDefaultRenderer();
+                    if (hr == null || !hr.getClass().getName().contains("ExtTableHeaderRenderer")) continue;
+                    for (Class<?> c = hr.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
+                        for (Field f : c.getDeclaredFields()) {
+                            if (!javax.swing.Icon.class.isAssignableFrom(f.getType())) continue;
+                            boolean stat = java.lang.reflect.Modifier.isStatic(f.getModifiers());
+                            try {
+                                f.setAccessible(true);
+                                Object v = f.get(stat ? null : hr);
+                                if (!(v instanceof javax.swing.Icon)) continue;
+                                javax.swing.Icon ic = (javax.swing.Icon) v;
+                                System.out.println("[jd-agent-diag] HRICON " + c.getSimpleName() + "#" + f.getName()
+                                        + " key=" + iconKey(ic) + " " + ic.getIconWidth() + "x" + ic.getIconHeight());
+                                String fn = f.getName().toLowerCase();
+                                if (fn.contains("lock") || fn.contains("width")) {
+                                    int s = Math.max(1, Math.min(ic.getIconWidth(), ic.getIconHeight()));
+                                    javax.swing.Icon lock = tablerBase("lock", s, s);
+                                    if (lock != null) f.set(stat ? null : hr, tintIcon(lock, EXPANDER_LIGHT, null));
+                                }
+                            } catch (Throwable ignore) { }
+                        }
                     }
-                };
+                    widthLockDone = true;
+                }
             }
-        };
-        cr.accept(cv, 0);
-        if (n[0] == 0) {
-            System.out.println("[jd-dialog-agent] ExtColumn.isPaintWidthLockIcon not found — padlock left as-is");
-            return null;
-        }
-        System.out.println("[jd-dialog-agent] patched ExtColumn.isPaintWidthLockIcon -> hide dark width-lock padlock (D)");
-        return cw.toByteArray();
+        } catch (Throwable t) { }
     }
 
     private static final java.util.Map<String, javax.swing.Icon> CHROME_CLEAN =
@@ -696,6 +689,7 @@ public class DialogConfirmAgent {
             borderlessConfigTables();
             unifyConfigFields();
             monoTableRowIcons();    // #11: mono the download/linkgrabber row icons (hoster favicon kept)
+            fixWidthLockIcon();     // D: swap the header width-lock padlock field for a clean Tabler lock
             recolorDialogs();
             dimModalBackdrops();
         }
