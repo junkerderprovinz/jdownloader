@@ -497,30 +497,38 @@ public class DialogConfirmAgent {
                 collectTables(w, tabs);
                 for (JTable t : tabs) {
                     javax.swing.table.JTableHeader h = t.getTableHeader();
-                    if (h == null) continue;
+                    if (h == null || t.getColumnCount() == 0) continue;
                     javax.swing.table.TableCellRenderer hr = h.getDefaultRenderer();
-                    if (hr == null || !hr.getClass().getName().contains("ExtTableHeaderRenderer")) continue;
-                    for (Class<?> c = hr.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
+                    if (hr == null) continue;
+                    Component hc = null;
+                    try { hc = hr.getTableCellRendererComponent(t, t.getColumnName(0), false, false, -1, 0); }
+                    catch (Throwable ig) { if (hr instanceof Component) hc = (Component) hr; }
+                    if (hc == null) continue;
+                    System.out.println("[jd-agent-diag] HRCLASS " + hc.getClass().getName());
+                    boolean any = false;
+                    for (Class<?> c = hc.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
                         for (Field f : c.getDeclaredFields()) {
                             if (!javax.swing.Icon.class.isAssignableFrom(f.getType())) continue;
                             boolean stat = java.lang.reflect.Modifier.isStatic(f.getModifiers());
                             try {
                                 f.setAccessible(true);
-                                Object v = f.get(stat ? null : hr);
-                                if (!(v instanceof javax.swing.Icon)) continue;
-                                javax.swing.Icon ic = (javax.swing.Icon) v;
+                                Object v = f.get(stat ? null : hc);
+                                javax.swing.Icon ic = (v instanceof javax.swing.Icon) ? (javax.swing.Icon) v : null;
                                 System.out.println("[jd-agent-diag] HRICON " + c.getSimpleName() + "#" + f.getName()
-                                        + " key=" + iconKey(ic) + " " + ic.getIconWidth() + "x" + ic.getIconHeight());
+                                        + " = " + (ic == null ? "null" : iconKey(ic) + " " + ic.getIconWidth() + "x" + ic.getIconHeight()));
+                                any = true;
                                 String fn = f.getName().toLowerCase();
-                                if (fn.contains("lock") || fn.contains("width")) {
+                                String kk = ic != null ? String.valueOf(iconKey(ic)).toLowerCase() : "";
+                                if (ic != null && (fn.contains("lock") || fn.contains("width") || kk.contains("lock") || kk.contains("width"))) {
                                     int s = Math.max(1, Math.min(ic.getIconWidth(), ic.getIconHeight()));
                                     javax.swing.Icon lock = tablerBase("lock", s, s);
-                                    if (lock != null) f.set(stat ? null : hr, tintIcon(lock, EXPANDER_LIGHT, null));
+                                    if (lock != null) { f.set(stat ? null : hc, tintIcon(lock, EXPANDER_LIGHT, null));
+                                        System.out.println("[jd-agent-diag] HRICON swapped " + f.getName() + " -> Tabler lock"); }
                                 }
                             } catch (Throwable ignore) { }
                         }
                     }
-                    widthLockDone = true;
+                    if (any) widthLockDone = true;
                 }
             }
         } catch (Throwable t) { }
