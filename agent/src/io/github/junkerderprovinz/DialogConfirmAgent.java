@@ -508,6 +508,8 @@ public class DialogConfirmAgent {
             if (cached != null) return cached;
             javax.swing.Icon base = tablerBase(tab, s, s);
             javax.swing.Icon clean = (base != null) ? tintIcon(base, EXPANDER_LIGHT, null) : tintSolid(original, EXPANDER_LIGHT);
+            if (CHROME_DIAG.add("R:" + key))   // DIAG (temporary): confirm the replacement actually returns
+                System.out.println("[jd-agent-diag] chromeret " + key + " -> " + tab + " s=" + s + " base=" + (base != null));
             CHROME_CLEAN.put(ck, clean);
             return clean;
         } catch (Throwable t) { return original; }
@@ -4213,23 +4215,34 @@ public class DialogConfirmAgent {
             java.util.List<JTable> tabs = new java.util.ArrayList<JTable>();
             collectTables(host, tabs);
             for (JTable t : tabs) {
+                if (t.getRowCount() == 0) continue;
+                // Skip the hoster table (its cells are DomainInfo favicons we keep coloured).
+                boolean hoster = false;
+                try {
+                    javax.swing.Icon i0 = firstIcon(t.prepareRenderer(t.getCellRenderer(0, 0), 0, 0));
+                    if (i0 != null && i0.getClass().getName().toLowerCase().contains("domain")) hoster = true;
+                } catch (Throwable ig) { }
+                if (hoster) continue;
                 javax.swing.table.TableColumnModel cm = t.getColumnModel();
                 for (int i = 0; i < cm.getColumnCount(); i++) {
                     javax.swing.table.TableColumn tc = cm.getColumn(i);
                     javax.swing.table.TableCellRenderer cur = tc.getCellRenderer();
-                    if (VIEWS_WRAP_DIAG.add(t.getClass().getSimpleName() + ".c" + i))   // DIAG (temporary)
-                        System.out.println("[jd-agent-diag] VWRAP " + t.getClass().getSimpleName() + ".c" + i
-                                + " renderer=" + (cur == null ? "null" : cur.getClass().getName()));
+                    if (cur == null) { try { cur = t.getCellRenderer(0, i); } catch (Throwable ig) { cur = null; } }  // columns use the DEFAULT renderer
                     if (cur == null || cur instanceof MonoIconRenderer) continue;
                     String cn = cur.getClass().getName().toLowerCase();
-                    if (cn.contains("favicon") || cn.contains("hoster") || cn.contains("domain")) continue;   // keep hoster
+                    if (cn.contains("favicon") || cn.contains("hoster") || cn.contains("domain")) continue;
                     tc.setCellRenderer(new MonoIconRenderer(cur));
                 }
             }
         } catch (Throwable ignore) { }
     }
-    private static final java.util.Set<String> VIEWS_WRAP_DIAG =
-            java.util.Collections.synchronizedSet(new java.util.HashSet<String>());   // DIAG (temporary)
+    private static javax.swing.Icon firstIcon(Component c) {
+        if (c instanceof javax.swing.JLabel) return ((javax.swing.JLabel) c).getIcon();
+        if (c instanceof AbstractButton) return ((AbstractButton) c).getIcon();
+        if (c instanceof Container)
+            for (Component ch : ((Container) c).getComponents()) { javax.swing.Icon i = firstIcon(ch); if (i != null) return i; }
+        return null;
+    }
 
     /** #9: flatten the grid hairlines in the LinkGrabber-Views sub-section ExtTables. Those tables sit on
      *  the base #161616 (NOT a #242424 card), so blend the grid into each table's OWN background rather
