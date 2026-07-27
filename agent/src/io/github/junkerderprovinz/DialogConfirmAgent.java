@@ -189,6 +189,8 @@ public class DialogConfirmAgent {
                         if (FLAT_TABUI.equals(className)) return patchTabbedPaneUI(classfileBuffer, loader);
                         // D: recolour JD's expander/lock/extract glyphs at the NewTheme icon lookup.
                         if (NEW_THEME.equals(className)) return patchNewTheme(classfileBuffer, loader);
+                        // #8: wrap the render-path renderer of config-panel ExtTables (they ignore set renderers).
+                        if (EXT_TABLE.equals(className)) return patchExtTableRenderer(classfileBuffer, loader);
                         return null;
                     } catch (Throwable err) {
                         System.out.println("[jd-dialog-agent] bytecode transform skipped for " + className
@@ -346,6 +348,7 @@ public class DialogConfirmAgent {
     private static final String AVAIL_COL = "org/jdownloader/gui/views/downloads/columns/AvailabilityColumn";
     private static final String FILE_COL  = "org/jdownloader/gui/views/downloads/columns/FileColumn";
     private static final String NEW_THEME = "org/jdownloader/images/NewTheme";
+    private static final String EXT_TABLE = "org/appwork/swing/exttable/ExtTable";
     private static final String STATUS_GETICON_DESC =
             "(Ljd/controlling/packagecontroller/AbstractNode;)Ljavax/swing/Icon;";
     private static final String AGENT_INTERNAL = "io/github/junkerderprovinz/DialogConfirmAgent";
@@ -481,6 +484,49 @@ public class DialogConfirmAgent {
             return null;
         }
         System.out.println("[jd-dialog-agent] patched NewTheme.getIcon -> light expander/lock (D)");
+        return cw.toByteArray();
+    }
+
+    // #8: config-panel ExtTables (extension manager, packagizer, ...) IGNORE any TableCellRenderer we set via
+    // TableColumn.setCellRenderer / setDefaultRenderer (proved live: HONORS_TABLECOLUMN=false) — they render
+    // from their own ExtColumns. So intercept the render path itself: route ExtTable.getCellRenderer(row,col)'s
+    // return through wrapExtCellRenderer, which wraps it in a MonoIconRenderer ONLY for tables the tick marked
+    // as config-panels (jdp.extCfg=true). The hot download/linkgrabber tables are marked false -> untouched.
+    private static byte[] patchExtTableRenderer(byte[] original, final ClassLoader loader) {
+        ClassReader cr = new ClassReader(original);
+        ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES) {
+            @Override
+            protected ClassLoader getClassLoader() { return loader != null ? loader : super.getClassLoader(); }
+        };
+        final int[] n = { 0 };
+        ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
+            @Override
+            public MethodVisitor visitMethod(int access, String name, String desc, String sig, String[] ex) {
+                MethodVisitor mv = super.visitMethod(access, name, desc, sig, ex);
+                if (!("getCellRenderer".equals(name) && "(II)Ljavax/swing/table/TableCellRenderer;".equals(desc)))
+                    return mv;
+                n[0]++;
+                return new MethodVisitor(Opcodes.ASM9, mv) {
+                    @Override
+                    public void visitInsn(int op) {
+                        if (op == Opcodes.ARETURN) {
+                            // stack [renderer] -> [this, renderer] -> wrapExtCellRenderer(this, renderer) -> [wrapped]
+                            super.visitVarInsn(Opcodes.ALOAD, 0);
+                            super.visitInsn(Opcodes.SWAP);
+                            super.visitMethodInsn(Opcodes.INVOKESTATIC, AGENT_INTERNAL, "wrapExtCellRenderer",
+                                    "(Ljava/lang/Object;Ljavax/swing/table/TableCellRenderer;)Ljavax/swing/table/TableCellRenderer;", false);
+                        }
+                        super.visitInsn(op);
+                    }
+                };
+            }
+        };
+        cr.accept(cv, 0);
+        if (n[0] == 0) {
+            System.out.println("[jd-dialog-agent] ExtTable.getCellRenderer(II) not found — config table icons left as-is");
+            return null;   // fail-safe
+        }
+        System.out.println("[jd-dialog-agent] patched ExtTable.getCellRenderer -> mono config table icons (#8)");
         return cw.toByteArray();
     }
 
@@ -693,6 +739,8 @@ public class DialogConfirmAgent {
             monoConfigTableIcons(); // #8: mono the settings config-table row + action icons (favicons stay native)
             fixWidthLockIcon();     // D: swap the header width-lock padlock field for a clean Tabler lock
             stylePropertiesPanel(); // #4: flatten the bottom package/link properties strip (no fine lines)
+            monoSectionHeaders();   // #6: mono every section-header icon (extensions/packagizer headers too)
+            monoCornerIcons();      // #10: mono the green reconnect + grey zip glyphs in the bottom-right corner
             hlDiag3();              // DIAG (temporary): special settings panels + properties panel + corner icons
             recolorDialogs();
             dimModalBackdrops();
@@ -1938,8 +1986,30 @@ public class DialogConfirmAgent {
                     System.out.println("[jd-agent-diag3] TABLE " + t.getClass().getName() + " inCfg=" + inConfigPanel(t) + " anc=" + anc);
                 }
                 diag3Walk(w, w.getHeight());
+                if (w.getWidth() > 400 && w.getHeight() > 400) diag3Corner(w);
             }
         } catch (Throwable ig) { }
+    }
+    // #10 probe: dump EVERY component (icon or not) in the extreme bottom-right corner of the main frame,
+    // so a custom-painted status glyph (no setIcon) that monoCornerIcons can't reach still shows up here.
+    private static void diag3Corner(Window w) {
+        diag3CornerWalk(w, w, w.getWidth(), w.getHeight());
+    }
+    private static void diag3CornerWalk(Component c, Window win, int winW, int winH) {
+        try {
+            if (c.getParent() != null && c.getWidth() > 0 && c.getHeight() > 0) {
+                java.awt.Point pt = javax.swing.SwingUtilities.convertPoint(c.getParent(), c.getLocation(), win);
+                if (pt.x + c.getWidth() > winW - 100 && pt.y + c.getHeight() > winH - 50 && pt.y < winH) {
+                    javax.swing.Icon ic = (c instanceof javax.swing.JLabel) ? ((javax.swing.JLabel) c).getIcon()
+                            : (c instanceof AbstractButton) ? ((AbstractButton) c).getIcon() : null;
+                    if (DIAG3.add("CORNER:" + c.getClass().getName() + "|" + (pt.x / 20)))
+                        System.out.println("[jd-agent-diag3] CORNER " + c.getClass().getName() + " icon="
+                                + (ic == null ? "-" : ic.getClass().getSimpleName() + "/key=" + iconKey(ic))
+                                + " b=" + pt.x + "," + pt.y + "," + c.getWidth() + "x" + c.getHeight());
+                }
+            }
+        } catch (Throwable ig) { }
+        if (c instanceof Container) for (Component ch : ((Container) c).getComponents()) diag3CornerWalk(ch, win, winW, winH);
     }
     // #8 probe: does this config ExtTable actually USE renderers we set, and what icon does its render path yield?
     private static void diag3ExtTable(JTable t) {
@@ -2014,13 +2084,38 @@ public class DialogConfirmAgent {
     // revert/reset arrow). monoTableRowIcons() deliberately skips config tables; this wraps them the same way
     // (per-column + per-column-class default renderer). Real site favicons stay native via the renderer-class
     // skip PLUS the icon-level isSiteLogo guard in monoRowIcon. Keyed glyphs -> Tabler mono, keyless -> tint.
+    // #8: wrapper cache — one MonoIconRenderer per ExtColumn renderer, so ExtTable.getCellRenderer's bytecode
+    // hook doesn't allocate per paint. Weak keys: dropped when JD discards a column renderer.
+    private static final java.util.Map<javax.swing.table.TableCellRenderer, javax.swing.table.TableCellRenderer> EXT_WRAP =
+            java.util.Collections.synchronizedMap(new java.util.WeakHashMap<javax.swing.table.TableCellRenderer, javax.swing.table.TableCellRenderer>());
+    /** #8 render-path hook (called from patched ExtTable.getCellRenderer). ExtTables ignore renderers we set,
+     *  so wrap the one they actually use — but ONLY for tables the tick marked jdp.extCfg=true (config panels).
+     *  Download/linkgrabber tables are marked false => returned unchanged (their icons are themed elsewhere).
+     *  Favicon/hoster columns and real site logos stay native (class skip + MonoIconRenderer isSiteLogo guard). */
+    public static javax.swing.table.TableCellRenderer wrapExtCellRenderer(Object table, javax.swing.table.TableCellRenderer r) {
+        try {
+            if (r == null || r instanceof MonoIconRenderer || !isHighlighterFast()) return r;
+            if (!(table instanceof JComponent)) return r;
+            Object cfg = ((JComponent) table).getClientProperty("jdp.extCfg");
+            if (!(cfg instanceof Boolean) || !((Boolean) cfg)) return r;
+            String cn = r.getClass().getName().toLowerCase();
+            if (cn.contains("favicon") || cn.contains("hoster") || cn.contains("domain")) return r;
+            javax.swing.table.TableCellRenderer w = EXT_WRAP.get(r);
+            if (w == null) { w = new MonoIconRenderer(r); EXT_WRAP.put(r, w); }
+            return w;
+        } catch (Throwable ig) { return r; }
+    }
     private static void monoConfigTableIcons() {
         for (Window w : Window.getWindows()) {
             if (!w.isShowing()) continue;
             List<JTable> tables = new ArrayList<>();
             collectTables(w, tables);
             for (JTable t : tables) {
-                if (!inConfigPanel(t)) continue;
+                // feed the ExtTable.getCellRenderer bytecode hook: mark every table config / non-config.
+                boolean cfg = inConfigPanel(t);
+                if (!Boolean.valueOf(cfg).equals(t.getClientProperty("jdp.extCfg")))
+                    t.putClientProperty("jdp.extCfg", Boolean.valueOf(cfg));
+                if (!cfg) continue;
                 javax.swing.table.TableColumnModel cm = t.getColumnModel();
                 for (int i = 0; i < cm.getColumnCount(); i++) {
                     javax.swing.table.TableColumn tc = cm.getColumn(i);
@@ -2095,6 +2190,64 @@ public class DialogConfirmAgent {
             }
         }
         if (c instanceof Container) for (Component ch : ((Container) c).getComponents()) pinPropsBg(ch, depth + 1);
+    }
+
+    // #6: mono the icon on EVERY section header, directly. monoChromeIn only monos a header icon when its
+    // chrome flag propagated (ancestor detected as a config panel); the special extensions/packagizer panels
+    // let that slip, so the Erweiterungen "puzzle" header stayed coloured. Target any *.Header component and
+    // mono its icon-bearing JLabel with cfg=true (title -> Tabler glyph, else a mono silhouette). Idempotent
+    // via monoLabelIcon's jdp.monoLbl guard; runs every tick so a JD rebuild is re-monoed.
+    private static void monoSectionHeaders() {
+        for (Window w : Window.getWindows()) if (w.isShowing()) monoSectionHeadersIn(w);
+    }
+    private static void monoSectionHeadersIn(Container c) {
+        for (Component ch : c.getComponents()) {
+            if (ch.getClass().getName().endsWith(".Header")) monoHeaderIcons(ch);
+            else if (ch instanceof Container) monoSectionHeadersIn((Container) ch);
+        }
+    }
+    private static void monoHeaderIcons(Component c) {
+        if (c instanceof javax.swing.JLabel) monoLabelIcon((javax.swing.JLabel) c, true);
+        if (c instanceof Container) for (Component ch : ((Container) c).getComponents()) monoHeaderIcons(ch);
+    }
+
+    // #10: the two round status glyphs in the bottom-right corner (green reconnect + grey zip) are keyless
+    // ImageIcons on ExtButtons/JLabels in the status bar — never reached by the config/toolbar mono passes.
+    // Mono any keyless icon on a component sitting in the extreme bottom-right corner of the main frame.
+    // Scoped tightly (corner band only) so no content icon is touched. A precise one-shot diag lists the
+    // corner components so any glyph that resists (custom-painted, no setIcon) shows up in the log.
+    private static void monoCornerIcons() {
+        for (Window w : Window.getWindows()) {
+            if (!w.isShowing()) continue;
+            int winW = w.getWidth(), winH = w.getHeight();
+            if (winW < 400 || winH < 400) continue;             // only the real main frame
+            monoCornerIn(w, w, winW, winH);
+        }
+    }
+    private static void monoCornerIn(Component c, Window win, int winW, int winH) {
+        try {
+            javax.swing.Icon ic = (c instanceof javax.swing.JLabel) ? ((javax.swing.JLabel) c).getIcon()
+                    : (c instanceof AbstractButton) ? ((AbstractButton) c).getIcon() : null;
+            if (ic != null && iconKey(ic) == null && !isSiteLogo(ic) && c.getParent() != null) {
+                java.awt.Point pt = javax.swing.SwingUtilities.convertPoint(c.getParent(), c.getLocation(), win);
+                if (pt.x + c.getWidth() > winW - 90 && pt.y > winH - 40) {
+                    if (c instanceof javax.swing.JLabel) {
+                        javax.swing.JLabel l = (javax.swing.JLabel) c;
+                        if (ic != l.getClientProperty("jdp.monoCorner")) {
+                            javax.swing.Icon m = tintSolid(ic, EXPANDER_LIGHT);
+                            if (m != ic) { l.setIcon(m); l.putClientProperty("jdp.monoCorner", m); }
+                        }
+                    } else if (c instanceof AbstractButton) {
+                        AbstractButton b = (AbstractButton) c;
+                        if (ic != b.getClientProperty("jdp.monoCorner")) {
+                            javax.swing.Icon m = tintSolid(ic, EXPANDER_LIGHT);
+                            if (m != ic) { b.setIcon(m); b.putClientProperty("jdp.monoCorner", m); }
+                        }
+                    }
+                }
+            }
+        } catch (Throwable ig) { }
+        if (c instanceof Container) for (Component ch : ((Container) c).getComponents()) monoCornerIn(ch, win, winW, winH);
     }
 
     // ------------------------------------------------------ borderless config tables (round 14)
