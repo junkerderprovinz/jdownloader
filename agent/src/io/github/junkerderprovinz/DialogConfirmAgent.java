@@ -782,15 +782,33 @@ public class DialogConfirmAgent {
                         f.setAccessible(true);
                         Object p = f.get(c);
                         if (p == null) continue;
-                        java.lang.reflect.Field fg;
-                        try { fg = p.getClass().getDeclaredField("foreground"); } catch (NoSuchFieldException e) { continue; }
-                        fg.setAccessible(true);
-                        Object cur = fg.get(p);
-                        if (!(cur instanceof Color)) continue;
-                        // value/fill painters -> accent (the running "loading" fill); nonvalue/base -> mono light glyph.
-                        boolean nonValue = f.getName().toLowerCase().contains("nonvalue");
-                        Color want = nonValue ? EXPANDER_LIGHT : accentColor();
-                        if (!want.equals(cur)) { fg.set(p, want); changed = true; }
+                        java.lang.reflect.Field fg = null;
+                        try { fg = p.getClass().getDeclaredField("foreground"); } catch (NoSuchFieldException e) { }
+                        if (fg != null) {
+                            fg.setAccessible(true);
+                            Object cur = fg.get(p);
+                            if (cur instanceof Color) {
+                                // value/fill painters -> accent (the running "loading" fill); nonvalue/base -> mono light glyph.
+                                boolean nonValue = f.getName().toLowerCase().contains("nonvalue");
+                                Color want = nonValue ? EXPANDER_LIGHT : accentColor();
+                                if (!want.equals(cur)) { fg.set(p, want); changed = true; }
+                            }
+                        }
+                        // The UpdateProgress globe is a COLOURED image the painter draws AS-IS (foreground doesn't
+                        // tint it), so recolour the image itself to a mono light silhouette. Marked so the tick
+                        // never re-tints our own replacement; if JD re-provisions the green image we re-mono it.
+                        java.lang.reflect.Field img = null;
+                        try { img = p.getClass().getDeclaredField("image"); } catch (NoSuchFieldException e) { }
+                        if (img != null) {
+                            img.setAccessible(true);
+                            Object curImg = img.get(p);
+                            if (curImg instanceof javax.swing.Icon && !EXT_MONO_MARK.containsKey(curImg)) {
+                                javax.swing.Icon mono = tintSolid((javax.swing.Icon) curImg, EXPANDER_LIGHT);
+                                if (mono instanceof javax.swing.ImageIcon && mono != curImg) {
+                                    img.set(p, mono); EXT_MONO_MARK.put(mono, Boolean.TRUE); changed = true;
+                                }
+                            }
+                        }
                     } catch (Throwable ig) { }
                 }
             if (changed) c.repaint();
