@@ -495,8 +495,9 @@ public class DialogConfirmAgent {
             String ck = key + "@" + w + "x" + h;
             javax.swing.Icon cached = CHROME_CLEAN.get(ck);
             if (cached != null) return cached;
-            javax.swing.Icon base = tablerBase(key, w, h);
-            javax.swing.Icon clean = (base != null) ? tintIcon(base, EXPANDER_LIGHT, null) : tintSolid(original, EXPANDER_LIGHT);
+            // Light-tint JD's OWN glyph (keeps the exact +/- box + lock shape, just recoloured light). tablerBase
+            // rendered the small tree handle invisible, so never swap the shape here — only recolour it.
+            javax.swing.Icon clean = tintSolid(original, EXPANDER_LIGHT);
             CHROME_CLEAN.put(ck, clean);
             return clean;
         } catch (Throwable t) { return original; }
