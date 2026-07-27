@@ -742,6 +742,7 @@ public class DialogConfirmAgent {
             monoSectionHeaders();   // #6: mono every section-header icon (extensions/packagizer headers too)
             monoCornerIcons();      // #10: mono the green reconnect + grey zip glyphs in the bottom-right corner
             hlDiag3();              // DIAG (temporary): special settings panels + properties panel + corner icons
+            hlDiag4();              // DIAG (temporary): bar origins + progress bar + field borders + progress widgets
             recolorDialogs();
             dimModalBackdrops();
         }
@@ -2077,6 +2078,106 @@ public class DialogConfirmAgent {
             }
         } catch (Throwable ig) { }
         if (c instanceof Container) for (Component ch : ((Container) c).getComponents()) diag3Walk(ch, winH);
+    }
+
+    // DIAG4 (temporary): runtime facts for the layout/paint items — #1 bar left-origins, #2 download progress
+    // bar paint mechanism, #7 settings field border classes, #9 sidebar vs content bottom, #10 the corner
+    // progress-widget Color/Icon fields, #11 table-header height. Each line deduped via the DIAG3 set.
+    private static void hlDiag4() {
+        try {
+            for (Window w : Window.getWindows()) {
+                if (!w.isShowing() || w.getWidth() < 400) continue;
+                diag4Bars(w);       // #1 + #9 + #11
+                diag4Fields(w, 0);  // #7 + #10
+                diag4Progress(w);   // #2
+            }
+        } catch (Throwable ig) { }
+    }
+    private static void diag4Bars(Window w) {
+        try {
+            diag4BarWalk(w, w);
+            // #9/#11: tables + their headers, and any settings sidebar/content panels
+            java.util.List<JTable> tabs = new java.util.ArrayList<JTable>();
+            collectTables(w, tabs);
+            for (JTable t : tabs) {
+                javax.swing.table.JTableHeader h = t.getTableHeader();
+                if (h != null && DIAG3.add("H:" + t.getClass().getSimpleName()))
+                    System.out.println("[jd-agent-diag4] HEADER " + t.getClass().getSimpleName() + " hHeight="
+                            + h.getHeight() + " hdrRenderer=" + (h.getDefaultRenderer() == null ? "-" : h.getDefaultRenderer().getClass().getSimpleName()));
+            }
+        } catch (Throwable ig) { }
+    }
+    private static void diag4BarWalk(Component c, Window win) {
+        try {
+            String cn = c.getClass().getName(), sn = c.getClass().getSimpleName();
+            boolean bar = (c instanceof javax.swing.JMenuBar) || isMainToolbar(c.getClass())
+                    || cn.endsWith("MainTabbedPane") || cn.endsWith("SettingsScrollPane")
+                    || cn.endsWith(".SettingsView") || cn.contains("ConfigPanel") || sn.equals("ConfigurationPanel");
+            if (bar && c.getWidth() > 0 && c.getParent() != null && DIAG3.add("BAR:" + cn)) {
+                java.awt.Point pt = javax.swing.SwingUtilities.convertPoint(c.getParent(), c.getLocation(), win);
+                String lm = (c instanceof Container && ((Container) c).getLayout() != null)
+                        ? ((Container) c).getLayout().getClass().getSimpleName() : "-";
+                System.out.println("[jd-agent-diag4] BAR " + cn + " x=" + pt.x + " y=" + pt.y + " w=" + c.getWidth()
+                        + " h=" + c.getHeight() + " layout=" + lm);
+            }
+        } catch (Throwable ig) { }
+        if (c instanceof Container) for (Component ch : ((Container) c).getComponents()) diag4BarWalk(ch, win);
+    }
+    // #7: on a config panel, dump each field's border class so we see what stripFramingBorder misses.
+    // #10: dump the corner progress widgets' Color + Icon fields for a reflection-based recolor.
+    private static void diag4Fields(Component c, int depth) {
+        try {
+            String cn = c.getClass().getName();
+            if ((cn.endsWith("ExtractorProgress") || cn.endsWith("UpdateProgress")) && DIAG3.add("PW:" + cn)) {
+                StringBuilder sb = new StringBuilder();
+                for (Class<?> k = c.getClass(); k != null && k != Object.class; k = k.getSuperclass())
+                    for (java.lang.reflect.Field f : k.getDeclaredFields()) {
+                        if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) continue;
+                        if (Color.class.isAssignableFrom(f.getType()) || javax.swing.Icon.class.isAssignableFrom(f.getType())) {
+                            try { f.setAccessible(true); Object v = f.get(c);
+                                sb.append(f.getName()).append("=").append(v).append("; ");
+                            } catch (Throwable ig) { }
+                        }
+                    }
+                System.out.println("[jd-agent-diag4] PROGWIDGET " + cn + " fields: " + sb);
+            }
+            if (inConfigPanel(c) && (c instanceof javax.swing.text.JTextComponent || c instanceof javax.swing.JComboBox
+                    || c instanceof javax.swing.JSpinner || (c instanceof AbstractButton && !isCheckLike(c)))) {
+                javax.swing.border.Border b = ((JComponent) c).getBorder();
+                if (DIAG3.add("FLD:" + c.getClass().getName() + (b == null ? "0" : b.getClass().getName())))
+                    System.out.println("[jd-agent-diag4] FIELD " + c.getClass().getSimpleName() + " border="
+                            + (b == null ? "null" : b.getClass().getName()) + " opaque=" + ((JComponent) c).isOpaque()
+                            + " bg=" + c.getBackground());
+            }
+        } catch (Throwable ig) { }
+        if (c instanceof Container && depth < 40) for (Component ch : ((Container) c).getComponents()) diag4Fields(ch, depth + 1);
+    }
+    // #2: the download-list progress bar. Reach it via the table's ExtColumns (they hold a RendererProgressBar).
+    private static void diag4Progress(Window w) {
+        try {
+            java.util.List<JTable> tabs = new java.util.ArrayList<JTable>();
+            collectTables(w, tabs);
+            for (JTable t : tabs) {
+                if (!t.getClass().getSimpleName().contains("DownloadsTable")) continue;
+                for (Object col : extColumns(t)) {
+                    for (Class<?> k = col.getClass(); k != null && k != Object.class; k = k.getSuperclass())
+                        for (java.lang.reflect.Field f : k.getDeclaredFields()) {
+                            if (!JProgressBar.class.isAssignableFrom(f.getType())) continue;
+                            try { f.setAccessible(true); Object bar = f.get(col);
+                                if (!(bar instanceof JProgressBar)) continue;
+                                JProgressBar pb = (JProgressBar) bar;
+                                if (!DIAG3.add("PB:" + pb.getClass().getName())) continue;
+                                System.out.println("[jd-agent-diag4] PROGBAR " + pb.getClass().getName()
+                                        + " ui=" + (pb.getUI() == null ? "-" : pb.getUI().getClass().getName())
+                                        + " strPainted=" + pb.isStringPainted() + " str=" + pb.getString()
+                                        + " fg=" + pb.getForeground() + " bg=" + pb.getBackground()
+                                        + " selFg=" + javax.swing.UIManager.getColor("ProgressBar.selectionForeground")
+                                        + " selBg=" + javax.swing.UIManager.getColor("ProgressBar.selectionBackground"));
+                            } catch (Throwable ig) { }
+                        }
+                }
+            }
+        } catch (Throwable ig) { }
     }
 
     // #8: mono the icons INSIDE settings config-panel tables (Packagizer rules, Extensions list, Advanced) —
