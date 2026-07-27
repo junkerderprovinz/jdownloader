@@ -483,21 +483,27 @@ public class DialogConfirmAgent {
 
     private static final java.util.Map<String, javax.swing.Icon> CHROME_CLEAN =
             new java.util.concurrent.ConcurrentHashMap<String, javax.swing.Icon>();
-    /** D hook: recolour ONLY JD's expander/lock chrome glyphs to a light tone; everything else passes through. */
+    private static final java.util.Set<String> CHROME_DIAG =
+            java.util.Collections.synchronizedSet(new java.util.HashSet<String>());   // DIAG (temporary)
+    /** D hook: swap JD's column-lock chrome glyph for a clean Tabler lock; everything else passes through.
+     *  (tree_plus/minus are handled by the folder-plus package glyph, so JD's own handle is left alone.) */
     public static javax.swing.Icon cleanChromeIcon(javax.swing.Icon original, String key, int size) {
         try {
             if (original == null || key == null || !isHighlighterFast()) return original;
             String k = key.toLowerCase();
-            if (!(k.contains("tree_plus") || k.contains("tree_minus")
-                    || k.contains("lockcolumn") || k.contains("widthlocked"))) return original;
+            String tab = null;
+            if (k.contains("lockcolumn") || k.contains("widthlocked")) tab = "lock";
+            if (tab == null) return original;
             int w = original.getIconWidth() > 0 ? original.getIconWidth() : size;
             int h = original.getIconHeight() > 0 ? original.getIconHeight() : size;
-            String ck = key + "@" + w + "x" + h;
+            int s = Math.min(w, h); if (s <= 0) s = Math.max(w, h);
+            if (CHROME_DIAG.add(key + "@" + s))   // DIAG (temporary): confirm the lock reaches NewTheme.getIcon
+                System.out.println("[jd-agent-diag] chrome key=" + key + " size=" + size + " -> " + tab + " " + s + "px");
+            String ck = tab + "@" + s;
             javax.swing.Icon cached = CHROME_CLEAN.get(ck);
             if (cached != null) return cached;
-            // Light-tint JD's OWN glyph (keeps the exact +/- box + lock shape, just recoloured light). tablerBase
-            // rendered the small tree handle invisible, so never swap the shape here — only recolour it.
-            javax.swing.Icon clean = tintSolid(original, EXPANDER_LIGHT);
+            javax.swing.Icon base = tablerBase(tab, s, s);
+            javax.swing.Icon clean = (base != null) ? tintIcon(base, EXPANDER_LIGHT, null) : tintSolid(original, EXPANDER_LIGHT);
             CHROME_CLEAN.put(ck, clean);
             return clean;
         } catch (Throwable t) { return original; }
@@ -1645,10 +1651,13 @@ public class DialogConfirmAgent {
             int w = original.getIconWidth(), h = original.getIconHeight();
             if (w <= 0 || h <= 0) return original;
             if (key == null || key.isEmpty()) return tintSolid(original, SIDEBAR_TEXT);   // unclassified -> keep mono
-            String ck = key + "@" + w + "x" + h;
+            // Tabler glyphs are SQUARE; JD's package icon is not, so scaling to w x h stretched the folder.
+            // Render the glyph square (min side) so it never distorts.
+            int s = Math.min(w, h); if (s <= 0) s = Math.max(w, h);
+            String ck = key + "@" + s;
             javax.swing.Icon clean = STATUS_CLEAN.get(ck);
             if (clean == null) {
-                javax.swing.Icon base = tablerBase(key, w, h);
+                javax.swing.Icon base = tablerBase(key, s, s);
                 clean = (base != null) ? tintIcon(base, SIDEBAR_TEXT, null) : tintSolid(original, SIDEBAR_TEXT);
                 STATUS_CLEAN.put(ck, clean);
             }
@@ -4132,6 +4141,7 @@ public class DialogConfirmAgent {
             if (!w.isShowing()) continue;
             Container host = findViewsHost(w);
             if (host == null) continue;
+            dumpViewsIcons(host);   // DIAG (temporary): Views file-type (Archiv) icon keys for C
             boolean changed = badgeViewsHeaders(host);
             changed |= stripHeaderScrollDividers(host);
             changed |= flattenViewsGrids(host);   // #9: kill any sub-row ExtTable grid hairlines
@@ -4190,6 +4200,36 @@ public class DialogConfirmAgent {
             if (ch instanceof Container) changed |= stripHeaderScrollDividers((Container) ch);
         }
         return changed;
+    }
+
+    // DIAG (temporary): dump the Views sub-table cell icon keys (the Archiv file-type filter) so C can map it.
+    private static boolean viewsIconsDumped = false;
+    private static void dumpViewsIcons(Container host) {
+        if (viewsIconsDumped) return;
+        try {
+            java.util.List<JTable> tabs = new java.util.ArrayList<JTable>();
+            collectTables(host, tabs);
+            java.util.List<String> out = new java.util.ArrayList<String>();
+            for (JTable t : tabs) {
+                for (int r = 0; r < Math.min(t.getRowCount(), 2); r++)
+                    for (int col = 0; col < t.getColumnCount(); col++) {
+                        try {
+                            Component cell = t.prepareRenderer(t.getCellRenderer(r, col), r, col);
+                            javax.swing.Icon ic = viewsCellIcon(cell);
+                            if (ic != null && ic.getIconWidth() > 0)
+                                out.add(t.getClass().getSimpleName() + ".c" + col + "=" + iconKey(ic) + ":" + ic.getClass().getSimpleName());
+                        } catch (Throwable ig) { }
+                    }
+            }
+            if (!out.isEmpty()) { viewsIconsDumped = true; System.out.println("[jd-agent-diag] VIEWSICONS " + out); }
+        } catch (Throwable ig) { }
+    }
+    private static javax.swing.Icon viewsCellIcon(Component c) {
+        if (c instanceof javax.swing.JLabel) return ((javax.swing.JLabel) c).getIcon();
+        if (c instanceof AbstractButton) return ((AbstractButton) c).getIcon();
+        if (c instanceof Container)
+            for (Component ch : ((Container) c).getComponents()) { javax.swing.Icon i = viewsCellIcon(ch); if (i != null) return i; }
+        return null;
     }
 
     /** #9: flatten the grid hairlines in the LinkGrabber-Views sub-section ExtTables. Those tables sit on
