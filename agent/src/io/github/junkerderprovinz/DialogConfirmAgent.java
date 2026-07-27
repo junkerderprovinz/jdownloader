@@ -487,9 +487,11 @@ public class DialogConfirmAgent {
     // D (header padlock): the per-column width-lock icon is painted by ExtTableHeaderRenderer.paintComponent
     // from an Icon FIELD (reachable via no getIcon path). Find a live header renderer, reflect its class's
     // Icon fields, and swap the width-lock one for a clean light Tabler lock. Logs the fields (temporary diag).
-    private static boolean widthLockDone = false;
+    // D: the per-column width-lock padlock is painted from ExtTableHeaderRenderer's private `lockedWidth` Icon
+    // field (14x14, reachable via NO getIcon path). Swap it for a clean light Tabler lock on the live per-column
+    // header renderers each tick; idempotent (our replacement is marked) so it survives header rebuilds/reorders.
     private static void fixWidthLockIcon() {
-        if (widthLockDone || !isHighlighterFast()) return;
+        if (!isHighlighterFast()) return;
         try {
             for (Window w : Window.getWindows()) {
                 if (!w.isShowing()) continue;
@@ -497,46 +499,33 @@ public class DialogConfirmAgent {
                 collectTables(w, tabs);
                 for (JTable t : tabs) {
                     javax.swing.table.TableColumnModel cm = t.getColumnModel();
-                    // (1) per-column ExtTableHeaderRenderer instances, (2) the ExtColumn objects themselves
-                    java.util.List<Object> holders = new java.util.ArrayList<Object>();
-                    for (int i = 0; i < cm.getColumnCount(); i++) {
-                        javax.swing.table.TableCellRenderer chr = cm.getColumn(i).getHeaderRenderer();
-                        if (chr != null) holders.add(chr);
-                    }
-                    holders.addAll(extColumns(t));
-                    for (Object holder : holders) {
-                        String hn = holder.getClass().getName();
-                        if (!(hn.contains("ExtTableHeaderRenderer") || hn.contains("ExtColumn"))) continue;
-                        for (Class<?> c = holder.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
-                            for (Field f : c.getDeclaredFields()) {
-                                if (!javax.swing.Icon.class.isAssignableFrom(f.getType())) continue;
-                                boolean stat = java.lang.reflect.Modifier.isStatic(f.getModifiers());
-                                try {
-                                    f.setAccessible(true);
-                                    Object v = f.get(stat ? null : holder);
-                                    javax.swing.Icon ic = (v instanceof javax.swing.Icon) ? (javax.swing.Icon) v : null;
-                                    if (WIDTHLOCK_DIAG.add(c.getSimpleName() + "#" + f.getName()))
-                                        System.out.println("[jd-agent-diag] HRICON " + c.getSimpleName() + "#" + f.getName()
-                                                + " = " + (ic == null ? "null" : iconKey(ic) + " " + ic.getIconWidth() + "x" + ic.getIconHeight()));
-                                    String fn = f.getName().toLowerCase();
-                                    String kk = ic != null ? String.valueOf(iconKey(ic)).toLowerCase() : "";
-                                    if (ic != null && (fn.contains("lock") || fn.contains("width") || kk.contains("lock") || kk.contains("width"))) {
-                                        int s = Math.max(8, Math.min(ic.getIconWidth(), ic.getIconHeight()));
-                                        javax.swing.Icon lock = tablerBase("lock", s, s);
-                                        if (lock != null) { f.set(stat ? null : holder, tintIcon(lock, EXPANDER_LIGHT, null));
-                                            System.out.println("[jd-agent-diag] HRICON swapped " + f.getName() + " -> Tabler lock");
-                                            widthLockDone = true; }
-                                    }
-                                } catch (Throwable ignore) { }
-                            }
-                        }
-                    }
+                    for (int i = 0; i < cm.getColumnCount(); i++)
+                        swapLockedWidth(cm.getColumn(i).getHeaderRenderer());
                 }
             }
-        } catch (Throwable t) { }
+        } catch (Throwable ignore) { }
     }
-    private static final java.util.Set<String> WIDTHLOCK_DIAG =
-            java.util.Collections.synchronizedSet(new java.util.HashSet<String>());   // DIAG (temporary)
+    private static void swapLockedWidth(Object hr) {
+        if (hr == null || !hr.getClass().getName().contains("ExtTableHeaderRenderer")) return;
+        for (Class<?> c = hr.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
+            Field f;
+            try { f = c.getDeclaredField("lockedWidth"); } catch (NoSuchFieldException e) { continue; }
+            try {
+                f.setAccessible(true);
+                Object v = f.get(hr);
+                if (!(v instanceof javax.swing.Icon)) return;
+                javax.swing.Icon ic = (javax.swing.Icon) v;
+                if (EXT_MONO_MARK.containsKey(ic)) return;                    // already our Tabler lock
+                int s = Math.max(8, Math.min(ic.getIconWidth(), ic.getIconHeight()));
+                javax.swing.Icon base = tablerBase("lock", s, s);
+                if (base == null) return;
+                javax.swing.Icon lock = tintIcon(base, EXPANDER_LIGHT, null);
+                f.set(hr, lock);
+                EXT_MONO_MARK.put(lock, Boolean.TRUE);
+            } catch (Throwable ignore) { }
+            return;
+        }
+    }
 
     private static final java.util.Map<String, javax.swing.Icon> CHROME_CLEAN =
             new java.util.concurrent.ConcurrentHashMap<String, javax.swing.Icon>();
