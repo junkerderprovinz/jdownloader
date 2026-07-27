@@ -692,6 +692,7 @@ public class DialogConfirmAgent {
             monoTableRowIcons();    // #11: mono the download/linkgrabber row icons (hoster favicon kept)
             monoConfigTableIcons(); // #8: mono the settings config-table row + action icons (favicons stay native)
             fixWidthLockIcon();     // D: swap the header width-lock padlock field for a clean Tabler lock
+            hlDiag3();              // DIAG (temporary): special settings panels + properties panel + corner icons
             recolorDialogs();
             dimModalBackdrops();
         }
@@ -1914,6 +1915,46 @@ public class DialogConfirmAgent {
                 } catch (Throwable ignore) { }
             }
         return false;
+    }
+
+    // DIAG (temporary): map the special settings panels (Extensions/Packagizer are NOT AbstractConfigPanel),
+    // the bottom package-properties panel (#4), and the two bottom-right corner icons (#10). One-shot.
+    private static final java.util.Set<String> DIAG3 =
+            java.util.Collections.synchronizedSet(new java.util.HashSet<String>());
+    private static void hlDiag3() {
+        try {
+            for (Window w : Window.getWindows()) {
+                if (!w.isShowing()) continue;
+                java.util.List<JTable> tabs = new java.util.ArrayList<JTable>();
+                collectTables(w, tabs);
+                for (JTable t : tabs) {
+                    if (!DIAG3.add("T:" + t.getClass().getName())) continue;
+                    StringBuilder anc = new StringBuilder();
+                    int n = 0;
+                    for (Container p = t.getParent(); p != null && n < 8; p = p.getParent(), n++)
+                        anc.append(p.getClass().getSimpleName()).append("/");
+                    System.out.println("[jd-agent-diag3] TABLE " + t.getClass().getName() + " inCfg=" + inConfigPanel(t) + " anc=" + anc);
+                }
+                diag3Walk(w, w.getHeight());
+            }
+        } catch (Throwable ig) { }
+    }
+    private static void diag3Walk(Component c, int winH) {
+        try {
+            String cn = c.getClass().getName(), lc = cn.toLowerCase();
+            if ((lc.contains("properties") || lc.endsWith(".header") || lc.contains("packagizer") || lc.contains("extensiontable"))
+                    && DIAG3.add("C:" + cn))
+                System.out.println("[jd-agent-diag3] COMP " + cn + " inCfg=" + inConfigPanel(c));
+            javax.swing.Icon ic = (c instanceof javax.swing.JLabel) ? ((javax.swing.JLabel) c).getIcon()
+                    : (c instanceof AbstractButton) ? ((AbstractButton) c).getIcon() : null;
+            if (ic != null && c.getParent() != null) {
+                java.awt.Point pt = javax.swing.SwingUtilities.convertPoint(c.getParent(), c.getLocation(), null);
+                if (pt.y > winH - 60 && DIAG3.add("B:" + c.getClass().getName() + iconKey(ic)))
+                    System.out.println("[jd-agent-diag3] BOTICON " + c.getClass().getSimpleName() + " key=" + iconKey(ic)
+                            + " site=" + isSiteLogo(ic) + " cls=" + ic.getClass().getSimpleName() + " y=" + pt.y);
+            }
+        } catch (Throwable ig) { }
+        if (c instanceof Container) for (Component ch : ((Container) c).getComponents()) diag3Walk(ch, winH);
     }
 
     // #8: mono the icons INSIDE settings config-panel tables (Packagizer rules, Extensions list, Advanced) —
