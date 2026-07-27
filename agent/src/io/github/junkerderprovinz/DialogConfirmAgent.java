@@ -78,10 +78,28 @@ public class DialogConfirmAgent {
     private static final ColorUIResource HEADER = new ColorUIResource(0x0b, 0x0b, 0x0b);
     private static final ColorUIResource SEL    = new ColorUIResource(0x52, 0x52, 0x52);
 
+    // ─── CANONICAL PALETTE ─────────────────────────────────────────────────────────────────────
+    // ONE source of truth for the theme's neutral greys (the template .properties + JD colorfor*
+    // JSON mirror these values). A dark→light elevation ladder; the ACCENT is the single freely
+    // configurable knob (accentColor()/accentFg() read it from the LAF at runtime). Every named
+    // constant below aliases one of these, so a role always maps to exactly ONE hex (no drift).
+    private static final Color PAL_BASE      = new Color(0x16, 0x16, 0x16); // #161616 base / chrome (deepest)
+    private static final Color PAL_FIELD     = new Color(0x1a, 0x1a, 0x1a); // #1a1a1a recessed input fill
+    private static final Color PAL_HEADER    = new Color(0x1e, 0x1e, 0x1e); // #1e1e1e table/section header band
+    private static final Color PAL_TRACK     = new Color(0x26, 0x26, 0x26); // #262626 progress track / unselected tile
+    private static final Color PAL_SURFACE   = new Color(0x24, 0x24, 0x24); // #242424 card / dialog / chip surface
+    private static final Color PAL_BUTTON    = new Color(0x2a, 0x2a, 0x2a); // #2a2a2a raised button / menu field
+    private static final Color PAL_DIVIDER   = new Color(0x39, 0x39, 0x39); // #393939 scrollbar thumb / faint divider
+    private static final Color PAL_SELECTION = new Color(0x52, 0x52, 0x52); // #525252 neutral row selection
+    private static final Color PAL_MONO      = new Color(0xb0, 0xb0, 0xb0); // #b0b0b0 mono icon / expander light
+    private static final Color PAL_DISABLED  = new Color(0x6f, 0x6f, 0x6f); // #6f6f6f disabled foreground
+    private static final Color PAL_TEXT      = new Color(0xf4, 0xf4, 0xf4); // #f4f4f4 primary text / light icon
+    // ────────────────────────────────────────────────────────────────────────────────────────────
+
     // Plain (non-UIResource) colours set directly on the table progress-bar instances so a
     // later updateUI cannot override them. Fill must be visible on the dark track.
-    private static final Color BAR_FILL  = new Color(0x55, 0x55, 0x55);
-    private static final Color BAR_TRACK = new Color(0x26, 0x26, 0x26);
+    private static final Color BAR_FILL  = new Color(0x55, 0x55, 0x55);   // plain-dark neutral fill (not accent)
+    private static final Color BAR_TRACK = PAL_TRACK;
 
     // Chrome is enforced exactly ONCE per JVM, and only after JD's main window is shown
     // and stable — see enforceDarkChrome().
@@ -808,7 +826,7 @@ public class DialogConfirmAgent {
                 java.awt.Stroke os = g.getStroke();
                 g.setStroke(new java.awt.BasicStroke(Math.max(1.6f, d / 9f),
                         java.awt.BasicStroke.CAP_ROUND, java.awt.BasicStroke.JOIN_ROUND));
-                g.setColor(new Color(0x39, 0x39, 0x39));         // faint track
+                g.setColor(PAL_DIVIDER);                         // faint track
                 g.drawOval(x, y, d, d);
                 g.setColor(accentColor());                       // accent arc
                 if (indet) {
@@ -1143,7 +1161,7 @@ public class DialogConfirmAgent {
         private Color colTop    = new Color(0x3f, 0xb9, 0x3f);
         private Color colBottom = new Color(0x14, 0x46, 0x14);
         private Color colAvg    = new Color(0x86, 0xd9, 0x86);
-        private Color colText   = new Color(0xf4, 0xf4, 0xf4);
+        private Color colText   = PAL_TEXT;
         private Color colLimit  = new Color(0xd9, 0x53, 0x53);
 
         CarbonSpeedGraph() {
@@ -1449,8 +1467,8 @@ public class DialogConfirmAgent {
     // 6b: menu-embedded fields (speed limit, max chunks) sat near-invisible once borderWidth=0
     // removed their frame. Give them a raised #2a2a2a pill (same shade as config buttons) so they
     // read as editable without reintroducing a line. Chrome-only: scoped to JPopupMenu subtrees.
-    private static final Color MENU_FIELD_BG = new Color(0x2a, 0x2a, 0x2a);
-    private static final Color TILE_GREY = new Color(0x26, 0x26, 0x26);   // #3: unselected main-tab tile bg (like the sidebar tiles)
+    private static final Color MENU_FIELD_BG = PAL_BUTTON;
+    private static final Color TILE_GREY = PAL_TRACK;   // #3: unselected main-tab tile bg (like the sidebar tiles)
     private static final int   MENU_FIELD_W  = 110;   // P14: uniform width for grey menu input fields
 
     private static void styleMenuFields() {
@@ -1806,7 +1824,7 @@ public class DialogConfirmAgent {
     // tick (same mechanism as recolorBarFields): re-tint the black glyph to a light tone. Idempotent — our
     // replacement is a keyless ImageIcon, so iconKey() returns null next tick and it is skipped until JD
     // re-provisions the black one again.
-    private static final Color EXPANDER_LIGHT = new Color(0xb0, 0xb0, 0xb0);
+    private static final Color EXPANDER_LIGHT = PAL_MONO;
     // marks the mono replacements WE produced so a keyless mono icon is not re-tinted every tick (no churn).
     private static final java.util.Map<javax.swing.Icon, Boolean> EXT_MONO_MARK =
             java.util.Collections.synchronizedMap(new java.util.WeakHashMap<javax.swing.Icon, Boolean>());
@@ -2598,7 +2616,7 @@ public class DialogConfirmAgent {
             public int getIconWidth()  { return 11; }
             public int getIconHeight() { return 11; }
             public void paintIcon(Component c, java.awt.Graphics g, int x, int y) {
-                g.setColor(new Color(0xb0, 0xb0, 0xb0));
+                g.setColor(PAL_MONO);
                 g.drawRect(x, y, 10, 10);
                 g.drawLine(x + 3, y + 5, x + 7, y + 5);            // horizontal bar
                 if (plus) g.drawLine(x + 5, y + 3, x + 5, y + 7);  // vertical -> plus
@@ -2663,7 +2681,7 @@ public class DialogConfirmAgent {
         if (sel != null) return new Color(sel.getRGB());
         Color a = accentColor();
         double lum = 0.299 * a.getRed() + 0.587 * a.getGreen() + 0.114 * a.getBlue();
-        return lum > 140 ? new Color(0x16, 0x16, 0x16) : new Color(0xf4, 0xf4, 0xf4);
+        return lum > 140 ? PAL_BASE : PAL_TEXT;
     }
 
     private static javax.swing.ListCellRenderer<?> asRenderer(Object o) {
@@ -2675,12 +2693,12 @@ public class DialogConfirmAgent {
     // fixed SIDEBAR_TOP_PAD top-inset hack is gone — the tile now computes a centering inset per render.
     private static final double SIDEBAR_ICON_SCALE = 1.4;
     private static final java.util.Map<javax.swing.Icon, javax.swing.Icon> SCALED_ICONS = new java.util.WeakHashMap<>();
-    private static final Color SIDEBAR_TEXT = new Color(0xf4, 0xf4, 0xf4);  // normal sidebar label colour
+    private static final Color SIDEBAR_TEXT = PAL_TEXT;  // normal sidebar label colour
     // S1(r63): tone for a DISABLED toolbar button's glyph. A disabled ExtButton (e.g. the manual
     // ReconnectAction when idle) paints its disabledIcon, NOT getIcon() — and JD derives that from the
     // RAW glyph, so monoButtonIcon's setIcon(mono) never reaches it and the button stayed a grey blob.
     // Matches the theme's @disabledForeground so disabled == a clean, dim silhouette (never a raw blob).
-    private static final Color DISABLED_TONE = new Color(0x6f, 0x6f, 0x6f);
+    private static final Color DISABLED_TONE = PAL_DISABLED;
 
     private static final java.util.Map<javax.swing.Icon, javax.swing.Icon> TINT_LIGHT = new java.util.WeakHashMap<>();
     private static final java.util.Map<javax.swing.Icon, javax.swing.Icon> TINT_DARK  = new java.util.WeakHashMap<>();
@@ -3145,9 +3163,9 @@ public class DialogConfirmAgent {
     // heller mal dunkler als die card" inconsistency. Force ONE recessed fill for text/combo/spinner
     // and ONE raised fill for real buttons, so a card reads as: field #1a1a1a < card #242424 < button
     // #2a2a2a. Checkboxes/radios keep their transparent fill. Guarded on value so it is a no-op once set.
-    private static final Color FIELD_BG   = new Color(0x1a, 0x1a, 0x1a);
-    private static final Color BTN_CFG_BG = new Color(0x2a, 0x2a, 0x2a);
-    private static final Color BASE_BG    = new Color(0x16, 0x16, 0x16);   // #4: chrome base for the properties strip
+    private static final Color FIELD_BG   = PAL_FIELD;
+    private static final Color BTN_CFG_BG = PAL_BUTTON;
+    private static final Color BASE_BG    = PAL_BASE;   // #4: chrome base for the properties strip
     private static void unifyConfigFields() {
         for (Window w : Window.getWindows()) if (w.isShowing()) unifyFieldsIn(w, false);
     }
@@ -3541,7 +3559,7 @@ public class DialogConfirmAgent {
                 javax.swing.JScrollPane sp = (javax.swing.JScrollPane) c;
                 sp.setViewportBorder(null);
                 // pt2: kill the #1f1f1f scrollbar gutter strip at the sidebar's right edge — pin scroll chrome to base
-                Color base = new Color(0x16, 0x16, 0x16);
+                Color base = PAL_BASE;
                 if (!base.equals(sp.getBackground())) sp.setBackground(base);
                 if (sp.getViewport() != null && !base.equals(sp.getViewport().getBackground()))
                     sp.getViewport().setBackground(base);
@@ -3556,7 +3574,7 @@ public class DialogConfirmAgent {
             // painted @componentBackground #1e1e1e. Pin any split divider + any componentBackground-
             // shaded panel in this settings tree to base so no lighter gutter shows. Field fills
             // (#1a1a1a) and cards (#242424) are outside this shade band, so they stay untouched.
-            Color base2 = new Color(0x16, 0x16, 0x16);
+            Color base2 = PAL_BASE;
             if (jc instanceof javax.swing.JSplitPane) {
                 jc.setBackground(base2);
                 try {
@@ -3603,8 +3621,8 @@ public class DialogConfirmAgent {
     private static final String SB_HOVER_ROW     = "jdp.sbHoverRow";
     private static final String SB_LISTENERS     = "jdp.sbListeners";
     private static final String SB_BTN           = "jdp.sbButton";
-    private static final Color  SB_BASE          = new Color(0x16, 0x16, 0x16);  // deep sidebar base the tiles float on
-    private static final Color  SB_BTN_BG        = new Color(0x24, 0x24, 0x24);  // button tile on the #161616 sidebar
+    private static final Color  SB_BASE          = PAL_BASE;  // deep sidebar base the tiles float on
+    private static final Color  SB_BTN_BG        = PAL_SURFACE;  // button tile on the #161616 sidebar
     private static final int    SB_BTN_GAP_V = 3, SB_BTN_GAP_H = 8, SB_BTN_ARC = 12;
 
     /** CC-style: each sidebar row is a rounded button tile floating on the dark sidebar, not a
@@ -3893,7 +3911,7 @@ public class DialogConfirmAgent {
     // ("viel zu hell"). UIDefaults (ToolBar/MenuBar.background) only reach components created AFTER, and
     // the boot LAF re-apply can fail (legacy-chrome-remap fallback), so pin the LIVE JMenuBar + MainToolBar
     // (and their immediate parent band) to base directly every tick. Idempotent (guarded on the colour).
-    private static final Color CHROME_BASE = new Color(0x16, 0x16, 0x16);
+    private static final Color CHROME_BASE = PAL_BASE;
     private static void darkenChromeBars() {
         for (Window w : Window.getWindows()) {
             if (!w.isShowing()) continue;
@@ -4079,7 +4097,7 @@ public class DialogConfirmAgent {
         @Override public void update(Graphics g, JComponent c) {
             Color fill = sel(c) ? accentColor()
                     : (c.getParent() != null && c.getParent().getBackground() != null
-                       ? c.getParent().getBackground() : new Color(0x16, 0x16, 0x16));
+                       ? c.getParent().getBackground() : PAL_BASE);
             g.setColor(fill);
             g.fillRect(0, 0, c.getWidth(), c.getHeight());
             paint(g, c);
@@ -4398,7 +4416,7 @@ public class DialogConfirmAgent {
      *  text, so the accent selection highlight still lands on top. */
     private static final class MenuChipBorder implements javax.swing.border.Border {
         private final javax.swing.border.Border original;
-        private static final Color CHIP = new Color(0x24, 0x24, 0x24);
+        private static final Color CHIP = PAL_SURFACE;
         private static final int GAP = 3, PAD_V = 2, PAD_H = 6, ARC = 10;
         MenuChipBorder(javax.swing.border.Border o) { this.original = o; }
         public boolean isBorderOpaque() { return false; }
@@ -4422,7 +4440,7 @@ public class DialogConfirmAgent {
 
     private static final class SectionCardBorder implements javax.swing.border.Border {
         private final javax.swing.border.Border original;
-        private static final Color CARD = new Color(0x24, 0x24, 0x24);   // surface: base < field < card
+        private static final Color CARD = PAL_SURFACE;   // surface: base < field < card
         private static final int MARGIN = 10, INNER = 12, ARC = 14;      // equal MARGIN gap on all sides
         SectionCardBorder(javax.swing.border.Border original) { this.original = original; }
 
@@ -4509,7 +4527,7 @@ public class DialogConfirmAgent {
     // --- pop-up dialogs: lighter content + dimmed backdrop -------------------
     // (1) recolour each shown dialog to the #242424 surface (styleDialogContent) so it lifts off the
     //     #161616 chrome by shade; inputs/buttons get the same unified fills as the settings cards.
-    private static final Color DIALOG_BG = new Color(0x24, 0x24, 0x24);   // surface (matches cards)
+    private static final Color DIALOG_BG = PAL_SURFACE;   // surface (matches cards)
 
     private static void recolorDialogs() {
         for (Window w : Window.getWindows()) {
@@ -4543,7 +4561,7 @@ public class DialogConfirmAgent {
                         rp.setOpaque(true);
                         // a touch of elevation so the small updater card reads against the busy main view
                         if (!(rp.getBorder() instanceof javax.swing.border.LineBorder))
-                            rp.setBorder(javax.swing.BorderFactory.createLineBorder(new Color(0x39, 0x39, 0x39), 1));
+                            rp.setBorder(javax.swing.BorderFactory.createLineBorder(PAL_DIVIDER, 1));
                     }
                 }
                 styleDialogContent(cp);
