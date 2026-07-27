@@ -1693,18 +1693,37 @@ public class DialogConfirmAgent {
                         if (!BAR_TRACK.equals(pb.getBackground())) pb.setBackground(BAR_TRACK);
                         // #2: the "%" text must auto-flip so it reads on BOTH sides of the fill edge.
                         // BasicProgressBarUI.paintString draws the string in selectionForeground where it
-                        // overlaps the FILL and in selectionBackground over the TRACK. The bars cached
-                        // FlatLaf's light defaults (#eeeeee/#dddddd) at UI-install (our ProgressBar.selection*
-                        // defaults landed too late), so light-on-yellow was invisible. Pin per instance:
-                        // DARK over the accent fill, LIGHT over the dark track.
+                        // overlaps the FILL and in selectionBackground over the TRACK. Those two colours live
+                        // on the UI (not the JProgressBar), and the bars cached FlatLaf's light defaults
+                        // (#eeeeee/#dddddd) at UI-install (our ProgressBar.selection* landed too late), so
+                        // light-on-yellow was invisible. Reflect them onto the UI instance: DARK over the
+                        // accent fill, LIGHT over the dark track.
                         if (isHighlighter()) {
-                            Color overFill = accentFg();          // dark % on the yellow fill
-                            Color overTrack = SIDEBAR_TEXT;        // light % on the #262626 track
-                            if (!overFill.equals(pb.getSelectionForeground())) pb.setSelectionForeground(overFill);
-                            if (!overTrack.equals(pb.getSelectionBackground())) pb.setSelectionBackground(overTrack);
+                            Object ui = pb.getUI();
+                            if (ui != null) {
+                                setUiColorField(ui, "selectionForeground", accentFg());   // dark % on yellow fill
+                                setUiColorField(ui, "selectionBackground", SIDEBAR_TEXT);  // light % on #262626 track
+                            }
                         }
                     }
                 } catch (Exception ignore) { }
+            }
+        }
+    }
+
+    // #2 helper: set a named Color field (e.g. selectionForeground) on a UI delegate, walking up to the
+    // BasicProgressBarUI superclass that declares it. Silent no-op if absent.
+    private static void setUiColorField(Object ui, String name, Color val) {
+        for (Class<?> k = ui.getClass(); k != null && k != Object.class; k = k.getSuperclass()) {
+            try {
+                Field f = k.getDeclaredField(name);
+                f.setAccessible(true);
+                if (!val.equals(f.get(ui))) f.set(ui, val);
+                return;
+            } catch (NoSuchFieldException nsf) {
+                // declared higher up — keep walking
+            } catch (Throwable t) {
+                return;
             }
         }
     }
