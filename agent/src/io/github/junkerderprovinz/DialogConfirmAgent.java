@@ -209,6 +209,8 @@ public class DialogConfirmAgent {
                         if (NEW_THEME.equals(className)) return patchNewTheme(classfileBuffer, loader);
                         // #8: wrap the render-path renderer of config-panel ExtTables (they ignore set renderers).
                         if (EXT_TABLE.equals(className)) return patchExtTableRenderer(classfileBuffer, loader);
+                        // menu hover: flip a rolled-over top-level menubar menu's text to selectionForeground (dark).
+                        if (FLAT_MI_RENDERER.equals(className)) return patchMenuItemRenderer(classfileBuffer, loader);
                         return null;
                     } catch (Throwable err) {
                         System.out.println("[jd-dialog-agent] bytecode transform skipped for " + className
@@ -387,6 +389,13 @@ public class DialogConfirmAgent {
     private static final String FILE_COL  = "org/jdownloader/gui/views/downloads/columns/FileColumn";
     private static final String NEW_THEME = "org/jdownloader/images/NewTheme";
     private static final String EXT_TABLE = "org/appwork/swing/exttable/ExtTable";
+    // menu hover: FlatLaf paints a hovered TOP-LEVEL menu's text with menuItem.getParent().getForeground()
+    // (the shared JMenuBar fg = light) and only uses selectionForeground when isArmedOrSelected() is true.
+    // Rollover is NOT armed, so hover text stayed light-on-accent (unreadable). We can't per-menu flip it
+    // (the fg is read from the shared menubar). Patch the FlatLaf renderer's static isArmedOrSelected to also
+    // return true for a rolled-over top-level menubar JMenu -> FlatLaf then paints its hover text with
+    // selectionForeground (= @@ACCENT_FG@@, dark). Scoped to JMenu.isTopLevelMenu() so dropdown items are untouched.
+    private static final String FLAT_MI_RENDERER = "com/formdev/flatlaf/ui/FlatMenuItemRenderer";
     private static final String STATUS_GETICON_DESC =
             "(Ljd/controlling/packagecontroller/AbstractNode;)Ljavax/swing/Icon;";
     private static final String AGENT_INTERNAL = "io/github/junkerderprovinz/DialogConfirmAgent";
@@ -475,6 +484,61 @@ public class DialogConfirmAgent {
             return null;
         }
         System.out.println("[jd-dialog-agent] patched FlatTabbedPaneUI.paintTabBackground -> tab gap (#2)");
+        return cw.toByteArray();
+    }
+
+    // menu hover: prepend to FlatMenuItemRenderer.isArmedOrSelected(JMenuItem)Z ->
+    //   if (menuItem instanceof JMenu && ((JMenu)menuItem).isTopLevelMenu() && menuItem.getModel().isRollover())
+    //       return true;
+    // so FlatLaf paints a HOVERED top-level menubar menu's text with selectionForeground (dark) instead of the
+    // shared menubar foreground (light). Dropdown items (not top-level) fall through to the original logic.
+    private static byte[] patchMenuItemRenderer(byte[] original, final ClassLoader loader) {
+        ClassReader cr = new ClassReader(original);
+        ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES) {
+            @Override
+            protected ClassLoader getClassLoader() { return loader != null ? loader : super.getClassLoader(); }
+        };
+        final int[] n = { 0 };
+        ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
+            @Override
+            public MethodVisitor visitMethod(int access, String name, String desc, String sig, String[] ex) {
+                MethodVisitor mv = super.visitMethod(access, name, desc, sig, ex);
+                if (!("isArmedOrSelected".equals(name) && "(Ljavax/swing/JMenuItem;)Z".equals(desc))) return mv;
+                n[0]++;
+                return new MethodVisitor(Opcodes.ASM9, mv) {
+                    @Override
+                    public void visitCode() {
+                        super.visitCode();
+                        Label orig = new Label();
+                        // if (!(menuItem instanceof JMenu)) goto orig;
+                        visitVarInsn(Opcodes.ALOAD, 0);
+                        visitTypeInsn(Opcodes.INSTANCEOF, "javax/swing/JMenu");
+                        visitJumpInsn(Opcodes.IFEQ, orig);
+                        // if (!((JMenu)menuItem).isTopLevelMenu()) goto orig;
+                        visitVarInsn(Opcodes.ALOAD, 0);
+                        visitTypeInsn(Opcodes.CHECKCAST, "javax/swing/JMenu");
+                        visitMethodInsn(Opcodes.INVOKEVIRTUAL, "javax/swing/JMenu", "isTopLevelMenu", "()Z", false);
+                        visitJumpInsn(Opcodes.IFEQ, orig);
+                        // if (!menuItem.getModel().isRollover()) goto orig;
+                        visitVarInsn(Opcodes.ALOAD, 0);
+                        visitMethodInsn(Opcodes.INVOKEVIRTUAL, "javax/swing/AbstractButton", "getModel",
+                                "()Ljavax/swing/ButtonModel;", false);
+                        visitMethodInsn(Opcodes.INVOKEINTERFACE, "javax/swing/ButtonModel", "isRollover", "()Z", true);
+                        visitJumpInsn(Opcodes.IFEQ, orig);
+                        // return true;
+                        visitInsn(Opcodes.ICONST_1);
+                        visitInsn(Opcodes.IRETURN);
+                        visitLabel(orig);
+                    }
+                };
+            }
+        };
+        cr.accept(cv, 0);
+        if (n[0] == 0) {
+            System.out.println("[jd-dialog-agent] FlatMenuItemRenderer.isArmedOrSelected not found — menu hover fg left as-is");
+            return null;
+        }
+        System.out.println("[jd-dialog-agent] patched FlatMenuItemRenderer.isArmedOrSelected -> dark hover text on menubar menus");
         return cw.toByteArray();
     }
 
@@ -785,6 +849,7 @@ public class DialogConfirmAgent {
             growTableHeaders();     // #11: accent-on-hover column title
             recolorDialogs();
             dimModalBackdrops();
+            if (W4_DIAG) diagW4();
         }
         if (++lafTick >= 12) {   // every ~5s (ticks run every 400ms)
             lafTick = 0;
@@ -792,6 +857,88 @@ public class DialogConfirmAgent {
             if (GEO_DEBUG) dumpGeometry();
         }
     }
+
+    // ===== wave-4 one-shot identity probe (REMOVE before release) =====
+    private static final boolean W4_DIAG = true;
+    private static boolean w4Cfg = false, w4Align = false, w4Upd = false;
+    private static void diagW4() {
+        try {
+            for (Window w : Window.getWindows()) {
+                if (!w.isShowing()) continue;
+                if (!w4Align && w instanceof javax.swing.JFrame && w.getWidth() > 600 && w.getHeight() > 400) {
+                    w4Align = true; diagAlign((javax.swing.JFrame) w);
+                }
+                if (!w4Cfg) { Container cfg = diagFindCfg(w); if (cfg != null) { w4Cfg = true; diagCfgHeaders(cfg); } }
+                if (!w4Upd) {
+                    String t = (w instanceof Frame) ? ((Frame) w).getTitle() : (w instanceof Dialog) ? ((Dialog) w).getTitle() : w.getName();
+                    if (t != null && t.toLowerCase().contains("updat")) { w4Upd = true; System.out.println("[W4-UPD] window=" + w.getClass().getName() + " title=" + t); diagIconsIn((Container) w, "UPD"); }
+                }
+            }
+        } catch (Throwable ignore) { }
+    }
+    private static Container diagFindCfg(Container c) {
+        if (c instanceof JComponent && isConfigPanel(c.getClass())) return c;
+        for (Component ch : c.getComponents()) if (ch instanceof Container) { Container r = diagFindCfg((Container) ch); if (r != null) return r; }
+        return null;
+    }
+    private static void diagCfgHeaders(Container cfg) {
+        System.out.println("[W4-CFG] panel=" + cfg.getClass().getName());
+        diagIconsIn(cfg, "CFG");
+    }
+    private static void diagIconsIn(Container c, String tag) {
+        for (Component ch : c.getComponents()) {
+            try {
+                javax.swing.Icon ic = null; String text = null;
+                if (ch instanceof javax.swing.JLabel) { ic = ((javax.swing.JLabel) ch).getIcon(); text = ((javax.swing.JLabel) ch).getText(); }
+                else if (ch instanceof AbstractButton) { ic = ((AbstractButton) ch).getIcon(); text = ((AbstractButton) ch).getText(); }
+                else { try { Object r = ch.getClass().getMethod("getIcon").invoke(ch); if (r instanceof javax.swing.Icon) ic = (javax.swing.Icon) r; } catch (Throwable ig) { } }
+                if (ic != null) System.out.println("[W4-" + tag + "] comp=" + ch.getClass().getName()
+                        + " icon=" + ic.getClass().getName() + " key=" + iconKey(ic) + " site=" + isSiteLogo(ic)
+                        + " text=" + (text == null ? "" : text.replaceAll("<[^>]*>", " ").trim()));
+            } catch (Throwable ig) { }
+            if (ch instanceof Container) diagIconsIn((Container) ch, tag);
+        }
+    }
+    private static void diagAlign(javax.swing.JFrame f) {
+        try {
+            StringBuilder sb = new StringBuilder("[W4-ALIGN]");
+            javax.swing.JMenuBar mb = f.getJMenuBar();
+            if (mb != null && mb.getMenuCount() > 0) { javax.swing.JMenu m = mb.getMenu(0);
+                java.awt.Point p = javax.swing.SwingUtilities.convertPoint(m.getParent(), m.getLocation(), f);
+                sb.append(" menu0.x=").append(p.x).append(" menu0Insets=").append(m.getInsets()); }
+            java.util.List<Component> tbs = new java.util.ArrayList<Component>();
+            diagCollect(f, "MainToolBar", tbs);
+            if (!tbs.isEmpty()) { Container tb = (Container) tbs.get(0);
+                sb.append(" toolbarChildren=");
+                for (Component k : tb.getComponents()) if (k.getWidth() > 0) {
+                    java.awt.Point p = javax.swing.SwingUtilities.convertPoint(tb, k.getLocation(), f);
+                    sb.append(k.getClass().getSimpleName()).append("@").append(p.x).append("w").append(k.getWidth()).append(" ");
+                    break;
+                }
+                java.awt.Point tp = javax.swing.SwingUtilities.convertPoint(tb.getParent(), tb.getLocation(), f);
+                sb.append(" toolbar.x=").append(tp.x).append(" toolbarInsets=").append(((JComponent) tb).getInsets());
+            }
+            java.util.List<Component> tables = new java.util.ArrayList<Component>();
+            diagCollect(f, "ExtTable", tables);
+            for (Component tc : tables) {
+                if (tc.getWidth() < 300) continue;
+                javax.swing.JTable jt = (javax.swing.JTable) tc;
+                java.awt.Point p = javax.swing.SwingUtilities.convertPoint(tc.getParent(), tc.getLocation(), f);
+                int col0w = jt.getColumnModel().getColumnCount() > 0 ? jt.getColumnModel().getColumn(0).getWidth() : -1;
+                sb.append(" table[").append(tc.getClass().getSimpleName()).append("].x=").append(p.x).append(" col0w=").append(col0w);
+                break;
+            }
+            System.out.println(sb.toString());
+        } catch (Throwable t) { System.out.println("[W4-ALIGN] err " + t); }
+    }
+    private static void diagCollect(Container c, String simpleNameEndsWith, java.util.List<Component> out) {
+        for (Component ch : c.getComponents()) {
+            for (Class<?> k = ch.getClass(); k != null && k != Object.class; k = k.getSuperclass())
+                if (k.getSimpleName().equals(simpleNameEndsWith) || k.getName().endsWith("." + simpleNameEndsWith)) { out.add(ch); break; }
+            if (ch instanceof Container) diagCollect((Container) ch, simpleNameEndsWith, out);
+        }
+    }
+    // ===== end wave-4 probe =====
 
     // #10: the JD status rings (org.jdownloader.updatev2.UpdateProgress = update check, ExtractorProgress =
     // extraction, and the LinkCollector crawl indicator that pops up when a link is added) are all AppWork
@@ -1781,6 +1928,11 @@ public class DialogConfirmAgent {
                         Color fill = isHighlighter() ? accentColor() : BAR_FILL;
                         if (!fill.equals(pb.getForeground())) pb.setForeground(fill);
                         if (!BAR_TRACK.equals(pb.getBackground())) pb.setBackground(BAR_TRACK);
+                        // OPAQUE so the #262626 track always paints: on the accent MOUSEOVER row the cell bg is
+                        // yellow, and a non-opaque bar let that yellow bleed through the track -> the light
+                        // "over-track" % text became invisible ("bei mouseover kaum sichtbar"). Opaque keeps the
+                        // bar self-contained so the flip (dark-on-fill / light-on-track) reads on any row.
+                        if (isHighlighter() && !pb.isOpaque()) pb.setOpaque(true);
                         // #2: the "%" text must auto-flip so it reads on BOTH sides of the fill edge.
                         // BasicProgressBarUI.paintString draws the string in selectionForeground where it
                         // overlaps the FILL and in selectionBackground over the TRACK. Those two colours live
@@ -3406,7 +3558,8 @@ public class DialogConfirmAgent {
                 // no key) can't be Tabler-swapped — but it must not keep a colored/plain logo. Mono the
                 // EXISTING glyph to a single-tone silhouette so the header reads consistent mono.
                 // Idempotent via the jdp.monoLbl client property so the tick never re-monos our own icon.
-                javax.swing.Icon solid = tintSolid(cur, SIDEBAR_TEXT);
+                // Pass the label so JD AbstractIcon composites actually render (null-paint left them colored).
+                javax.swing.Icon solid = tintSolid(cur, SIDEBAR_TEXT, l);
                 if (solid != cur) { l.setIcon(solid); l.putClientProperty("jdp.monoLbl", solid); }
                 return;
             }
@@ -3416,7 +3569,7 @@ public class DialogConfirmAgent {
             // "speed" glyph) can't be swapped — tint the original to a mono silhouette so it stops
             // reading as an old colored logo, matching every other menu-row icon.
             if (cfg) {
-                javax.swing.Icon solid = tintSolid(cur, SIDEBAR_TEXT);
+                javax.swing.Icon solid = tintSolid(cur, SIDEBAR_TEXT, l);
                 if (solid != cur) { l.setIcon(solid); l.putClientProperty("jdp.monoLbl", solid); }
             }
         } catch (Throwable ignore) { }
@@ -4149,19 +4302,26 @@ public class DialogConfirmAgent {
     }
     /** Solid-tone silhouette of an icon: render it, then replace every non-transparent pixel's RGB with
      *  `tone` (alpha kept). Reliably recolours a raw keyless ImageIcon that tablerIcon's key lookup can't. */
-    private static javax.swing.Icon tintSolid(javax.swing.Icon ic, Color tone) {
+    private static javax.swing.Icon tintSolid(javax.swing.Icon ic, Color tone) { return tintSolid(ic, tone, null); }
+    /** Tint every non-transparent pixel to `tone`. Pass the host component `c`: JD's AbstractIcon composites
+     *  (settings section-header glyphs, the updater logo) render NOTHING when painted with a null component,
+     *  so a null-paint tint silently left them colored. Painting with the real label lets them render, so the
+     *  tint actually takes. Falls back to the original icon if even that produces an empty raster. */
+    private static javax.swing.Icon tintSolid(javax.swing.Icon ic, Color tone, Component c) {
         try {
             int w = ic.getIconWidth(), h = ic.getIconHeight();
             if (w <= 0 || h <= 0) return ic;
             java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_ARGB);
             Graphics2D g = img.createGraphics();
-            ic.paintIcon(null, g, 0, 0);
+            try { ic.paintIcon(c, g, 0, 0); } catch (Throwable nullPaint) { ic.paintIcon(null, g, 0, 0); }
             g.dispose();
             int rgb = tone.getRGB() & 0x00ffffff;
+            boolean any = false;
             for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) {
                 int a = (img.getRGB(x, y) >>> 24);
-                if (a != 0) img.setRGB(x, y, (a << 24) | rgb);
+                if (a != 0) { img.setRGB(x, y, (a << 24) | rgb); any = true; }
             }
+            if (!any) return ic;   // rendered empty (AbstractIcon needed a component we couldn't supply) -> leave as-is
             return new javax.swing.ImageIcon(img);
         } catch (Throwable t) { return ic; }
     }
@@ -4559,9 +4719,11 @@ public class DialogConfirmAgent {
                     if (isUpdater && rp instanceof JComponent) {
                         if (!DIALOG_BG.equals(rp.getBackground())) rp.setBackground(DIALOG_BG);
                         rp.setOpaque(true);
-                        // a touch of elevation so the small updater card reads against the busy main view
-                        if (!(rp.getBorder() instanceof javax.swing.border.LineBorder))
-                            rp.setBorder(javax.swing.BorderFactory.createLineBorder(PAL_DIVIDER, 1));
+                        // NO border line (never a line — differentiate by shade only): the #242424 card
+                        // surface on the #161616 main view is the elevation; add invisible padding so the
+                        // content is not cramped. A prior LineBorder here was the "eckig mit Rahmenlinie" bug.
+                        if (!(rp.getBorder() instanceof javax.swing.border.EmptyBorder))
+                            rp.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 10, 10, 10));
                     }
                 }
                 styleDialogContent(cp);
