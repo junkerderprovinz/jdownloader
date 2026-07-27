@@ -492,15 +492,22 @@ public class DialogConfirmAgent {
         try {
             if (original == null || key == null || !isHighlighterFast()) return original;
             String k = key.toLowerCase();
-            if (!(k.contains("lock") || k.contains("columnbutton") || k.contains("widthlocked"))) return original;
+            String tab; Color tint;
+            if (k.contains("lock") || k.contains("columnbutton") || k.contains("widthlocked")) {
+                tab = "lock"; tint = EXPANDER_LIGHT;
+            } else if (k.equals("extract")) {
+                tab = "extract"; tint = SIDEBAR_TEXT;   // JD's coloured WinRAR glyph (e.g. the Views Archiv filter) -> clean zip
+            } else {
+                return original;
+            }
             int w = original.getIconWidth() > 0 ? original.getIconWidth() : size;
             int h = original.getIconHeight() > 0 ? original.getIconHeight() : size;
             int s = Math.min(w, h); if (s <= 0) s = Math.max(w, h);
-            String ck = "lock@" + s;
+            String ck = tab + "@" + s;
             javax.swing.Icon cached = CHROME_CLEAN.get(ck);
             if (cached != null) return cached;
-            javax.swing.Icon base = tablerBase("lock", s, s);
-            javax.swing.Icon clean = (base != null) ? tintIcon(base, EXPANDER_LIGHT, null) : tintSolid(original, EXPANDER_LIGHT);
+            javax.swing.Icon base = tablerBase(tab, s, s);
+            javax.swing.Icon clean = (base != null) ? tintIcon(base, tint, null) : tintSolid(original, tint);
             CHROME_CLEAN.put(ck, clean);
             return clean;
         } catch (Throwable t) { return original; }
