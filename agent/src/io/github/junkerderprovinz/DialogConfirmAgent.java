@@ -211,6 +211,8 @@ public class DialogConfirmAgent {
                         if (EXT_TABLE.equals(className)) return patchExtTableRenderer(classfileBuffer, loader);
                         // menu hover: flip a rolled-over top-level menubar menu's text to selectionForeground (dark).
                         if (FLAT_MI_RENDERER.equals(className)) return patchMenuItemRenderer(classfileBuffer, loader);
+                        // progress bars: fixed light fill so the % string reads on the accent mouseover row too.
+                        if (EXT_PROGRESS_COL.equals(className)) return patchProgressColumn(classfileBuffer, loader);
                         return null;
                     } catch (Throwable err) {
                         System.out.println("[jd-dialog-agent] bytecode transform skipped for " + className
@@ -396,6 +398,12 @@ public class DialogConfirmAgent {
     // return true for a rolled-over top-level menubar JMenu -> FlatLaf then paints its hover text with
     // selectionForeground (= @@ACCENT_FG@@, dark). Scoped to JMenu.isTopLevelMenu() so dropdown items are untouched.
     private static final String FLAT_MI_RENDERER = "com/formdev/flatlaf/ui/FlatMenuItemRenderer";
+    // download/linkgrabber progress bars: AppWork's ExtProgressColumn fills the bar in
+    // getDefaultForeground() = getContrastBWColor(rowBackground) — WHITE on a dark row, BLACK on the
+    // yellow accent mouseover row. The "100%" string is a fixed grey, so on the mouseover row it was
+    // grey-on-black (invisible). Force the fill to a fixed light tone for highlighter so the grey string
+    // reads on EVERY row; plain-dark falls through to the original contrast logic.
+    private static final String EXT_PROGRESS_COL = "org/appwork/swing/exttable/columns/ExtProgressColumn";
     private static final String STATUS_GETICON_DESC =
             "(Ljd/controlling/packagecontroller/AbstractNode;)Ljavax/swing/Icon;";
     private static final String AGENT_INTERNAL = "io/github/junkerderprovinz/DialogConfirmAgent";
@@ -540,6 +548,55 @@ public class DialogConfirmAgent {
         }
         System.out.println("[jd-dialog-agent] patched FlatMenuItemRenderer.isArmedOrSelected -> dark hover text on menubar menus");
         return cw.toByteArray();
+    }
+
+    // progress bars: prepend to ExtProgressColumn.getDefaultForeground()Ljava/awt/Color; ->
+    //   Color c = progressFillOverride(); if (c != null) return c;
+    // so the bar FILL is a fixed light tone under highlighter (grey % string reads on the accent mouseover
+    // row too); plain-dark returns null and keeps AppWork's getContrastBWColor(background) fill.
+    private static byte[] patchProgressColumn(byte[] original, final ClassLoader loader) {
+        ClassReader cr = new ClassReader(original);
+        ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES) {
+            @Override
+            protected ClassLoader getClassLoader() { return loader != null ? loader : super.getClassLoader(); }
+        };
+        final int[] n = { 0 };
+        ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
+            @Override
+            public MethodVisitor visitMethod(int access, String name, String desc, String sig, String[] ex) {
+                MethodVisitor mv = super.visitMethod(access, name, desc, sig, ex);
+                if (!("getDefaultForeground".equals(name) && "()Ljava/awt/Color;".equals(desc))) return mv;
+                n[0]++;
+                return new MethodVisitor(Opcodes.ASM9, mv) {
+                    @Override
+                    public void visitCode() {
+                        super.visitCode();
+                        Label cont = new Label();
+                        visitMethodInsn(Opcodes.INVOKESTATIC, AGENT_INTERNAL, "progressFillOverride",
+                                "()Ljava/awt/Color;", false);
+                        visitInsn(Opcodes.DUP);
+                        visitJumpInsn(Opcodes.IFNULL, cont);
+                        visitInsn(Opcodes.ARETURN);
+                        visitLabel(cont);
+                        visitInsn(Opcodes.POP);
+                    }
+                };
+            }
+        };
+        cr.accept(cv, 0);
+        if (n[0] == 0) {
+            System.out.println("[jd-dialog-agent] ExtProgressColumn.getDefaultForeground not found — progress fill left as-is");
+            return null;
+        }
+        System.out.println("[jd-dialog-agent] patched ExtProgressColumn.getDefaultForeground -> fixed light fill (readable % on accent hover)");
+        return cw.toByteArray();
+    }
+
+    /** #hover: fixed light fill for the download/linkgrabber progress bars under highlighter (so the grey
+     *  "%" string reads on the accent mouseover row); null on plain-dark keeps AppWork's contrast-BW fill.
+     *  Called from the bytecode-patched ExtProgressColumn.getDefaultForeground (resolved via system loader). */
+    public static java.awt.Color progressFillOverride() {
+        return isHighlighterFast() ? PAL_TEXT : null;
     }
 
     // D: JD's package expander [+]/[-] and column-lock glyphs render dark because JD caches the icon in memory
@@ -4326,6 +4383,49 @@ public class DialogConfirmAgent {
         } catch (Throwable t) { return ic; }
     }
 
+    /** Strip a solid dark rectangular background baked into an image logo (the updater's JD logo shows a black
+     *  box on the #242424 surface). Flood-fill from the four corners, turning the connected near-black region
+     *  transparent, so the logo keeps its shape but the box disappears. Only fires when the corners really ARE
+     *  near-black (else returns the icon unchanged, so a logo on a transparent/light bg is never touched). */
+    private static javax.swing.Icon deBoxIcon(javax.swing.Icon ic, Component c) {
+        try {
+            int w = ic.getIconWidth(), h = ic.getIconHeight();
+            if (w <= 0 || h <= 0) return ic;
+            java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g = img.createGraphics();
+            try { ic.paintIcon(c, g, 0, 0); } catch (Throwable t) { ic.paintIcon(null, g, 0, 0); }
+            g.dispose();
+            // background sample = the four corners; only de-box if they are opaque near-black
+            int[] corners = { img.getRGB(0, 0), img.getRGB(w - 1, 0), img.getRGB(0, h - 1), img.getRGB(w - 1, h - 1) };
+            for (int cr : corners) {
+                if ((cr >>> 24) < 200) return ic;                 // a corner is transparent -> no box, leave as-is
+                int r = (cr >> 16) & 0xff, gg = (cr >> 8) & 0xff, b = cr & 0xff;
+                if (r > 40 || gg > 40 || b > 40) return ic;        // a corner is not near-black -> not a black box
+            }
+            // flood-fill the connected near-black region from every corner -> alpha 0
+            java.util.ArrayDeque<int[]> q = new java.util.ArrayDeque<int[]>();
+            boolean[] seen = new boolean[w * h];
+            int[][] starts = { {0, 0}, {w - 1, 0}, {0, h - 1}, {w - 1, h - 1} };
+            for (int[] s : starts) { int idx = s[1] * w + s[0]; if (!seen[idx]) { seen[idx] = true; q.add(s); } }
+            while (!q.isEmpty()) {
+                int[] p = q.poll(); int x = p[0], y = p[1];
+                int px = img.getRGB(x, y);
+                int r = (px >> 16) & 0xff, gg = (px >> 8) & 0xff, b = px & 0xff;
+                if ((px >>> 24) < 40) continue;                    // already transparent
+                if (r > 60 || gg > 60 || b > 60) continue;         // edge of the logo -> stop
+                img.setRGB(x, y, px & 0x00ffffff);                 // make transparent
+                int[][] nb = { {x - 1, y}, {x + 1, y}, {x, y - 1}, {x, y + 1} };
+                for (int[] nn : nb) {
+                    int nx = nn[0], ny = nn[1];
+                    if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+                    int nidx = ny * w + nx;
+                    if (!seen[nidx]) { seen[nidx] = true; q.add(nn); }
+                }
+            }
+            return new javax.swing.ImageIcon(img);
+        } catch (Throwable t) { return ic; }
+    }
+
     /** S1(r59): paint-time mono wrapper. Renders the underlying (possibly ANIMATED) icon to an offscreen
      *  at PAINT time, replaces every non-transparent pixel's RGB with `tone` (alpha kept), and draws it —
      *  so an animated icon (JD's self-updater) is mono'd frame-by-frame instead of a static tint catching
@@ -4766,12 +4866,17 @@ public class DialogConfirmAgent {
                     installBtnHoverFg(ab);
                     installBtnHoverBg(ab);
                 } else if (ch instanceof javax.swing.JLabel && ((javax.swing.JLabel) ch).getIcon() != null) {
-                    // mono EVERY dialog label icon (e.g. the colourful archive/extract glyph) — dialogs
-                    // are chrome, not content, so this never touches a hoster favicon or file thumbnail.
                     javax.swing.JLabel l = (javax.swing.JLabel) ch;
-                    if (l.getClientProperty("jdp.monoLbl") != l.getIcon()) {
-                        javax.swing.Icon m = tablerIcon(l.getIcon(), SIDEBAR_TEXT, l);
-                        if (m != l.getIcon()) { l.setIcon(m); l.putClientProperty("jdp.monoLbl", m); }
+                    javax.swing.Icon cur = l.getIcon();
+                    if (l.getClientProperty("jdp.monoLbl") != cur) {
+                        // A LARGE image is a LOGO (the updater's JD logo) — keep it, just strip the baked-in
+                        // black box so it sits clean on the #242424 surface (never a mono silhouette, never a
+                        // box). Small icons are chrome glyphs -> mono as before (favicons/thumbnails are in
+                        // the download table, never in a dialog).
+                        javax.swing.Icon m;
+                        if (cur.getIconWidth() >= 40 || cur.getIconHeight() >= 40) m = deBoxIcon(cur, l);
+                        else m = tablerIcon(cur, SIDEBAR_TEXT, l);
+                        if (m != cur) { l.setIcon(m); l.putClientProperty("jdp.monoLbl", m); }
                     }
                 } else if (ch instanceof JComponent) {
                     stripFramingBorder((JComponent) ch);
