@@ -545,8 +545,11 @@ public class DialogConfirmAgent {
                 collectTables(w, tabs);
                 for (JTable t : tabs) {
                     javax.swing.table.TableColumnModel cm = t.getColumnModel();
-                    for (int i = 0; i < cm.getColumnCount(); i++)
-                        swapLockedWidth(cm.getColumn(i).getHeaderRenderer());
+                    for (int i = 0; i < cm.getColumnCount(); i++) {
+                        Object hr = cm.getColumn(i).getHeaderRenderer();
+                        if (hr instanceof HoverHeaderRenderer) hr = ((HoverHeaderRenderer) hr).base;   // #11: unwrap
+                        swapLockedWidth(hr);
+                    }
                 }
             }
         } catch (Throwable ignore) { }
@@ -2408,12 +2411,10 @@ public class DialogConfirmAgent {
     }
 
     // #11: the download/linkgrabber column-title bar a touch taller + the hovered column title in the accent.
-    // Pinning the header's preferredSize would freeze its WIDTH (breaking horizontal scroll/column resize), so
-    // grow it the safe way: a wrapped header renderer that adds vertical padding (JTableHeader sizes itself to
-    // the tallest header cell) and paints the hovered column's text in the accent. Hover tracked on the header
-    // via a MouseMotionListener + client property. Installed once per header (guarded). Only the two main
-    // content tables (config tables keep the separate flat DARK_HEADER treatment).
-    private static final int HEADER_H = 28;
+    // Pinning the header's preferredSize froze its WIDTH (and the ExtTable ignored it anyway), so grow it the
+    // safe way: wrap the per-column ExtTableHeaderRenderer and add vertical padding (JTableHeader sizes itself
+    // to the tallest header cell) + paint the hovered column's text in the accent. Hover tracked on the header
+    // via a MouseMotionListener + client property. Only the two main content tables.
     private static void growTableHeaders() {
         for (Window w : Window.getWindows()) {
             if (!w.isShowing()) continue;
@@ -2424,18 +2425,8 @@ public class DialogConfirmAgent {
                 if (!(sn.contains("DownloadsTable") || sn.contains("LinkGrabberTable"))) continue;
                 javax.swing.table.JTableHeader h = t.getTableHeader();
                 if (h == null) continue;
-                installHeaderHover(h);
-                // #11 taller: the ExtTable header ignores TableHeader.height + didn't grow from renderer padding,
-                // so pin the preferred HEIGHT to 28. Track WIDTH to the table so horizontal scroll/column resize
-                // stay intact (re-applied when the table width changes). Cheap: only touches on a real change.
-                int tw = t.getWidth();
-                if (tw > 0) {
-                    Dimension ps = h.getPreferredSize();
-                    if (ps == null || ps.height != HEADER_H || ps.width != tw) {
-                        h.setPreferredSize(new Dimension(tw, HEADER_H));
-                        h.revalidate();
-                    }
-                }
+                installHeaderHover(h);           // once: mouse listeners + default-renderer wrap
+                wrapHeaderColumnRenderers(h);    // every tick: wrap the per-column ExtTableHeaderRenderers
             }
         }
     }
@@ -2462,20 +2453,24 @@ public class DialogConfirmAgent {
         javax.swing.table.TableCellRenderer base = h.getDefaultRenderer();
         if (base != null && !(base instanceof HoverHeaderRenderer))
             h.setDefaultRenderer(new HoverHeaderRenderer(base, h));
-        // JD's ExtTable sets a PER-COLUMN header renderer on each column; wrap those too (the default renderer
-        // above may never be used). Skip the width-lock ExtTableHeaderRenderer columns so swapLockedWidth's
-        // class-name match still works (those keep JD's own renderer; the padding just won't apply there).
-        javax.swing.table.TableColumnModel cm = h.getColumnModel();
-        for (int i = 0; i < cm.getColumnCount(); i++) {
-            javax.swing.table.TableColumn tc = cm.getColumn(i);
-            javax.swing.table.TableCellRenderer hr = tc.getHeaderRenderer();
-            if (hr == null || hr instanceof HoverHeaderRenderer) continue;
-            if (hr.getClass().getName().contains("ExtTableHeaderRenderer")) continue;   // keep for width-lock
-            tc.setHeaderRenderer(new HoverHeaderRenderer(hr, h));
-        }
+    }
+    // JD's ExtTable renders the header from a PER-COLUMN ExtTableHeaderRenderer (the default renderer above is
+    // never used), so wrap those to get the taller row + accent hover. Run every tick (NOT guarded) so columns
+    // JD rebuilds/reorders get re-wrapped; fixWidthLockIcon unwraps HoverHeaderRenderer so the padlock swap still
+    // finds the real ExtTableHeaderRenderer underneath.
+    private static void wrapHeaderColumnRenderers(javax.swing.table.JTableHeader h) {
+        try {
+            javax.swing.table.TableColumnModel cm = h.getColumnModel();
+            for (int i = 0; i < cm.getColumnCount(); i++) {
+                javax.swing.table.TableColumn tc = cm.getColumn(i);
+                javax.swing.table.TableCellRenderer hr = tc.getHeaderRenderer();
+                if (hr == null || hr instanceof HoverHeaderRenderer) continue;
+                tc.setHeaderRenderer(new HoverHeaderRenderer(hr, h));
+            }
+        } catch (Throwable ignore) { }
     }
     private static final class HoverHeaderRenderer implements javax.swing.table.TableCellRenderer {
-        private final javax.swing.table.TableCellRenderer base;
+        final javax.swing.table.TableCellRenderer base;   // package-visible so fixWidthLockIcon can unwrap
         private final javax.swing.table.JTableHeader hdr;
         HoverHeaderRenderer(javax.swing.table.TableCellRenderer b, javax.swing.table.JTableHeader h) { base = b; hdr = h; }
         public Component getTableCellRendererComponent(JTable t, Object v, boolean s, boolean f, int r, int col) {
@@ -2484,6 +2479,16 @@ public class DialogConfirmAgent {
                 Object hc = hdr.getClientProperty("jdp.hoverCol");
                 boolean hot = (hc instanceof Integer) && ((Integer) hc).intValue() == col;
                 if (c != null) c.setForeground(hot ? accentColor() : SIDEBAR_TEXT);   // #11: accent the hovered title
+                // #11 taller: pad the header cell vertically so the whole column-title row grows to ~28px.
+                // The real ExtTableHeaderRenderer is measured for the header height, so a border on it works
+                // where setPreferredSize on the header did not.
+                if (c instanceof JComponent) {
+                    JComponent jc = (JComponent) c;
+                    javax.swing.border.Border cur = jc.getBorder();
+                    java.awt.Insets in = (cur == null) ? new java.awt.Insets(0, 0, 0, 0) : cur.getBorderInsets(jc);
+                    if (in.top < 6)
+                        jc.setBorder(new javax.swing.border.EmptyBorder(6, Math.max(in.left, 6), 6, Math.max(in.right, 6)));
+                }
             } catch (Throwable ig) { }
             return c;
         }
@@ -2500,21 +2505,35 @@ public class DialogConfirmAgent {
         for (Component ch : c.getComponents()) {
             if (isMainToolbar(ch.getClass()) && ch instanceof JComponent) {
                 JComponent tb = (JComponent) ch;
-                if (tb.getClientProperty("jdp.tbAligned") == null) {
-                    javax.swing.border.Border b = tb.getBorder();
-                    java.awt.Insets in = (b == null) ? new java.awt.Insets(0, 0, 0, 0) : b.getBorderInsets(tb);
-                    Component first = (tb.getComponentCount() > 0) ? tb.getComponent(0) : null;
-                    System.out.println("[jd-agent-diag4] TOOLBAR border=" + (b == null ? "null" : b.getClass().getName())
-                            + " insL=" + in.left + " firstX=" + (first == null ? -1 : first.getX())
-                            + " firstCls=" + (first == null ? "-" : first.getClass().getSimpleName()));
-                    if (in.left > 8) {
-                        tb.setBorder(javax.swing.BorderFactory.createEmptyBorder(in.top, 8, in.bottom, in.right));
-                        tb.revalidate(); tb.repaint();
+                // DIAG: the toolbar has 0 DIRECT children (content nested) — walk descendants for the leftmost
+                // visible button and dump its window-x + parent chain, so #1's offset source is pinpointed.
+                if (tb.getComponentCount() > 0 && DIAG3.add("TBLEAF")) {
+                    Component[] best = { null };
+                    int[] bestX = { Integer.MAX_VALUE };
+                    findLeftmostButton(tb, tb, best, bestX);
+                    if (best[0] != null) {
+                        StringBuilder chain = new StringBuilder();
+                        int n = 0;
+                        for (Container p = best[0].getParent(); p != null && p != tb.getParent() && n < 6; p = p.getParent(), n++) {
+                            javax.swing.border.Border pb = (p instanceof JComponent) ? ((JComponent) p).getBorder() : null;
+                            java.awt.Insets pin = (pb == null) ? new java.awt.Insets(0,0,0,0) : pb.getBorderInsets((JComponent) p);
+                            chain.append(p.getClass().getSimpleName()).append("(x=").append(p.getX()).append(",insL=").append(pin.left).append(")/");
+                        }
+                        System.out.println("[jd-agent-diag4] TBLEAF winX=" + bestX[0] + " cls=" + best[0].getClass().getSimpleName()
+                                + " chain=" + chain);
                     }
-                    tb.putClientProperty("jdp.tbAligned", Boolean.TRUE);
                 }
             } else if (ch instanceof Container) alignToolbarIn((Container) ch);
         }
+    }
+    private static void findLeftmostButton(Component c, Component root, Component[] best, int[] bestX) {
+        if (c instanceof AbstractButton && c.isVisible() && c.getWidth() > 0 && c.isShowing()) {
+            try {
+                int sx = c.getLocationOnScreen().x;   // window is maximized at screen x0 -> screen x ~= window x
+                if (sx < bestX[0]) { bestX[0] = sx; best[0] = c; }
+            } catch (Throwable ig) { }
+        }
+        if (c instanceof Container) for (Component ch : ((Container) c).getComponents()) findLeftmostButton(ch, root, best, bestX);
     }
 
     // ------------------------------------------------------ borderless config tables (round 14)
@@ -3225,11 +3244,15 @@ public class DialogConfirmAgent {
                 setUiColorField(ui, "selectionBackground", accentColor());
                 setUiColorField(ui, "selectionForeground", accentFg());
             }
-            if (DIAG3.add("MI:" + mi.getClass().getName() + "|" + (ui == null ? "-" : ui.getClass().getName())))
+            if (DIAG3.add("MI:" + mi.getClass().getName() + "|" + (ui == null ? "-" : ui.getClass().getName()))) {
+                Object lo = mi.getClientProperty("jdp.miLight"), hi = mi.getClientProperty("jdp.miDark");
+                String los = (lo instanceof javax.swing.Icon) ? (((javax.swing.Icon) lo).getIconWidth() + "x" + ((javax.swing.Icon) lo).getIconHeight() + " " + lo.getClass().getSimpleName()) : String.valueOf(lo);
+                String his = (hi instanceof javax.swing.Icon) ? (((javax.swing.Icon) hi).getIconWidth() + "x" + ((javax.swing.Icon) hi).getIconHeight() + " " + hi.getClass().getSimpleName()) : String.valueOf(hi);
                 System.out.println("[jd-agent-diag4] MENUITEM cls=" + mi.getClass().getName()
                         + " ui=" + (ui == null ? "-" : ui.getClass().getName())
-                        + " itemBg=" + mi.getBackground()
-                        + " UIM.selBg=" + javax.swing.UIManager.getColor("MenuItem.selectionBackground"));
+                        + " icon=" + (mi.getIcon() == null ? "-" : mi.getIcon().getClass().getSimpleName())
+                        + " miLight=" + los + " miDark=" + his);
+            }
         } catch (Throwable ignore) { }
     }
 
