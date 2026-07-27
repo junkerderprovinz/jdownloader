@@ -227,6 +227,25 @@ public class DialogConfirmAgent {
             @Override
             public MethodVisitor visitMethod(int access, String name, String desc, String sig, String[] ex) {
                 MethodVisitor mv = super.visitMethod(access, name, desc, sig, ex);
+                // (un)installListeners() deref circleBar too: on a FlatLaf LAF re-apply (updateComponentTreeUI ->
+                // CircledProgressBar.updateUI -> setUI -> uninstallUI -> uninstallListeners) circleBar can be null
+                // -> NPE (SEVERE in the log). Guard those the simple way: return early when circleBar is null
+                // (no rebind — no component arg here). Fixes the SEVERE the corner-ring hide surfaced.
+                if (("uninstallListeners".equals(name) || "installListeners".equals(name)) && "()V".equals(desc)) {
+                    patchedCount[0]++;
+                    return new MethodVisitor(Opcodes.ASM9, mv) {
+                        @Override
+                        public void visitCode() {
+                            super.visitCode();
+                            Label go = new Label();
+                            visitVarInsn(Opcodes.ALOAD, 0);
+                            visitFieldInsn(Opcodes.GETFIELD, CPB_UI, "circleBar", CPB_FIELD_DESC);
+                            visitJumpInsn(Opcodes.IFNONNULL, go);
+                            visitInsn(Opcodes.RETURN);
+                            visitLabel(go);
+                        }
+                    };
+                }
                 final int cIdx;
                 final boolean isVoid;
                 if ("getPreferredSize".equals(name) && "(Ljavax/swing/JComponent;)Ljava/awt/Dimension;".equals(desc)) {
@@ -237,6 +256,7 @@ public class DialogConfirmAgent {
                 } else {
                     return mv;
                 }
+                final boolean isPaint = "paint".equals(name);   // #10: only paint() gets the clean-ring override
                 patchedCount[0]++;
                 return new MethodVisitor(Opcodes.ASM9, mv) {
                     @Override
@@ -271,6 +291,19 @@ public class DialogConfirmAgent {
                             visitInsn(Opcodes.ARETURN);
                         }
                         visitLabel(proceed);
+                        // #10: if (paintCleanRing(g, c)) return;  -> our minimal accent spinner replaces JD's
+                        // coloured globe/zip/logo. paintCleanRing returns false (leave JD's paint) when not
+                        // highlighter or on any reflection error, so plain-dark + other builds are untouched.
+                        if (isPaint) {
+                            visitVarInsn(Opcodes.ALOAD, 1);      // Graphics g
+                            visitVarInsn(Opcodes.ALOAD, cIdx);   // JComponent c
+                            visitMethodInsn(Opcodes.INVOKESTATIC, AGENT_INTERNAL, "paintCleanRing",
+                                    "(Ljava/awt/Graphics;Ljava/awt/Component;)Z", false);
+                            Label jdPaint = new Label();
+                            visitJumpInsn(Opcodes.IFEQ, jdPaint);
+                            visitInsn(Opcodes.RETURN);
+                            visitLabel(jdPaint);
+                        }
                     }
                 };
             }
@@ -745,7 +778,6 @@ public class DialogConfirmAgent {
             monoSectionHeaders();   // #6: mono every section-header icon (extensions/packagizer headers too)
             monoCornerIcons();      // #10: mono any keyless corner status glyphs we can reach via setIcon
             growTableHeaders();     // #11: accent-on-hover column title
-            styleCornerProgress();  // #10: mono glyph + accent loading fill on the corner update/extractor rings
             recolorDialogs();
             dimModalBackdrops();
         }
@@ -756,87 +788,54 @@ public class DialogConfirmAgent {
         }
     }
 
-    // #10: the two bottom-right status rings — org.jdownloader.updatev2.UpdateProgress (update check) and
-    // org.jdownloader.extensions.extraction.gui.ExtractorProgress (extraction) — are AppWork CircledProgressBars
-    // (via IconedProcessIndicator) that draw a glyph via ImagePainters and fill it as progress advances. The glyph
-    // was GREEN/grey ("alte Logos"). Each painter carries its OWN `foreground` tint Color: the value/fill painters
-    // held green, the nonvalue/base painters grey. Recolour them so the IDLE glyph reads mono-light and the running
-    // FILL reads accent — i.e. a clean mono icon whose accent fill IS the "loading animation when it runs" (the
-    // user's ask). The widget's own foreground (the ring) goes accent too. Idempotent (skip once the tint matches).
-    private static void styleCornerProgress() {
-        for (Window w : Window.getWindows()) if (w.isShowing()) styleCornerProgressIn(w, w.getWidth(), w.getHeight());
-    }
-    private static void styleCornerProgressIn(Component c, int winW, int winH) {
-        String cn = c.getClass().getName();
-        // ExtractorProgress: its zip glyph is a TEMPLATE the painter tints by foreground -> foreground recolour
-        //   monos it (grey idle, accent fill while extracting = the "loading animation"). The OTHER corner status
-        //   ring (the green update/refresh globe) is drawn via a custom paint path the painters don't cover, so
-        //   per the user it's HIDDEN. Match it structurally: any CircledProgressBar in the extreme bottom-right
-        //   corner that is NOT the extractor. (A self-update indicator CA/Unraid handles anyway.)
-        if (cn.endsWith("ExtractorProgress")) recolorCircleProgress(c, null);
-        else if (isCircledProgress(c.getClass()) && inBottomRightCorner(c, winW, winH)) {
-            if (c.isVisible()) c.setVisible(false);
-        }
-        if (c instanceof Container) for (Component ch : ((Container) c).getComponents()) styleCornerProgressIn(ch, winW, winH);
-    }
-    private static boolean isCircledProgress(Class<?> k) {
-        for (; k != null && k != Object.class; k = k.getSuperclass())
-            if (k.getName().endsWith("CircledProgressBar")) return true;
-        return false;
-    }
-    private static boolean inBottomRightCorner(Component c, int winW, int winH) {
+    // #10: the JD status rings (org.jdownloader.updatev2.UpdateProgress = update check, ExtractorProgress =
+    // extraction, and the LinkCollector crawl indicator that pops up when a link is added) are all AppWork
+    // CircledProgressBars that paint a COLOURED animated globe/zip/logo. The painters resisted a clean recolour
+    // (the update globe draws via a custom path), so instead we REPLACE the whole ring paint (via the patched
+    // BasicCircleProgressBarUI.paint) with ONE minimal, uniform animation: nothing while idle, and a clean accent
+    // arc while a process runs — a rotating spinner when indeterminate (crawling), a filling arc when determinate
+    // (extraction %). Fail-safe: any reflection hiccup returns false so JD's own paint runs unchanged.
+    public static boolean paintCleanRing(java.awt.Graphics g0, Component c) {
         try {
-            if (c.getParent() == null || !c.isShowing() || winW < 400) return false;
-            Window win = javax.swing.SwingUtilities.getWindowAncestor(c);
-            if (win == null) return false;
-            java.awt.Point p = javax.swing.SwingUtilities.convertPoint(c.getParent(), c.getLocation(), win);
-            return p.x > winW - 120 && p.y > winH - 60;
-        } catch (Throwable t) { return false; }
-    }
-    private static void recolorCircleProgress(Component c, String replaceKey) {
-        try {
-            if (!accentColor().equals(c.getForeground())) c.setForeground(accentColor());   // the progress ring
-            javax.swing.Icon repl = null;
-            if (replaceKey != null) {
-                javax.swing.Icon base = tablerBase(replaceKey, 16, 16);
-                if (base != null) repl = tintSolid(base, EXPANDER_LIGHT);   // a clean light mono glyph, drawable
+            if (!isHighlighterFast() || !(g0 instanceof Graphics2D) || c == null) return false;
+            Object model = null; boolean indet = false;
+            try { model = c.getClass().getMethod("getModel").invoke(c); } catch (Throwable ig) { }
+            try { Object b = c.getClass().getMethod("isIndeterminate").invoke(c); indet = Boolean.TRUE.equals(b); } catch (Throwable ig) { }
+            int val = 0, min = 0, max = 0;
+            if (model != null) {
+                try {
+                    val = (Integer) model.getClass().getMethod("getValue").invoke(model);
+                    min = (Integer) model.getClass().getMethod("getMinimum").invoke(model);
+                    max = (Integer) model.getClass().getMethod("getMaximum").invoke(model);
+                } catch (Throwable ig) { }
             }
-            boolean changed = false;
-            for (Class<?> k = c.getClass(); k != null && k != Object.class; k = k.getSuperclass())
-                for (Field f : k.getDeclaredFields()) {
-                    if (!f.getName().contains("Painter")) continue;
-                    try {
-                        f.setAccessible(true);
-                        Object p = f.get(c);
-                        if (p == null) continue;
-                        java.lang.reflect.Field fg = null;
-                        try { fg = p.getClass().getDeclaredField("foreground"); } catch (NoSuchFieldException e) { }
-                        if (fg != null) {
-                            fg.setAccessible(true);
-                            Object cur = fg.get(p);
-                            if (cur instanceof Color) {
-                                // value/fill painters -> accent (the running "loading" fill); nonvalue/base -> mono light glyph.
-                                boolean nonValue = f.getName().toLowerCase().contains("nonvalue");
-                                Color want = nonValue ? EXPANDER_LIGHT : accentColor();
-                                if (!want.equals(cur)) { fg.set(p, want); changed = true; }
-                            }
-                        }
-                        // UpdateProgress only: replace the coloured globe image with the fresh light Tabler glyph.
-                        if (repl instanceof javax.swing.ImageIcon) {
-                            java.lang.reflect.Field img = null;
-                            try { img = p.getClass().getDeclaredField("image"); } catch (NoSuchFieldException e) { }
-                            if (img != null) {
-                                img.setAccessible(true);
-                                Object curImg = img.get(p);
-                                if (curImg instanceof javax.swing.Icon && curImg != repl && !EXT_MONO_MARK.containsKey(curImg)) {
-                                    img.set(p, repl); EXT_MONO_MARK.put(repl, Boolean.TRUE); changed = true;
-                                }
-                            }
-                        }
-                    } catch (Throwable ig) { }
+            boolean active = c.isEnabled() && (indet || (val > min && val < max));
+            Graphics2D g = (Graphics2D) g0;
+            int w = c.getWidth(), h = c.getHeight();
+            int d = Math.min(w, h) - 5;
+            if (d < 6) return true;                              // too small to draw -> just skip JD's paint
+            int x = (w - d) / 2, y = (h - d) / 2;
+            if (active) {
+                Object aa = g.getRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING);
+                g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
+                java.awt.Stroke os = g.getStroke();
+                g.setStroke(new java.awt.BasicStroke(Math.max(1.6f, d / 9f),
+                        java.awt.BasicStroke.CAP_ROUND, java.awt.BasicStroke.JOIN_ROUND));
+                g.setColor(new Color(0x39, 0x39, 0x39));         // faint track
+                g.drawOval(x, y, d, d);
+                g.setColor(accentColor());                       // accent arc
+                if (indet) {
+                    int start = (int) ((System.currentTimeMillis() / 4) % 360);   // rotate ~90°/s
+                    g.drawArc(x, y, d, d, 90 - start, -110);
+                } else {
+                    int extent = (int) (360.0 * (val - min) / Math.max(1, max - min));
+                    g.drawArc(x, y, d, d, 90, -extent);
                 }
-            if (changed) c.repaint();
-        } catch (Throwable ig) { }
+                g.setStroke(os);
+                if (aa != null) g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, aa);
+            }
+            return true;                                          // handled -> JD's coloured globe/zip is skipped
+        } catch (Throwable t) { return false; }                   // fail-safe -> let JD paint
     }
 
     // Opt-in geometry logging (JD_DEBUG_GEO=1). Off by default so a box test / the
