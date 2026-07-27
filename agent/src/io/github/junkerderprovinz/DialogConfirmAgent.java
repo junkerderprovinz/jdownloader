@@ -491,14 +491,17 @@ public class DialogConfirmAgent {
         try {
             if (original == null || key == null || !isHighlighterFast()) return original;
             String k = key.toLowerCase();
+            // DIAG (temporary): log every distinct NewTheme icon key that carries lock/width/sort/exttable, to
+            // find the actual column-lock key/path (the narrow lockColumn/widthLocked match caught nothing).
+            if ((k.contains("lock") || k.contains("width") || k.contains("sort") || k.contains("exttable"))
+                    && CHROME_DIAG.add("K:" + key))
+                System.out.println("[jd-agent-diag] NTKEY " + key + " size=" + size);
             String tab = null;
-            if (k.contains("lockcolumn") || k.contains("widthlocked")) tab = "lock";
+            if (k.contains("lockcolumn") || k.contains("widthlocked") || k.contains("lock")) tab = "lock";
             if (tab == null) return original;
             int w = original.getIconWidth() > 0 ? original.getIconWidth() : size;
             int h = original.getIconHeight() > 0 ? original.getIconHeight() : size;
             int s = Math.min(w, h); if (s <= 0) s = Math.max(w, h);
-            if (CHROME_DIAG.add(key + "@" + s))   // DIAG (temporary): confirm the lock reaches NewTheme.getIcon
-                System.out.println("[jd-agent-diag] chrome key=" + key + " size=" + size + " -> " + tab + " " + s + "px");
             String ck = tab + "@" + s;
             javax.swing.Icon cached = CHROME_CLEAN.get(ck);
             if (cached != null) return cached;
@@ -4141,7 +4144,7 @@ public class DialogConfirmAgent {
             if (!w.isShowing()) continue;
             Container host = findViewsHost(w);
             if (host == null) continue;
-            dumpViewsIcons(host);   // DIAG (temporary): Views file-type (Archiv) icon keys for C
+            monoViewsTables(host);  // C: mono/replace the Views sub-table file-type icons (Archiv -> zip); hoster kept
             boolean changed = badgeViewsHeaders(host);
             changed |= stripHeaderScrollDividers(host);
             changed |= flattenViewsGrids(host);   // #9: kill any sub-row ExtTable grid hairlines
@@ -4202,34 +4205,24 @@ public class DialogConfirmAgent {
         return changed;
     }
 
-    // DIAG (temporary): dump the Views sub-table cell icon keys (the Archiv file-type filter) so C can map it.
-    private static boolean viewsIconsDumped = false;
-    private static void dumpViewsIcons(Container host) {
-        if (viewsIconsDumped) return;
+    // C: wrap the Views sub-tables' cell renderers so their keyed file-type icons (the Archiv filter carries
+    // key "extract") become clean mono Tabler icons, while the hoster favicon (DomainInfo renderer) is left be.
+    private static void monoViewsTables(Container host) {
         try {
             java.util.List<JTable> tabs = new java.util.ArrayList<JTable>();
             collectTables(host, tabs);
-            java.util.List<String> out = new java.util.ArrayList<String>();
             for (JTable t : tabs) {
-                for (int r = 0; r < Math.min(t.getRowCount(), 2); r++)
-                    for (int col = 0; col < t.getColumnCount(); col++) {
-                        try {
-                            Component cell = t.prepareRenderer(t.getCellRenderer(r, col), r, col);
-                            javax.swing.Icon ic = viewsCellIcon(cell);
-                            if (ic != null && ic.getIconWidth() > 0)
-                                out.add(t.getClass().getSimpleName() + ".c" + col + "=" + iconKey(ic) + ":" + ic.getClass().getSimpleName());
-                        } catch (Throwable ig) { }
-                    }
+                javax.swing.table.TableColumnModel cm = t.getColumnModel();
+                for (int i = 0; i < cm.getColumnCount(); i++) {
+                    javax.swing.table.TableColumn tc = cm.getColumn(i);
+                    javax.swing.table.TableCellRenderer cur = tc.getCellRenderer();
+                    if (cur == null || cur instanceof MonoIconRenderer) continue;
+                    String cn = cur.getClass().getName().toLowerCase();
+                    if (cn.contains("favicon") || cn.contains("hoster") || cn.contains("domain")) continue;   // keep hoster
+                    tc.setCellRenderer(new MonoIconRenderer(cur));
+                }
             }
-            if (!out.isEmpty()) { viewsIconsDumped = true; System.out.println("[jd-agent-diag] VIEWSICONS " + out); }
-        } catch (Throwable ig) { }
-    }
-    private static javax.swing.Icon viewsCellIcon(Component c) {
-        if (c instanceof javax.swing.JLabel) return ((javax.swing.JLabel) c).getIcon();
-        if (c instanceof AbstractButton) return ((AbstractButton) c).getIcon();
-        if (c instanceof Container)
-            for (Component ch : ((Container) c).getComponents()) { javax.swing.Icon i = viewsCellIcon(ch); if (i != null) return i; }
-        return null;
+        } catch (Throwable ignore) { }
     }
 
     /** #9: flatten the grid hairlines in the LinkGrabber-Views sub-section ExtTables. Those tables sit on
