@@ -741,6 +741,8 @@ public class DialogConfirmAgent {
             stylePropertiesPanel(); // #4: flatten the bottom package/link properties strip (no fine lines)
             monoSectionHeaders();   // #6: mono every section-header icon (extensions/packagizer headers too)
             monoCornerIcons();      // #10: mono the green reconnect + grey zip glyphs in the bottom-right corner
+            growTableHeaders();     // #11: taller column-title bar + accent-on-hover column title
+            alignToolbarLeft();     // #1: line the toolbar's leading edge up with the tabs/table
             hlDiag3();              // DIAG (temporary): special settings panels + properties panel + corner icons
             hlDiag4();              // DIAG (temporary): bar origins + progress bar + field borders + progress widgets
             recolorDialogs();
@@ -1689,6 +1691,18 @@ public class DialogConfirmAgent {
                         Color fill = isHighlighter() ? accentColor() : BAR_FILL;
                         if (!fill.equals(pb.getForeground())) pb.setForeground(fill);
                         if (!BAR_TRACK.equals(pb.getBackground())) pb.setBackground(BAR_TRACK);
+                        // #2: the "%" text must auto-flip so it reads on BOTH sides of the fill edge.
+                        // BasicProgressBarUI.paintString draws the string in selectionForeground where it
+                        // overlaps the FILL and in selectionBackground over the TRACK. The bars cached
+                        // FlatLaf's light defaults (#eeeeee/#dddddd) at UI-install (our ProgressBar.selection*
+                        // defaults landed too late), so light-on-yellow was invisible. Pin per instance:
+                        // DARK over the accent fill, LIGHT over the dark track.
+                        if (isHighlighter()) {
+                            Color overFill = accentFg();          // dark % on the yellow fill
+                            Color overTrack = SIDEBAR_TEXT;        // light % on the #262626 track
+                            if (!overFill.equals(pb.getSelectionForeground())) pb.setSelectionForeground(overFill);
+                            if (!overTrack.equals(pb.getSelectionBackground())) pb.setSelectionBackground(overTrack);
+                        }
                     }
                 } catch (Exception ignore) { }
             }
@@ -2105,7 +2119,25 @@ public class DialogConfirmAgent {
                     System.out.println("[jd-agent-diag4] HEADER " + t.getClass().getSimpleName() + " hHeight="
                             + h.getHeight() + " hdrRenderer=" + (h.getDefaultRenderer() == null ? "-" : h.getDefaultRenderer().getClass().getSimpleName()));
             }
+            diag4Nine(w);   // #9: settings sidebar vs content bottom
         } catch (Throwable ig) { }
+    }
+    // #9: find the settings ConfigurationPanel and dump its direct children (sidebar tile column + content
+    // panel) with bounds, so we see which one ends short of the other at the bottom.
+    private static void diag4Nine(Component c) {
+        try {
+            if (c.getClass().getSimpleName().equals("ConfigurationPanel") && c instanceof Container && DIAG3.add("NINE")) {
+                Container cp = (Container) c;
+                System.out.println("[jd-agent-diag4] NINE ConfigurationPanel b=" + cp.getX() + "," + cp.getY()
+                        + " " + cp.getWidth() + "x" + cp.getHeight());
+                for (Component ch : cp.getComponents())
+                    System.out.println("[jd-agent-diag4]   NINE-CHILD " + ch.getClass().getName() + " b="
+                            + ch.getX() + "," + ch.getY() + " " + ch.getWidth() + "x" + ch.getHeight()
+                            + " (bottom=" + (ch.getY() + ch.getHeight()) + ")");
+                return;
+            }
+        } catch (Throwable ig) { }
+        if (c instanceof Container) for (Component ch : ((Container) c).getComponents()) diag4Nine(ch);
     }
     private static void diag4BarWalk(Component c, Window win) {
         try {
@@ -2129,17 +2161,20 @@ public class DialogConfirmAgent {
         try {
             String cn = c.getClass().getName();
             if ((cn.endsWith("ExtractorProgress") || cn.endsWith("UpdateProgress")) && DIAG3.add("PW:" + cn)) {
-                StringBuilder sb = new StringBuilder();
+                StringBuilder sup = new StringBuilder();
+                for (Class<?> k = c.getClass(); k != null && k != Object.class; k = k.getSuperclass())
+                    sup.append(k.getName()).append(" < ");
+                StringBuilder ch = new StringBuilder();
+                if (c instanceof Container) for (Component cc : ((Container) c).getComponents())
+                    ch.append(cc.getClass().getName()).append(",");
+                StringBuilder allF = new StringBuilder();
                 for (Class<?> k = c.getClass(); k != null && k != Object.class; k = k.getSuperclass())
                     for (java.lang.reflect.Field f : k.getDeclaredFields()) {
                         if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) continue;
-                        if (Color.class.isAssignableFrom(f.getType()) || javax.swing.Icon.class.isAssignableFrom(f.getType())) {
-                            try { f.setAccessible(true); Object v = f.get(c);
-                                sb.append(f.getName()).append("=").append(v).append("; ");
-                            } catch (Throwable ig) { }
-                        }
+                        allF.append(f.getName()).append(":").append(f.getType().getSimpleName()).append(" ");
                     }
-                System.out.println("[jd-agent-diag4] PROGWIDGET " + cn + " fields: " + sb);
+                System.out.println("[jd-agent-diag4] PROGWIDGET " + cn + "\n   super=" + sup + "\n   children=" + ch
+                        + "\n   fields=" + allF);
             }
             if (inConfigPanel(c) && (c instanceof javax.swing.text.JTextComponent || c instanceof javax.swing.JComboBox
                     || c instanceof javax.swing.JSpinner || (c instanceof AbstractButton && !isCheckLike(c)))) {
@@ -2349,6 +2384,113 @@ public class DialogConfirmAgent {
             }
         } catch (Throwable ig) { }
         if (c instanceof Container) for (Component ch : ((Container) c).getComponents()) monoCornerIn(ch, win, winW, winH);
+    }
+
+    // #11: the download/linkgrabber column-title bar a touch taller + the hovered column title in the accent.
+    // Pinning the header's preferredSize would freeze its WIDTH (breaking horizontal scroll/column resize), so
+    // grow it the safe way: a wrapped header renderer that adds vertical padding (JTableHeader sizes itself to
+    // the tallest header cell) and paints the hovered column's text in the accent. Hover tracked on the header
+    // via a MouseMotionListener + client property. Installed once per header (guarded). Only the two main
+    // content tables (config tables keep the separate flat DARK_HEADER treatment).
+    private static final int HEADER_PAD_V = 6;   // top+bottom padding -> ~text(15)+12 = ~27-28px header
+    private static void growTableHeaders() {
+        for (Window w : Window.getWindows()) {
+            if (!w.isShowing()) continue;
+            List<JTable> tables = new ArrayList<>();
+            collectTables(w, tables);
+            for (JTable t : tables) {
+                String sn = t.getClass().getSimpleName();
+                if (!(sn.contains("DownloadsTable") || sn.contains("LinkGrabberTable"))) continue;
+                javax.swing.table.JTableHeader h = t.getTableHeader();
+                if (h != null) installHeaderHover(h);
+            }
+        }
+    }
+    private static void installHeaderHover(final javax.swing.table.JTableHeader h) {
+        if (h.getClientProperty("jdp.hdrHover") != null) return;
+        h.putClientProperty("jdp.hdrHover", Boolean.TRUE);
+        h.putClientProperty("jdp.hoverCol", Integer.valueOf(-1));
+        h.addMouseMotionListener(new java.awt.event.MouseMotionAdapter() {
+            @Override public void mouseMoved(java.awt.event.MouseEvent e) {
+                int col = h.columnAtPoint(e.getPoint());
+                Object cur = h.getClientProperty("jdp.hoverCol");
+                if (!(cur instanceof Integer) || ((Integer) cur).intValue() != col) {
+                    h.putClientProperty("jdp.hoverCol", Integer.valueOf(col));
+                    h.repaint();
+                }
+            }
+        });
+        h.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override public void mouseExited(java.awt.event.MouseEvent e) {
+                h.putClientProperty("jdp.hoverCol", Integer.valueOf(-1));
+                h.repaint();
+            }
+        });
+        javax.swing.table.TableCellRenderer base = h.getDefaultRenderer();
+        if (base != null && !(base instanceof HoverHeaderRenderer))
+            h.setDefaultRenderer(new HoverHeaderRenderer(base, h));
+        // JD's ExtTable sets a PER-COLUMN header renderer on each column; wrap those too (the default renderer
+        // above may never be used). Skip the width-lock ExtTableHeaderRenderer columns so swapLockedWidth's
+        // class-name match still works (those keep JD's own renderer; the padding just won't apply there).
+        javax.swing.table.TableColumnModel cm = h.getColumnModel();
+        for (int i = 0; i < cm.getColumnCount(); i++) {
+            javax.swing.table.TableColumn tc = cm.getColumn(i);
+            javax.swing.table.TableCellRenderer hr = tc.getHeaderRenderer();
+            if (hr == null || hr instanceof HoverHeaderRenderer) continue;
+            if (hr.getClass().getName().contains("ExtTableHeaderRenderer")) continue;   // keep for width-lock
+            tc.setHeaderRenderer(new HoverHeaderRenderer(hr, h));
+        }
+    }
+    private static final class HoverHeaderRenderer implements javax.swing.table.TableCellRenderer {
+        private final javax.swing.table.TableCellRenderer base;
+        private final javax.swing.table.JTableHeader hdr;
+        HoverHeaderRenderer(javax.swing.table.TableCellRenderer b, javax.swing.table.JTableHeader h) { base = b; hdr = h; }
+        public Component getTableCellRendererComponent(JTable t, Object v, boolean s, boolean f, int r, int col) {
+            Component c = base.getTableCellRendererComponent(t, v, s, f, r, col);
+            try {
+                Object hc = hdr.getClientProperty("jdp.hoverCol");
+                boolean hot = (hc instanceof Integer) && ((Integer) hc).intValue() == col;
+                if (c != null) c.setForeground(hot ? accentColor() : SIDEBAR_TEXT);
+                // add vertical padding so the header row grows a touch taller (#11 "etwas größer").
+                if (c instanceof JComponent) {
+                    JComponent jc = (JComponent) c;
+                    javax.swing.border.Border cur = jc.getBorder();
+                    java.awt.Insets in = (cur == null) ? new java.awt.Insets(0, 0, 0, 0) : cur.getBorderInsets(jc);
+                    if (in.top < HEADER_PAD_V)
+                        jc.setBorder(javax.swing.BorderFactory.createEmptyBorder(HEADER_PAD_V,
+                                Math.max(in.left, 6), HEADER_PAD_V, Math.max(in.right, 6)));
+                }
+            } catch (Throwable ig) { }
+            return c;
+        }
+    }
+
+    // #1: pull the main toolbar's leading edge left so the play/pause cluster lines up with the tabs + table
+    // (~8px). Measured live: menu/tabs/table start at 8-11px, the toolbar at 16px. If the toolbar carries a
+    // left border inset > 8, trim it to 8. Guarded once via a client property; a temporary diag logs the
+    // toolbar border + first-child x so any residual offset (from DefaultToolBarLayout) shows in the log.
+    private static void alignToolbarLeft() {
+        for (Window w : Window.getWindows()) if (w.isShowing()) alignToolbarIn(w);
+    }
+    private static void alignToolbarIn(Container c) {
+        for (Component ch : c.getComponents()) {
+            if (isMainToolbar(ch.getClass()) && ch instanceof JComponent) {
+                JComponent tb = (JComponent) ch;
+                if (tb.getClientProperty("jdp.tbAligned") == null) {
+                    javax.swing.border.Border b = tb.getBorder();
+                    java.awt.Insets in = (b == null) ? new java.awt.Insets(0, 0, 0, 0) : b.getBorderInsets(tb);
+                    Component first = (tb.getComponentCount() > 0) ? tb.getComponent(0) : null;
+                    System.out.println("[jd-agent-diag4] TOOLBAR border=" + (b == null ? "null" : b.getClass().getName())
+                            + " insL=" + in.left + " firstX=" + (first == null ? -1 : first.getX())
+                            + " firstCls=" + (first == null ? "-" : first.getClass().getSimpleName()));
+                    if (in.left > 8) {
+                        tb.setBorder(javax.swing.BorderFactory.createEmptyBorder(in.top, 8, in.bottom, in.right));
+                        tb.revalidate(); tb.repaint();
+                    }
+                    tb.putClientProperty("jdp.tbAligned", Boolean.TRUE);
+                }
+            } else if (ch instanceof Container) alignToolbarIn((Container) ch);
+        }
     }
 
     // ------------------------------------------------------ borderless config tables (round 14)
@@ -4515,7 +4657,12 @@ public class DialogConfirmAgent {
         // borderWidth=0 does NOT zero on them (that was the "Felder haben noch Rahmen" live bug).
         // Strip the line but KEEP the padding (an EmptyBorder with the same insets) so the field/
         // button fill doesn't collapse. Idempotent: next tick sees an EmptyBorder and returns early.
-        else if (cn.contains("FlatRoundBorder") || cn.contains("FlatButtonBorder")) {
+        // FlatTextBorder is the input-field frame (CustomTextField/CustomPasswordField/TextInput) — it drew a
+        // VISIBLE lighter rectangle that Component.borderWidth=0 did NOT zero (the live "Felder haben noch
+        // Rahmen linien" on My.JDownloader). FlatMarginBorder is the JTextArea frame. Strip the line, keep the
+        // padding so the field fill doesn't collapse. Same idempotent EmptyBorder-swap as the round/button case.
+        else if (cn.contains("FlatRoundBorder") || cn.contains("FlatButtonBorder")
+                || cn.contains("FlatTextBorder") || cn.contains("FlatMarginBorder")) {
             java.awt.Insets in = b.getBorderInsets(jc);
             jc.setBorder(javax.swing.BorderFactory.createEmptyBorder(in.top, in.left, in.bottom, in.right));
         }
