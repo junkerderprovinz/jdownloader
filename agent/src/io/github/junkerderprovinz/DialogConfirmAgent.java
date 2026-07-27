@@ -1741,8 +1741,8 @@ public class DialogConfirmAgent {
         if (n.equals("unknown")) return "help";
         if (n.equals("mixed")) return "true";
         if (n.startsWith("iconArchive")) return "extract";              // FileColumn: archive package -> zip
-        if (n.equals("iconPackageOpen")) return "folder_open";          // FileColumn: open package -> open folder
-        if (n.startsWith("iconPackage")) return "folder";               // FileColumn: package -> folder
+        if (n.equals("iconPackageOpen")) return "folder_open";          // FileColumn: expanded package -> open folder
+        if (n.startsWith("iconPackage")) return "folder_add";           // collapsed package -> folder WITH a + (expandable)
         return null;
     }
 
