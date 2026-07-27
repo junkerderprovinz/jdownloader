@@ -747,12 +747,77 @@ public class DialogConfirmAgent {
             growTableHeaders();     // #11: accent-on-hover column title
             recolorDialogs();
             dimModalBackdrops();
+            hlProbe();              // DIAG (temporary): #10 corner-widget API + #3 armed checkbox icon states
         }
         if (++lafTick >= 12) {   // every ~5s (ticks run every 400ms)
             lafTick = 0;
             writeLafMarker();
             if (GEO_DEBUG) dumpGeometry();
         }
+    }
+
+    // DIAG (temporary): #10 map the corner progress-widget API (setIcon? setForeground? model?) + its painters,
+    // and #3 the armed checkbox menu item's icon states — so both follow-ups (mono icon + spinner; checkbox
+    // hover icon) can be implemented from ground truth. Removed after use.
+    private static final java.util.Set<String> PROBE =
+            java.util.Collections.synchronizedSet(new java.util.HashSet<String>());
+    private static void hlProbe() {
+        try {
+            for (Window w : Window.getWindows()) {
+                if (!w.isShowing()) continue;
+                probeWalk(w);
+            }
+        } catch (Throwable ig) { }
+    }
+    private static void probeWalk(Component c) {
+        try {
+            String cn = c.getClass().getName();
+            if ((cn.endsWith("ExtractorProgress") || cn.endsWith("UpdateProgress")) && PROBE.add("W:" + cn)) {
+                StringBuilder ms = new StringBuilder();
+                java.util.Set<String> seen = new java.util.HashSet<String>();
+                for (Class<?> k = c.getClass(); k != null && k != Object.class; k = k.getSuperclass())
+                    for (java.lang.reflect.Method m : k.getDeclaredMethods()) {
+                        String nm = m.getName();
+                        if ((nm.startsWith("setIcon") || nm.startsWith("setForeground") || nm.startsWith("setColor")
+                                || nm.startsWith("setValue") || nm.startsWith("setIndeterminate") || nm.equals("getModel")
+                                || nm.startsWith("setEnabled") || nm.startsWith("setVisible") || nm.equals("getValue")
+                                || nm.startsWith("setActive") || nm.startsWith("setTitle")) && seen.add(nm + m.getParameterCount()))
+                            ms.append(nm).append("(").append(m.getParameterCount()).append(") ");
+                    }
+                Object model = null;
+                try { model = c.getClass().getMethod("getModel").invoke(c); } catch (Throwable ig) { }
+                System.out.println("[jd-agent-probe] WIDGET " + cn + " methods=[" + ms + "] model=" + (model == null ? "-" : model.getClass().getName()));
+                // painter internals: what does valuePainter/activeValuePainter/valueClipPainter hold?
+                for (Class<?> k = c.getClass(); k != null && k != Object.class; k = k.getSuperclass())
+                    for (java.lang.reflect.Field f : k.getDeclaredFields()) {
+                        String fn = f.getName();
+                        if (!(fn.contains("Painter"))) continue;
+                        try { f.setAccessible(true); Object pv = f.get(c);
+                            if (pv == null) continue;
+                            StringBuilder inner = new StringBuilder();
+                            for (java.lang.reflect.Field pf : pv.getClass().getDeclaredFields()) {
+                                try { pf.setAccessible(true); inner.append(pf.getName()).append("=").append(String.valueOf(pf.get(pv))).append("; "); } catch (Throwable ig) { }
+                            }
+                            System.out.println("[jd-agent-probe]   PAINTER " + fn + " (" + pv.getClass().getSimpleName() + ") " + inner);
+                        } catch (Throwable ig) { }
+                    }
+            }
+            if (c instanceof javax.swing.JCheckBoxMenuItem || cn.endsWith("ExtCheckBoxMenuItem")) {
+                javax.swing.AbstractButton b = (javax.swing.AbstractButton) c;
+                if (b.getModel().isArmed() && PROBE.add("CB:" + cn)) {
+                    System.out.println("[jd-agent-probe] ARMEDCHK " + cn
+                            + " icon=" + idOf(b.getIcon()) + " rollover=" + idOf(b.getRolloverIcon())
+                            + " pressed=" + idOf(b.getPressedIcon()) + " selected=" + idOf(b.getSelectedIcon())
+                            + " disabled=" + idOf(b.getDisabledIcon())
+                            + " rolloverEnabled=" + b.isRolloverEnabled() + " selected?=" + b.isSelected()
+                            + " ui=" + (b.getUI() == null ? "-" : b.getUI().getClass().getName()));
+                }
+            }
+        } catch (Throwable ig) { }
+        if (c instanceof Container) for (Component ch : ((Container) c).getComponents()) probeWalk(ch);
+    }
+    private static String idOf(javax.swing.Icon ic) {
+        return ic == null ? "null" : (ic.getClass().getSimpleName() + "@" + Integer.toHexString(System.identityHashCode(ic)));
     }
 
     // Opt-in geometry logging (JD_DEBUG_GEO=1). Off by default so a box test / the
