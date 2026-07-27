@@ -916,7 +916,6 @@ public class DialogConfirmAgent {
             growTableHeaders();     // #11: accent-on-hover column title
             recolorDialogs();
             dimModalBackdrops();
-            if (W4_DIAG) diagW4();
         }
         if (++lafTick >= 12) {   // every ~5s (ticks run every 400ms)
             lafTick = 0;
@@ -925,101 +924,6 @@ public class DialogConfirmAgent {
         }
     }
 
-    // ===== wave-4 one-shot identity probe (REMOVE before release) =====
-    private static final boolean W4_DIAG = true;
-    private static boolean w4Cfg = false, w4Align = false, w4Upd = false;
-    private static void diagW4() {
-        try {
-            for (Window w : Window.getWindows()) {
-                if (!w.isShowing()) continue;
-                if (!w4Align && w instanceof javax.swing.JFrame && w.getWidth() > 600 && w.getHeight() > 400) {
-                    w4Align = true; diagAlign((javax.swing.JFrame) w);
-                }
-                if (!w4Cfg) { Container cfg = diagFindCfg(w); if (cfg != null) { w4Cfg = true; diagCfgHeaders(cfg); } }
-                if (!w4Upd) {
-                    String t = (w instanceof Frame) ? ((Frame) w).getTitle() : (w instanceof Dialog) ? ((Dialog) w).getTitle() : w.getName();
-                    if (t != null && t.toLowerCase().contains("updat")) { w4Upd = true; System.out.println("[W4-UPD] window=" + w.getClass().getName() + " title=" + t); diagIconsIn((Container) w, "UPD"); }
-                }
-            }
-        } catch (Throwable ignore) { }
-    }
-    private static Container diagFindCfg(Container c) {
-        if (c instanceof JComponent && isConfigPanel(c.getClass())) return c;
-        for (Component ch : c.getComponents()) if (ch instanceof Container) { Container r = diagFindCfg((Container) ch); if (r != null) return r; }
-        return null;
-    }
-    private static void diagCfgHeaders(Container cfg) {
-        System.out.println("[W4-CFG] panel=" + cfg.getClass().getName());
-        diagIconsIn(cfg, "CFG");
-    }
-    private static void diagIconsIn(Container c, String tag) {
-        for (Component ch : c.getComponents()) {
-            try {
-                javax.swing.Icon ic = null; String text = null;
-                if (ch instanceof javax.swing.JLabel) { ic = ((javax.swing.JLabel) ch).getIcon(); text = ((javax.swing.JLabel) ch).getText(); }
-                else if (ch instanceof AbstractButton) { ic = ((AbstractButton) ch).getIcon(); text = ((AbstractButton) ch).getText(); }
-                else { try { Object r = ch.getClass().getMethod("getIcon").invoke(ch); if (r instanceof javax.swing.Icon) ic = (javax.swing.Icon) r; } catch (Throwable ig) { } }
-                if (ic != null) System.out.println("[W4-" + tag + "] comp=" + ch.getClass().getName()
-                        + " icon=" + ic.getClass().getName() + " key=" + iconKey(ic) + " site=" + isSiteLogo(ic)
-                        + " text=" + (text == null ? "" : text.replaceAll("<[^>]*>", " ").trim()));
-            } catch (Throwable ig) { }
-            if (ch instanceof Container) diagIconsIn((Container) ch, tag);
-        }
-    }
-    private static void diagAlign(javax.swing.JFrame f) {
-        try {
-            StringBuilder sb = new StringBuilder("[W4-ALIGN]");
-            javax.swing.JMenuBar mb = f.getJMenuBar();
-            if (mb != null && mb.getMenuCount() > 0) { javax.swing.JMenu m = mb.getMenu(0);
-                java.awt.Point p = javax.swing.SwingUtilities.convertPoint(m.getParent(), m.getLocation(), f);
-                sb.append(" menu0.x=").append(p.x).append(" menu0Insets=").append(m.getInsets()); }
-            java.util.List<Component> tbs = new java.util.ArrayList<Component>();
-            diagCollect(f, "MainToolBar", tbs);
-            if (!tbs.isEmpty()) { Container tb = (Container) tbs.get(0);
-                java.util.List<Component> btns = new java.util.ArrayList<Component>();
-                diagCollectButtons(tb, btns);
-                sb.append(" tbBtns=");
-                int cnt = 0;
-                for (Component k : btns) {
-                    if (k.getWidth() <= 0) continue;
-                    java.awt.Point p = javax.swing.SwingUtilities.convertPoint(k.getParent(), k.getLocation(), f);
-                    boolean hasIc = (k instanceof AbstractButton) && ((AbstractButton) k).getIcon() != null;
-                    java.awt.Insets in = (k instanceof AbstractButton) ? ((AbstractButton) k).getMargin() : null;
-                    sb.append(p.x).append("w").append(k.getWidth()).append(hasIc ? "I" : "").append(in != null ? ("m" + in.left) : "").append(" ");
-                    if (++cnt >= 4) break;
-                }
-                java.awt.Point tp = javax.swing.SwingUtilities.convertPoint(tb.getParent(), tb.getLocation(), f);
-                sb.append(" toolbar.x=").append(tp.x).append(" ins=").append(((JComponent) tb).getInsets());
-            }
-            java.util.List<Component> tables = new java.util.ArrayList<Component>();
-            diagCollect(f, "ExtTable", tables);
-            for (Component tc : tables) {
-                if (tc.getWidth() < 300) continue;
-                javax.swing.JTable jt = (javax.swing.JTable) tc;
-                java.awt.Point p = javax.swing.SwingUtilities.convertPoint(tc.getParent(), tc.getLocation(), f);
-                int col0w = jt.getColumnModel().getColumnCount() > 0 ? jt.getColumnModel().getColumn(0).getWidth() : -1;
-                java.awt.Rectangle cr0 = jt.getRowCount() > 0 ? jt.getCellRect(0, 0, true) : null;
-                sb.append(" table[").append(tc.getClass().getSimpleName()).append("].x=").append(p.x)
-                  .append(" col0w=").append(col0w).append(" cell00x=").append(cr0 != null ? (p.x + cr0.x) : -1);
-                break;
-            }
-            System.out.println(sb.toString());
-        } catch (Throwable t) { System.out.println("[W4-ALIGN] err " + t); }
-    }
-    private static void diagCollect(Container c, String simpleNameEndsWith, java.util.List<Component> out) {
-        for (Component ch : c.getComponents()) {
-            for (Class<?> k = ch.getClass(); k != null && k != Object.class; k = k.getSuperclass())
-                if (k.getSimpleName().equals(simpleNameEndsWith) || k.getName().endsWith("." + simpleNameEndsWith)) { out.add(ch); break; }
-            if (ch instanceof Container) diagCollect((Container) ch, simpleNameEndsWith, out);
-        }
-    }
-    private static void diagCollectButtons(Container c, java.util.List<Component> out) {
-        for (Component ch : c.getComponents()) {
-            if (ch instanceof AbstractButton) out.add(ch);
-            if (ch instanceof Container) diagCollectButtons((Container) ch, out);
-        }
-    }
-    // ===== end wave-4 probe =====
 
     // #10: the JD status rings (org.jdownloader.updatev2.UpdateProgress = update check, ExtractorProgress =
     // extraction, and the LinkCollector crawl indicator that pops up when a link is added) are all AppWork
@@ -4177,20 +4081,36 @@ public class DialogConfirmAgent {
         }
     }
 
-    /** #1: trim the toolbar's own left inset so the leftmost button (Play) lines up with the menu bar and
-     *  the table content instead of sitting indented. Once per toolbar (client-property guarded) so we don't
-     *  fight JD or flicker; keeps top/bottom/right insets. */
+    /** #1: pull the leftmost toolbar button (Play) flush-left to line up with the menu bar (~10px). JD lays
+     *  the button strip out with an internal gap that ignores container insets, so trim the LEFTMOST button's
+     *  own left margin (that shifts its glyph, and the whole strip after it, left). Once per button
+     *  (client-property guarded) so it neither fights JD nor compounds. Also zero the toolbar's own left inset. */
     private static void flushToolbarButtonsLeft(Container toolbar) {
         try {
             if (!(toolbar instanceof JComponent)) return;
             JComponent tb = (JComponent) toolbar;
-            if (tb.getClientProperty("jdp.tbFlush") != null) return;
             java.awt.Insets bi = tb.getInsets();
-            if (bi != null && bi.left > 1) {
-                tb.setBorder(javax.swing.BorderFactory.createEmptyBorder(bi.top, 1, bi.bottom, bi.right));
+            if (bi != null && bi.left > 1) tb.setBorder(javax.swing.BorderFactory.createEmptyBorder(bi.top, 1, bi.bottom, bi.right));
+            AbstractButton left = null; int minX = Integer.MAX_VALUE;
+            java.util.List<Component> btns = new java.util.ArrayList<Component>();
+            collectButtons(tb, btns);
+            for (Component c : btns) {
+                if (c.getWidth() <= 0 || !(c instanceof AbstractButton)) continue;
+                java.awt.Point p = javax.swing.SwingUtilities.convertPoint(c.getParent(), c.getLocation(), tb);
+                if (p.x < minX) { minX = p.x; left = (AbstractButton) c; }
             }
-            tb.putClientProperty("jdp.tbFlush", Boolean.TRUE);
+            if (left != null && left.getClientProperty("jdp.tbBtnFlush") == null) {
+                java.awt.Insets m = left.getMargin();
+                if (m != null && m.left > 3) left.setMargin(new java.awt.Insets(m.top, 3, m.bottom, m.right));
+                left.putClientProperty("jdp.tbBtnFlush", Boolean.TRUE);
+            }
         } catch (Throwable ignore) { }
+    }
+    private static void collectButtons(Container c, java.util.List<Component> out) {
+        for (Component ch : c.getComponents()) {
+            if (ch instanceof AbstractButton) out.add(ch);
+            if (ch instanceof Container) collectButtons((Container) ch, out);
+        }
     }
 
     private static void recolorMainTabs() {
