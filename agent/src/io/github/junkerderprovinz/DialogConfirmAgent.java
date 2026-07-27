@@ -4513,21 +4513,40 @@ public class DialogConfirmAgent {
 
     private static void recolorDialogs() {
         for (Window w : Window.getWindows()) {
-            if (!(w instanceof Dialog) || !w.isShowing()) continue;
+            if (!w.isShowing() || !(w instanceof javax.swing.RootPaneContainer)) continue;
+            // #2: JD's "JDownloader-Updater" window is UNDECORATED + non-opaque, so its content (globe + progress
+            // + close) floated straight on the main view ("hebt sich nicht ab"). It is NOT a Dialog, so add it by
+            // title alongside every real Dialog, and make the content pane OPAQUE so the #242424 surface paints.
+            boolean isUpdater = false;
             try {
-                if (w instanceof javax.swing.RootPaneContainer) {
-                    javax.swing.RootPaneContainer rpc = (javax.swing.RootPaneContainer) w;
-                    // The grey rectangle around the pop-up is a border on the content pane / root pane
-                    // itself (my walk only iterated their CHILDREN), so strip those directly too.
-                    Container cp = rpc.getContentPane();
-                    if (cp instanceof JComponent) {
-                        stripFramingBorder((JComponent) cp);
-                        if (!DIALOG_BG.equals(cp.getBackground())) cp.setBackground(DIALOG_BG);
-                    }
-                    javax.swing.JRootPane rp = rpc.getRootPane();
-                    if (rp != null) { stripFramingBorder(rp); if (rp.getLayeredPane() != null) stripFramingBorder(rp.getLayeredPane()); }
-                    styleDialogContent(cp);
+                String t = (w instanceof Frame) ? ((Frame) w).getTitle()
+                        : (w instanceof Dialog) ? ((Dialog) w).getTitle() : w.getName();
+                isUpdater = t != null && t.toLowerCase().contains("updat");
+            } catch (Throwable ig) { }
+            if (!(w instanceof Dialog) && !isUpdater) continue;
+            try {
+                javax.swing.RootPaneContainer rpc = (javax.swing.RootPaneContainer) w;
+                // The grey rectangle around the pop-up is a border on the content pane / root pane
+                // itself (my walk only iterated their CHILDREN), so strip those directly too.
+                Container cp = rpc.getContentPane();
+                if (cp instanceof JComponent) {
+                    stripFramingBorder((JComponent) cp);
+                    if (!DIALOG_BG.equals(cp.getBackground())) cp.setBackground(DIALOG_BG);
+                    if (!((JComponent) cp).isOpaque()) ((JComponent) cp).setOpaque(true);   // #2: paint the surface
                 }
+                javax.swing.JRootPane rp = rpc.getRootPane();
+                if (rp != null) {
+                    stripFramingBorder(rp);
+                    if (rp.getLayeredPane() != null) stripFramingBorder(rp.getLayeredPane());
+                    if (isUpdater && rp instanceof JComponent) {
+                        if (!DIALOG_BG.equals(rp.getBackground())) rp.setBackground(DIALOG_BG);
+                        rp.setOpaque(true);
+                        // a touch of elevation so the small updater card reads against the busy main view
+                        if (!(rp.getBorder() instanceof javax.swing.border.LineBorder))
+                            rp.setBorder(javax.swing.BorderFactory.createLineBorder(new Color(0x39, 0x39, 0x39), 1));
+                    }
+                }
+                styleDialogContent(cp);
             } catch (Throwable ignore) { }
         }
     }
