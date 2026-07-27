@@ -2150,7 +2150,8 @@ public class DialogConfirmAgent {
     // panel) with bounds, so we see which one ends short of the other at the bottom.
     private static void diag4Nine(Component c) {
         try {
-            if (c.getClass().getSimpleName().equals("ConfigurationPanel") && c instanceof Container && DIAG3.add("NINE")) {
+            if (c.getClass().getSimpleName().equals("ConfigurationPanel") && c instanceof Container
+                    && c.getWidth() > 1400 && DIAG3.add("NINE")) {
                 Container cp = (Container) c;
                 System.out.println("[jd-agent-diag4] NINE ConfigurationPanel b=" + cp.getX() + "," + cp.getY()
                         + " " + cp.getWidth() + "x" + cp.getHeight());
@@ -3221,7 +3222,11 @@ public class DialogConfirmAgent {
             Object light = mi.getClientProperty("jdp.miLight");
             if (cur == light || cur == mi.getClientProperty("jdp.miDark")) { installMenuItemHoverIcon(mi); return; }
             javax.swing.Icon lo = tablerIcon(cur, SIDEBAR_TEXT, mi);
-            javax.swing.Icon hi = tablerIcon(cur, accentFg(), mi);
+            // #3: derive the DARK hover glyph from the LIGHT one via tintSolid (re-tint its exact pixels), NOT a
+            // fresh tablerIcon(cur, accentFg) — for some menu glyphs the latter produced an 18x18 but fully
+            // TRANSPARENT icon, so the armed row on the accent hover looked like it "lost" its icon. tintSolid
+            // keeps lo's alpha (which renders fine) and only darkens the tone, so the dark glyph always shows.
+            javax.swing.Icon hi = (lo != cur) ? tintSolid(lo, accentFg()) : tablerIcon(cur, accentFg(), mi);
             if (lo == cur) return;                                     // nothing monod (defensive)
             mi.putClientProperty("jdp.miLight", lo);
             mi.putClientProperty("jdp.miDark", hi);
