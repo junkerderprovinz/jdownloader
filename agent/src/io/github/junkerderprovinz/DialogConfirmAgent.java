@@ -764,18 +764,34 @@ public class DialogConfirmAgent {
     // FILL reads accent — i.e. a clean mono icon whose accent fill IS the "loading animation when it runs" (the
     // user's ask). The widget's own foreground (the ring) goes accent too. Idempotent (skip once the tint matches).
     private static void styleCornerProgress() {
-        for (Window w : Window.getWindows()) if (w.isShowing()) styleCornerProgressIn(w);
+        for (Window w : Window.getWindows()) if (w.isShowing()) styleCornerProgressIn(w, w.getWidth(), w.getHeight());
     }
-    private static void styleCornerProgressIn(Component c) {
+    private static void styleCornerProgressIn(Component c, int winW, int winH) {
         String cn = c.getClass().getName();
         // ExtractorProgress: its zip glyph is a TEMPLATE the painter tints by foreground -> foreground recolour
-        //   monos it (grey idle, accent fill while extracting = the "loading animation"). UpdateProgress: its
-        //   green globe is drawn via a custom/cached paint path the painters don't cover (foreground + image
-        //   swap both had no effect), so per the user it's HIDDEN — it is a self-update indicator that CA/Unraid
-        //   handles anyway ([[no-self-update-check-on-unraid]]).
+        //   monos it (grey idle, accent fill while extracting = the "loading animation"). The OTHER corner status
+        //   ring (the green update/refresh globe) is drawn via a custom paint path the painters don't cover, so
+        //   per the user it's HIDDEN. Match it structurally: any CircledProgressBar in the extreme bottom-right
+        //   corner that is NOT the extractor. (A self-update indicator CA/Unraid handles anyway.)
         if (cn.endsWith("ExtractorProgress")) recolorCircleProgress(c, null);
-        else if (cn.endsWith("UpdateProgress")) { if (c.isVisible()) c.setVisible(false); }
-        if (c instanceof Container) for (Component ch : ((Container) c).getComponents()) styleCornerProgressIn(ch);
+        else if (isCircledProgress(c.getClass()) && inBottomRightCorner(c, winW, winH)) {
+            if (c.isVisible()) c.setVisible(false);
+        }
+        if (c instanceof Container) for (Component ch : ((Container) c).getComponents()) styleCornerProgressIn(ch, winW, winH);
+    }
+    private static boolean isCircledProgress(Class<?> k) {
+        for (; k != null && k != Object.class; k = k.getSuperclass())
+            if (k.getName().endsWith("CircledProgressBar")) return true;
+        return false;
+    }
+    private static boolean inBottomRightCorner(Component c, int winW, int winH) {
+        try {
+            if (c.getParent() == null || !c.isShowing() || winW < 400) return false;
+            Window win = javax.swing.SwingUtilities.getWindowAncestor(c);
+            if (win == null) return false;
+            java.awt.Point p = javax.swing.SwingUtilities.convertPoint(c.getParent(), c.getLocation(), win);
+            return p.x > winW - 120 && p.y > winH - 60;
+        } catch (Throwable t) { return false; }
     }
     private static void recolorCircleProgress(Component c, String replaceKey) {
         try {
