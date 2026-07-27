@@ -908,6 +908,7 @@ public class DialogConfirmAgent {
             borderlessConfigTables();
             unifyConfigFields();
             monoTableRowIcons();    // #11: mono the download/linkgrabber row icons (hoster favicon kept)
+            indentNameColumns();    // #1: line the Name-column folder icons up with their header (~10px flush)
             monoConfigTableIcons(); // #8: mono the settings config-table row + action icons (favicons stay native)
             fixWidthLockIcon();     // D: swap the header width-lock padlock field for a clean Tabler lock
             stylePropertiesPanel(); // #4: flatten the bottom package/link properties strip (no fine lines)
@@ -1894,6 +1895,42 @@ public class DialogConfirmAgent {
             if (list instanceof Collection) cols.addAll((Collection<?>) list);
         } catch (Exception ignore) { }
         return cols;
+    }
+
+    /** #1: the download/linkgrabber Name column (FileColumn) positions its content via two EmptyBorder fields
+     *  — normalBorder (package rows, left=0) and leftGapBorder (child rows, left=32). The column HEADER sits
+     *  ~5px further right, so the folder icons stuck out LEFT of their own header ("nicht alles bündig").
+     *  Bump both left insets by 5 so the content lines up with the header (~10px, flush with menu/toolbar).
+     *  Reflective, idempotent (only bumps the pristine base value once) — no per-cell render hook, no hot path. */
+    private static final int NAME_INDENT = 5;
+    private static void indentNameColumns() {
+        for (Window w : Window.getWindows()) {
+            if (!w.isShowing()) continue;
+            List<JTable> tables = new ArrayList<>();
+            collectTables(w, tables);
+            for (JTable t : tables)
+                for (Object col : extColumns(t))
+                    if (col != null && col.getClass().getName().endsWith(".FileColumn")) {
+                        bumpBorderLeft(col, "normalBorder", 0, NAME_INDENT);
+                        bumpBorderLeft(col, "leftGapBorder", 32, NAME_INDENT);
+                    }
+        }
+    }
+    /** Add `add` to the left inset of the EmptyBorder held in field `name`, but ONLY when it is still the
+     *  pristine `baseLeft` (so a rebuild/second pass never compounds it). */
+    private static void bumpBorderLeft(Object col, String name, int baseLeft, int add) {
+        try {
+            java.lang.reflect.Field f = null;
+            for (Class<?> k = col.getClass(); k != null && k != Object.class && f == null; k = k.getSuperclass())
+                try { f = k.getDeclaredField(name); } catch (NoSuchFieldException nsf) { }
+            if (f == null) return;
+            f.setAccessible(true);
+            Object b = f.get(col);
+            if (!(b instanceof javax.swing.border.EmptyBorder)) return;
+            java.awt.Insets in = ((javax.swing.border.EmptyBorder) b).getBorderInsets();
+            if (in.left != baseLeft) return;   // already bumped or an unexpected value -> leave it
+            f.set(col, javax.swing.BorderFactory.createEmptyBorder(in.top, baseLeft + add, in.bottom, in.right));
+        } catch (Throwable ignore) { }
     }
 
     /** Set our dark fill/track on every JProgressBar-typed field of the object. */
