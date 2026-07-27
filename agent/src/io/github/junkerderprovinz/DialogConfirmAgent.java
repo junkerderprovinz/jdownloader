@@ -909,6 +909,7 @@ public class DialogConfirmAgent {
             unifyConfigFields();
             monoTableRowIcons();    // #11: mono the download/linkgrabber row icons (hoster favicon kept)
             indentNameColumns();    // #1: line the Name-column folder icons up with their header (~10px flush)
+            cardMainTables();       // main lists (download/linkgrabber) float as a lighter card on the dark chrome
             monoConfigTableIcons(); // #8: mono the settings config-table row + action icons (favicons stay native)
             fixWidthLockIcon();     // D: swap the header width-lock padlock field for a clean Tabler lock
             stylePropertiesPanel(); // #4: flatten the bottom package/link properties strip (no fine lines)
@@ -1914,6 +1915,40 @@ public class DialogConfirmAgent {
                         bumpBorderLeft(col, "normalBorder", 0, NAME_INDENT);
                         bumpBorderLeft(col, "leftGapBorder", 32, NAME_INDENT);
                     }
+        }
+    }
+
+    // The main lists (download + linkgrabber) sit in a LIGHTER card (#242424 rows/header via colorfor* +
+    // properties) with the darker #161616 chrome around them — matching the settings cards. Here we add the
+    // surrounding MARGIN so the card floats: the scrollpane band paints the base colour, the viewport/table
+    // paint the card colour. Guarded once per scrollpane so we neither fight JD nor flicker.
+    private static final Color MAIN_CARD = PAL_SURFACE;   // #242424 list-card surface
+    private static final int   CARD_GAP  = 10;            // darker chrome gap around the card
+    private static void cardMainTables() {
+        for (Window w : Window.getWindows()) {
+            if (!w.isShowing()) continue;
+            List<JTable> tables = new ArrayList<>();
+            collectTables(w, tables);
+            for (JTable t : tables) {
+                String cn = t.getClass().getName();
+                if (!(cn.endsWith("DownloadsTable") || cn.endsWith("LinkGrabberTable"))) continue;
+                javax.swing.JScrollPane sp = null;
+                for (Container p = t.getParent(); p != null; p = p.getParent())
+                    if (p instanceof javax.swing.JScrollPane) { sp = (javax.swing.JScrollPane) p; break; }
+                if (sp == null) continue;
+                if (!MAIN_CARD.equals(t.getBackground())) t.setBackground(MAIN_CARD);
+                javax.swing.JViewport vp = sp.getViewport();
+                if (vp != null && !MAIN_CARD.equals(vp.getBackground())) { vp.setBackground(MAIN_CARD); vp.setOpaque(true); }
+                javax.swing.JViewport ch = sp.getColumnHeader();
+                if (ch != null && !MAIN_CARD.equals(ch.getBackground())) ch.setBackground(MAIN_CARD);
+                if (sp.getClientProperty("jdp.mainCard") == null) {
+                    sp.setOpaque(true);
+                    sp.setBackground(PAL_BASE);   // the margin band = the darker chrome
+                    sp.setBorder(javax.swing.BorderFactory.createEmptyBorder(CARD_GAP, CARD_GAP, CARD_GAP, CARD_GAP));
+                    sp.putClientProperty("jdp.mainCard", Boolean.TRUE);
+                    sp.revalidate(); sp.repaint();
+                }
+            }
         }
     }
     /** Add `add` to the left inset of the EmptyBorder held in field `name`, but ONLY when it is still the
@@ -4106,7 +4141,6 @@ public class DialogConfirmAgent {
         for (Component ch : c.getComponents()) {
             if (isMainToolbar(ch.getClass()) && ch instanceof JComponent) {
                 if (!CHROME_BASE.equals(ch.getBackground())) { ch.setBackground(CHROME_BASE); ((JComponent) ch).setOpaque(true); }
-                flushToolbarButtonsLeft((Container) ch);   // #1: pull the button strip flush-left (~10px, aligned with the menu bar)
                 Container par = ch.getParent();   // the band the toolbar sits in can carry the lighter fill
                 if (par instanceof JComponent && par.getBackground() != null
                         && par.getBackground().getRed() >= 0x1b && par.getBackground().getRed() <= 0x2a
@@ -4115,38 +4149,6 @@ public class DialogConfirmAgent {
                 }
             }
             if (ch instanceof Container) darkenToolbarsIn((Container) ch);
-        }
-    }
-
-    /** #1: pull the leftmost toolbar button (Play) flush-left to line up with the menu bar (~10px). JD lays
-     *  the button strip out with an internal gap that ignores container insets, so trim the LEFTMOST button's
-     *  own left margin (that shifts its glyph, and the whole strip after it, left). Once per button
-     *  (client-property guarded) so it neither fights JD nor compounds. Also zero the toolbar's own left inset. */
-    private static void flushToolbarButtonsLeft(Container toolbar) {
-        try {
-            if (!(toolbar instanceof JComponent)) return;
-            JComponent tb = (JComponent) toolbar;
-            java.awt.Insets bi = tb.getInsets();
-            if (bi != null && bi.left > 1) tb.setBorder(javax.swing.BorderFactory.createEmptyBorder(bi.top, 1, bi.bottom, bi.right));
-            AbstractButton left = null; int minX = Integer.MAX_VALUE;
-            java.util.List<Component> btns = new java.util.ArrayList<Component>();
-            collectButtons(tb, btns);
-            for (Component c : btns) {
-                if (c.getWidth() <= 0 || !(c instanceof AbstractButton)) continue;
-                java.awt.Point p = javax.swing.SwingUtilities.convertPoint(c.getParent(), c.getLocation(), tb);
-                if (p.x < minX) { minX = p.x; left = (AbstractButton) c; }
-            }
-            if (left != null && left.getClientProperty("jdp.tbBtnFlush") == null) {
-                java.awt.Insets m = left.getMargin();
-                if (m != null && m.left > 3) left.setMargin(new java.awt.Insets(m.top, 3, m.bottom, m.right));
-                left.putClientProperty("jdp.tbBtnFlush", Boolean.TRUE);
-            }
-        } catch (Throwable ignore) { }
-    }
-    private static void collectButtons(Container c, java.util.List<Component> out) {
-        for (Component ch : c.getComponents()) {
-            if (ch instanceof AbstractButton) out.add(ch);
-            if (ch instanceof Container) collectButtons((Container) ch, out);
         }
     }
 

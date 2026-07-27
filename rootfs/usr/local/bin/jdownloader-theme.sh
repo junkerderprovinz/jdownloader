@@ -211,11 +211,18 @@ d = json.load(open(p))
 d["colorforpanelborders"] = "#ff161616"              # account/plugin config boxes -> invisible
 d["linktablehorizontalrowlineweight"] = 0            # download/linkgrabber rows: no horizontal lines
 d["paintstatusbartopborder"] = False                 # drop the statusbar top hairline
+# The download/linkgrabber LIST sits in a lighter CARD (#242424, same surface as the settings cards)
+# with the darker #161616 chrome around it. Lift the row surfaces one elevation step; the agent adds
+# the surrounding margin so the card floats. Uniform (no stripes) matches the card look.
+CARD = "#ff242424"
+d["colorfortablepackagerowbackground"] = CARD
+d["colorfortablealternaterowbackground"] = CARD
+d["colorfortablerowgap"] = CARD
 # list/table row HOVER highlight = the accent, with an auto-contrasted (dark-on-light) text
 d["colorfortablemouseoverrowbackground"] = "#ff" + acc
 d["colorfortablemouseoverrowforeground"] = "#ff" + accfg
 json.dump(d, open(p, "w"), indent=2)
-print("[jdownloader-theme] jd-highlighter: borderless + no row/statusbar lines + accent row hover")
+print("[jdownloader-theme] jd-highlighter: borderless + no row/statusbar lines + accent row hover + list card")
 PYEOF
     fi
 else

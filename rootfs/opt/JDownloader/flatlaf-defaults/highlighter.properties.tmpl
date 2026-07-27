@@ -180,10 +180,12 @@ Table.showVerticalLines              = false
 Table.showTrailingVerticalLine       = false
 Table.gridColor                      = #161616
 Table.intercellSpacing               = 0,0
-TableHeader.background                = #1e1e1e
+# the column-title bar is part of the list CARD (#242424, same surface as the rows + settings cards);
+# distinguished by its text, not a line (no border lines). Surround stays #161616 via the agent margin.
+TableHeader.background                = #242424
 TableHeader.foreground               = #f4f4f4
-TableHeader.separatorColor           = #1e1e1e
-TableHeader.bottomSeparatorColor     = #1e1e1e
+TableHeader.separatorColor           = #242424
+TableHeader.bottomSeparatorColor     = #242424
 TableHeader.showTrailingVerticalLine = false
 # #11: the column-title bar a touch taller (verify FlatTableHeaderUI honours this on JD's ExtTable;
 # else the agent sets the header preferred height at runtime).
