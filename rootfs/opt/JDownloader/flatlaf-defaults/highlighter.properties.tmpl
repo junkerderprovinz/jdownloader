@@ -140,7 +140,7 @@ TabbedPane.cardTabArc         = 12
 TabbedPane.tabInsets          = 6,26,6,26
 # bottom inset = a bit of empty space BELOW the tab strip (where the removed content-separator line
 # used to sit) so the download table no longer butts right up against the tabs ("alles nach oben gerückt")
-TabbedPane.tabAreaInsets      = 2,10,12,14
+TabbedPane.tabAreaInsets      = 2,8,12,14
 
 # --- toolbar + menu: accent background on hover / selection ---
 Button.toolbar.hoverBackground    = @@ACCENT@@
@@ -185,6 +185,9 @@ TableHeader.foreground               = #f4f4f4
 TableHeader.separatorColor           = #1e1e1e
 TableHeader.bottomSeparatorColor     = #1e1e1e
 TableHeader.showTrailingVerticalLine = false
+# #11: the column-title bar a touch taller (verify FlatTableHeaderUI honours this on JD's ExtTable;
+# else the agent sets the header preferred height at runtime).
+TableHeader.height                   = 28
 ScrollPane.border                    = 0,0,0,0
 List.border                          = 0,0,0,0
 Tree.border                          = 0,0,0,0

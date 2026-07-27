@@ -690,6 +690,7 @@ public class DialogConfirmAgent {
             borderlessConfigTables();
             unifyConfigFields();
             monoTableRowIcons();    // #11: mono the download/linkgrabber row icons (hoster favicon kept)
+            monoConfigTableIcons(); // #8: mono the settings config-table row + action icons (favicons stay native)
             fixWidthLockIcon();     // D: swap the header width-lock padlock field for a clean Tabler lock
             recolorDialogs();
             dimModalBackdrops();
@@ -1881,12 +1882,74 @@ public class DialogConfirmAgent {
     /** keyed content glyph -> mono Tabler; keyless -> mono-tint of its own shape (cached for the non-selected
      *  common case so a repaint does not re-render per row). */
     private static javax.swing.Icon monoRowIcon(javax.swing.Icon ic, boolean sel) {
+        if (isSiteLogo(ic)) return ic;                        // #5: real site favicon/hoster logo -> keep native
         Color tone = sel ? accentFg() : SIDEBAR_TEXT;
         if (iconKey(ic) != null) return tablerIcon(ic, tone, null);
         if (sel) return tintSolid(ic, tone);
         javax.swing.Icon m = ROW_MONO.get(ic);
         if (m == null) { m = tintSolid(ic, tone); ROW_MONO.put(ic, m); }
         return m;
+    }
+
+    // #5: real site favicons / hoster logos (JD DomainInfo / FavIcons) must stay NATIVE (coloured), never
+    // mono/silhouette. The renderer-class skip (favicon/hoster/domain) misses favicons in GENERIC renderers
+    // (e.g. the Plugins settings list/combo), so guard at the icon level too: match the icon's own class or
+    // any wrapped inner icon's class. Keyless + favicon-class -> native.
+    private static boolean isSiteLogo(javax.swing.Icon ic) { return isSiteLogoIn(ic, 0); }
+    private static boolean isSiteLogoIn(javax.swing.Icon ic, int depth) {
+        if (ic == null || depth > 3) return false;
+        String cn = ic.getClass().getName().toLowerCase();
+        if (cn.contains("favicon") || cn.contains("domaininfo")) return true;
+        for (Class<?> cl = ic.getClass(); cl != null && cl != Object.class; cl = cl.getSuperclass())
+            for (java.lang.reflect.Field f : cl.getDeclaredFields()) {
+                if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) continue;
+                try {
+                    f.setAccessible(true);
+                    Object v = f.get(ic);
+                    if (v instanceof javax.swing.Icon && isSiteLogoIn((javax.swing.Icon) v, depth + 1)) return true;
+                    if (v instanceof Object[]) for (Object o : (Object[]) v)
+                        if (o instanceof javax.swing.Icon && isSiteLogoIn((javax.swing.Icon) o, depth + 1)) return true;
+                    if (v instanceof java.util.Collection) for (Object o : (java.util.Collection<?>) v)
+                        if (o instanceof javax.swing.Icon && isSiteLogoIn((javax.swing.Icon) o, depth + 1)) return true;
+                } catch (Throwable ignore) { }
+            }
+        return false;
+    }
+
+    // #8: mono the icons INSIDE settings config-panel tables (Packagizer rules, Extensions list, Advanced) —
+    // the Name-column type glyphs (file/folder/clock/lightbulb) AND the far-right action icons (help "?",
+    // revert/reset arrow). monoTableRowIcons() deliberately skips config tables; this wraps them the same way
+    // (per-column + per-column-class default renderer). Real site favicons stay native via the renderer-class
+    // skip PLUS the icon-level isSiteLogo guard in monoRowIcon. Keyed glyphs -> Tabler mono, keyless -> tint.
+    private static void monoConfigTableIcons() {
+        for (Window w : Window.getWindows()) {
+            if (!w.isShowing()) continue;
+            List<JTable> tables = new ArrayList<>();
+            collectTables(w, tables);
+            for (JTable t : tables) {
+                if (!inConfigPanel(t)) continue;
+                javax.swing.table.TableColumnModel cm = t.getColumnModel();
+                for (int i = 0; i < cm.getColumnCount(); i++) {
+                    javax.swing.table.TableColumn tc = cm.getColumn(i);
+                    javax.swing.table.TableCellRenderer cur = tc.getCellRenderer();
+                    if (cur == null) { try { cur = t.getCellRenderer(0, i); } catch (Throwable ig) { cur = null; } }
+                    if (cur == null || cur instanceof MonoIconRenderer) continue;
+                    String cn = cur.getClass().getName().toLowerCase();
+                    if (cn.contains("favicon") || cn.contains("hoster") || cn.contains("domain")) continue;
+                    tc.setCellRenderer(new MonoIconRenderer(cur));
+                }
+                java.util.Set<Class<?>> seen = new java.util.HashSet<Class<?>>();
+                for (int i = 0; i < cm.getColumnCount(); i++) {
+                    Class<?> cc; try { cc = t.getColumnClass(i); } catch (Throwable ig) { continue; }
+                    if (!seen.add(cc)) continue;
+                    javax.swing.table.TableCellRenderer def = t.getDefaultRenderer(cc);
+                    if (def == null || def instanceof MonoIconRenderer) continue;
+                    String dn = def.getClass().getName().toLowerCase();
+                    if (dn.contains("favicon") || dn.contains("hoster") || dn.contains("domain")) continue;
+                    t.setDefaultRenderer(cc, new MonoIconRenderer(def));
+                }
+            }
+        }
     }
 
     // ------------------------------------------------------ borderless config tables (round 14)
@@ -2808,6 +2871,15 @@ public class DialogConfirmAgent {
         // don't shadow the shorter ones above (titleToKey matches by contains).
         // no PNG exists for windowmanager → map "window management" to the closest glyph that ships a PNG
         {"downloadlink address", "link"}, {"window management", "desktop"}, {"menus and toolbars", "menu"},
+        // #6: GERMAN section titles (the live UI runs German; the English keys above never matched, so the
+        // header icons kept JD's colored/plain logo). Keyword substrings, more-specific first.
+        {"allgemein", "home"}, {"benutzeroberfläche", "gui"}, {"anzeige der download", "link"},
+        {"menüs und werkzeug", "menu"}, {"fenstermanagement", "desktop"}, {"benachrichtigung", "bubble"},
+        {"verschiedenes", "wrench"}, {"erweiterte einstellungen", "advancedConfig"}, {"erweiterungen", "extension"},
+        {"archiventpacker", "extract"}, {"archiv", "extract"}, {"zielordner", "folder"},
+        {"passwortliste", "password"}, {"paketverwalter", "packagizer"}, {"ordnerüberwachung", "folder_add"},
+        {"infosymbol", "minimize"}, {"profieinstellungen", "advancedConfig"}, {"benutzeraccount", "premium"},
+        {"mein benutzer", "premium"}, {"verbindung", "network-idle"}, {"passwort", "password"},
     };
     private static String titleToKey(String text) {
         if (text == null) return null;
@@ -2822,6 +2894,7 @@ public class DialogConfirmAgent {
             if (cur == null) return;
             if (cur == l.getClientProperty("jdp.monoLbl")) return;
             if (l.getClientProperty("jdp.tabOrig") != null) return;   // tab labels are owned by recolorMainTabs (tone-aware)
+            if (isSiteLogo(cur)) return;                              // #5: real site favicon/hoster logo -> keep native
             // Inside a config panel we mono every label icon (section headers etc.). OUTSIDE one, only
             // touch KNOWN chrome icons (those with a mapped Tabler asset) — this reaches the main-tab
             // row and status-bar chrome without recolouring content icons (hoster favicons, file-type
