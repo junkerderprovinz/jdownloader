@@ -910,6 +910,7 @@ public class DialogConfirmAgent {
             monoTableRowIcons();    // #11: mono the download/linkgrabber row icons (hoster favicon kept)
             indentNameColumns();    // #1: line the Name-column folder icons up with their header (~10px flush)
             cardMainTables();       // main lists (download/linkgrabber) float as a lighter card on the dark chrome
+            if (TB_DIAG) diagToolbar();
             monoConfigTableIcons(); // #8: mono the settings config-table row + action icons (favicons stay native)
             fixWidthLockIcon();     // D: swap the header width-lock padlock field for a clean Tabler lock
             stylePropertiesPanel(); // #4: flatten the bottom package/link properties strip (no fine lines)
@@ -2014,6 +2015,47 @@ public class DialogConfirmAgent {
             if (in.left != baseLeft) return;   // already bumped or an unexpected value -> leave it
             f.set(col, javax.swing.BorderFactory.createEmptyBorder(in.top, baseLeft + add, in.bottom, in.right));
         } catch (Throwable ignore) { }
+    }
+
+    // one-shot toolbar-layout probe (REMOVE before release): dump the MainToolBar MigLayout insets + the
+    // first components' bounds/constraints so we can trim the leading gap to align the button strip.
+    private static final boolean TB_DIAG = true;
+    private static boolean tbDiagDone = false;
+    private static void diagToolbar() {
+        if (tbDiagDone) return;
+        try {
+            for (Window w : Window.getWindows()) {
+                if (!w.isShowing()) continue;
+                java.util.List<Container> tbs = new java.util.ArrayList<Container>();
+                findToolbars(w, tbs);
+                for (Container tb : tbs) {
+                    StringBuilder sb = new StringBuilder("[TB] " + tb.getClass().getSimpleName()
+                            + " insets=" + ((JComponent) tb).getInsets() + " bounds=" + tb.getBounds());
+                    Object lm = tb.getLayout();
+                    if (lm != null) {
+                        sb.append(" lm=").append(lm.getClass().getSimpleName());
+                        try { sb.append(" LC=[").append(lm.getClass().getMethod("getLayoutConstraints").invoke(lm)).append("]"); }
+                        catch (Throwable t) { sb.append(" LC=?"); }
+                    }
+                    int n = 0;
+                    for (Component ch : tb.getComponents()) {
+                        if (ch.getWidth() <= 0) continue;
+                        sb.append(" | ").append(ch.getClass().getSimpleName()).append("@x=").append(ch.getX()).append("w=").append(ch.getWidth());
+                        if (ch instanceof AbstractButton) sb.append("m=").append(((AbstractButton) ch).getMargin());
+                        if (lm != null) try { sb.append("cc=[").append(lm.getClass().getMethod("getComponentConstraints", Component.class).invoke(lm, ch)).append("]"); } catch (Throwable t) { }
+                        if (++n >= 3) break;
+                    }
+                    System.out.println(sb.toString());
+                    tbDiagDone = true;
+                }
+            }
+        } catch (Throwable ignore) { }
+    }
+    private static void findToolbars(Container c, java.util.List<Container> out) {
+        for (Component ch : c.getComponents()) {
+            if (isMainToolbar(ch.getClass()) && ch instanceof Container) out.add((Container) ch);
+            if (ch instanceof Container) findToolbars((Container) ch, out);
+        }
     }
 
     /** Set our dark fill/track on every JProgressBar-typed field of the object. */
