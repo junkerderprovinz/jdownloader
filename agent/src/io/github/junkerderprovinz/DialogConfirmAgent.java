@@ -212,7 +212,7 @@ public class DialogConfirmAgent {
                         // menu hover: flip a rolled-over top-level menubar menu's text to selectionForeground (dark).
                         if (FLAT_MI_RENDERER.equals(className)) return patchMenuItemRenderer(classfileBuffer, loader);
                         // progress bars: fixed light fill so the % string reads on the accent mouseover row too.
-                        if (EXT_PROGRESS_COL.equals(className)) return patchProgressColumn(classfileBuffer, loader);
+                        if (RENDERER_BAR.equals(className)) return patchRendererBar(classfileBuffer, loader);
                         return null;
                     } catch (Throwable err) {
                         System.out.println("[jd-dialog-agent] bytecode transform skipped for " + className
@@ -398,12 +398,13 @@ public class DialogConfirmAgent {
     // return true for a rolled-over top-level menubar JMenu -> FlatLaf then paints its hover text with
     // selectionForeground (= @@ACCENT_FG@@, dark). Scoped to JMenu.isTopLevelMenu() so dropdown items are untouched.
     private static final String FLAT_MI_RENDERER = "com/formdev/flatlaf/ui/FlatMenuItemRenderer";
-    // download/linkgrabber progress bars: AppWork's ExtProgressColumn fills the bar in
-    // getDefaultForeground() = getContrastBWColor(rowBackground) — WHITE on a dark row, BLACK on the
-    // yellow accent mouseover row. The "100%" string is a fixed grey, so on the mouseover row it was
-    // grey-on-black (invisible). Force the fill to a fixed light tone for highlighter so the grey string
-    // reads on EVERY row; plain-dark falls through to the original contrast logic.
-    private static final String EXT_PROGRESS_COL = "org/appwork/swing/exttable/columns/ExtProgressColumn";
+    // download/linkgrabber progress bars: the FILL is RendererProgressBar.getForeground(), which is INHERITED
+    // from the cell/panel = the ROW foreground — light (#f4f4f4) on a normal row but DARK (#161616) on the
+    // yellow accent mouseover row. The "%" string is a fixed grey, so on the mouseover row it was
+    // grey-on-dark (invisible). RendererProgressBar does not override getForeground, so ADD an override that
+    // returns a fixed light tone for highlighter -> the fill is always light and the grey string reads on
+    // EVERY row; plain-dark returns null and keeps the inherited (contrast) foreground.
+    private static final String RENDERER_BAR = "org/appwork/swing/exttable/renderercomponents/RendererProgressBar";
     private static final String STATUS_GETICON_DESC =
             "(Ljd/controlling/packagecontroller/AbstractNode;)Ljavax/swing/Icon;";
     private static final String AGENT_INTERNAL = "io/github/junkerderprovinz/DialogConfirmAgent";
@@ -550,51 +551,60 @@ public class DialogConfirmAgent {
         return cw.toByteArray();
     }
 
-    // progress bars: prepend to ExtProgressColumn.getDefaultForeground()Ljava/awt/Color; ->
-    //   Color c = progressFillOverride(); if (c != null) return c;
-    // so the bar FILL is a fixed light tone under highlighter (grey % string reads on the accent mouseover
-    // row too); plain-dark returns null and keeps AppWork's getContrastBWColor(background) fill.
-    private static byte[] patchProgressColumn(byte[] original, final ClassLoader loader) {
+    // progress bars: ADD a getForeground() override to RendererProgressBar ->
+    //   Color c = progressFillOverride(); return (c != null) ? c : super.getForeground();
+    // The bar FILL is getForeground(), inherited from the cell = the ROW foreground (dark on the accent
+    // mouseover row). RendererProgressBar does not declare getForeground, so we synthesize the override in
+    // visitEnd: highlighter -> fixed light fill (grey % string reads on every row); plain-dark -> super.
+    private static byte[] patchRendererBar(byte[] original, final ClassLoader loader) {
         ClassReader cr = new ClassReader(original);
         ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES) {
             @Override
             protected ClassLoader getClassLoader() { return loader != null ? loader : super.getClassLoader(); }
         };
-        final int[] n = { 0 };
+        final boolean[] already = { false };
+        final boolean[] added = { false };
         ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
             @Override
             public MethodVisitor visitMethod(int access, String name, String desc, String sig, String[] ex) {
-                MethodVisitor mv = super.visitMethod(access, name, desc, sig, ex);
-                if (!("getDefaultForeground".equals(name) && "()Ljava/awt/Color;".equals(desc))) return mv;
-                n[0]++;
-                return new MethodVisitor(Opcodes.ASM9, mv) {
-                    @Override
-                    public void visitCode() {
-                        super.visitCode();
-                        Label cont = new Label();
-                        visitMethodInsn(Opcodes.INVOKESTATIC, AGENT_INTERNAL, "progressFillOverride",
-                                "()Ljava/awt/Color;", false);
-                        visitInsn(Opcodes.DUP);
-                        visitJumpInsn(Opcodes.IFNULL, cont);
-                        visitInsn(Opcodes.ARETURN);
-                        visitLabel(cont);
-                        visitInsn(Opcodes.POP);
-                    }
-                };
+                if ("getForeground".equals(name) && "()Ljava/awt/Color;".equals(desc)) already[0] = true;
+                return super.visitMethod(access, name, desc, sig, ex);
+            }
+            @Override
+            public void visitEnd() {
+                if (!already[0]) {
+                    MethodVisitor mv = super.visitMethod(Opcodes.ACC_PUBLIC, "getForeground", "()Ljava/awt/Color;", null, null);
+                    mv.visitCode();
+                    Label sup = new Label();
+                    mv.visitMethodInsn(Opcodes.INVOKESTATIC, AGENT_INTERNAL, "progressFillOverride", "()Ljava/awt/Color;", false);
+                    mv.visitInsn(Opcodes.DUP);
+                    mv.visitJumpInsn(Opcodes.IFNULL, sup);
+                    mv.visitInsn(Opcodes.ARETURN);           // highlighter -> fixed light fill
+                    mv.visitLabel(sup);
+                    mv.visitInsn(Opcodes.POP);               // drop the null
+                    mv.visitVarInsn(Opcodes.ALOAD, 0);
+                    mv.visitMethodInsn(Opcodes.INVOKESPECIAL, "javax/swing/JProgressBar", "getForeground", "()Ljava/awt/Color;", false);
+                    mv.visitInsn(Opcodes.ARETURN);           // plain-dark -> inherited/super foreground
+                    mv.visitMaxs(0, 0);
+                    mv.visitEnd();
+                    added[0] = true;
+                }
+                super.visitEnd();
             }
         };
         cr.accept(cv, 0);
-        if (n[0] == 0) {
-            System.out.println("[jd-dialog-agent] ExtProgressColumn.getDefaultForeground not found — progress fill left as-is");
+        if (already[0]) {
+            System.out.println("[jd-dialog-agent] RendererProgressBar already overrides getForeground — progress fill left as-is");
             return null;
         }
-        System.out.println("[jd-dialog-agent] patched ExtProgressColumn.getDefaultForeground -> fixed light fill (readable % on accent hover)");
+        if (!added[0]) return null;
+        System.out.println("[jd-dialog-agent] added RendererProgressBar.getForeground -> fixed light fill (readable % on accent hover)");
         return cw.toByteArray();
     }
 
     /** #hover: fixed light fill for the download/linkgrabber progress bars under highlighter (so the grey
-     *  "%" string reads on the accent mouseover row); null on plain-dark keeps AppWork's contrast-BW fill.
-     *  Called from the bytecode-patched ExtProgressColumn.getDefaultForeground (resolved via system loader). */
+     *  "%" string reads on the accent mouseover row); null on plain-dark keeps the inherited (contrast) fill.
+     *  Called from the bytecode-synthesized RendererProgressBar.getForeground (resolved via system loader). */
     public static java.awt.Color progressFillOverride() {
         return isHighlighterFast() ? PAL_TEXT : null;
     }
@@ -966,14 +976,20 @@ public class DialogConfirmAgent {
             java.util.List<Component> tbs = new java.util.ArrayList<Component>();
             diagCollect(f, "MainToolBar", tbs);
             if (!tbs.isEmpty()) { Container tb = (Container) tbs.get(0);
-                sb.append(" toolbarChildren=");
-                for (Component k : tb.getComponents()) if (k.getWidth() > 0) {
-                    java.awt.Point p = javax.swing.SwingUtilities.convertPoint(tb, k.getLocation(), f);
-                    sb.append(k.getClass().getSimpleName()).append("@").append(p.x).append("w").append(k.getWidth()).append(" ");
-                    break;
+                java.util.List<Component> btns = new java.util.ArrayList<Component>();
+                diagCollectButtons(tb, btns);
+                sb.append(" tbBtns=");
+                int cnt = 0;
+                for (Component k : btns) {
+                    if (k.getWidth() <= 0) continue;
+                    java.awt.Point p = javax.swing.SwingUtilities.convertPoint(k.getParent(), k.getLocation(), f);
+                    boolean hasIc = (k instanceof AbstractButton) && ((AbstractButton) k).getIcon() != null;
+                    java.awt.Insets in = (k instanceof AbstractButton) ? ((AbstractButton) k).getMargin() : null;
+                    sb.append(p.x).append("w").append(k.getWidth()).append(hasIc ? "I" : "").append(in != null ? ("m" + in.left) : "").append(" ");
+                    if (++cnt >= 4) break;
                 }
                 java.awt.Point tp = javax.swing.SwingUtilities.convertPoint(tb.getParent(), tb.getLocation(), f);
-                sb.append(" toolbar.x=").append(tp.x).append(" toolbarInsets=").append(((JComponent) tb).getInsets());
+                sb.append(" toolbar.x=").append(tp.x).append(" ins=").append(((JComponent) tb).getInsets());
             }
             java.util.List<Component> tables = new java.util.ArrayList<Component>();
             diagCollect(f, "ExtTable", tables);
@@ -982,7 +998,9 @@ public class DialogConfirmAgent {
                 javax.swing.JTable jt = (javax.swing.JTable) tc;
                 java.awt.Point p = javax.swing.SwingUtilities.convertPoint(tc.getParent(), tc.getLocation(), f);
                 int col0w = jt.getColumnModel().getColumnCount() > 0 ? jt.getColumnModel().getColumn(0).getWidth() : -1;
-                sb.append(" table[").append(tc.getClass().getSimpleName()).append("].x=").append(p.x).append(" col0w=").append(col0w);
+                java.awt.Rectangle cr0 = jt.getRowCount() > 0 ? jt.getCellRect(0, 0, true) : null;
+                sb.append(" table[").append(tc.getClass().getSimpleName()).append("].x=").append(p.x)
+                  .append(" col0w=").append(col0w).append(" cell00x=").append(cr0 != null ? (p.x + cr0.x) : -1);
                 break;
             }
             System.out.println(sb.toString());
@@ -993,6 +1011,12 @@ public class DialogConfirmAgent {
             for (Class<?> k = ch.getClass(); k != null && k != Object.class; k = k.getSuperclass())
                 if (k.getSimpleName().equals(simpleNameEndsWith) || k.getName().endsWith("." + simpleNameEndsWith)) { out.add(ch); break; }
             if (ch instanceof Container) diagCollect((Container) ch, simpleNameEndsWith, out);
+        }
+    }
+    private static void diagCollectButtons(Container c, java.util.List<Component> out) {
+        for (Component ch : c.getComponents()) {
+            if (ch instanceof AbstractButton) out.add(ch);
+            if (ch instanceof Container) diagCollectButtons((Container) ch, out);
         }
     }
     // ===== end wave-4 probe =====
