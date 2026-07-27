@@ -2944,6 +2944,14 @@ public class DialogConfirmAgent {
             // Re-assert our stored clean disabled icon on EVERY tick so JD's override never survives.
             Object md = b.getClientProperty("jdp.monoDisabled");
             if (md instanceof javax.swing.Icon && b.getDisabledIcon() != md) b.setDisabledIcon((javax.swing.Icon) md);
+            // Zwischenablage/toggle bug: a TOGGLE paints getSelectedIcon() while ON — and JD swaps in a raw
+            // COMPOSITE state icon (the clipboard-monitoring logo) AFTER our one-shot mono pass, so the old
+            // colour came back on activate/deactivate. Re-assert the stored mono state icons every tick (like
+            // the disabled icon), so a JD state-swap is re-mono'd immediately.
+            Object ms = b.getClientProperty("jdp.monoSel");
+            if (ms instanceof javax.swing.Icon && b.getSelectedIcon() != ms) b.setSelectedIcon((javax.swing.Icon) ms);
+            Object mrs = b.getClientProperty("jdp.monoRSel");
+            if (mrs instanceof javax.swing.Icon && b.getRolloverSelectedIcon() != mrs) b.setRolloverSelectedIcon((javax.swing.Icon) mrs);
             if (cur == b.getClientProperty("jdp.monoBtn")) return;   // already our mono icon
             javax.swing.Icon mono = tablerForButton(b, cur, SIDEBAR_TEXT);
             if (mono == cur) {
@@ -2962,9 +2970,9 @@ public class DialogConfirmAgent {
             // The rollover / selected / pressed states all paint the accent background (via the
             // ToggleButton.* + Button.* hover keys), so their glyphs go DARK to stay readable on it.
             javax.swing.Icon si = b.getSelectedIcon();
-            if (si != null && si != mono) b.setSelectedIcon(tablerForButton(b, si, accentFg()));
+            if (si != null && si != mono) { javax.swing.Icon m = tablerForButton(b, si, accentFg()); b.setSelectedIcon(m); b.putClientProperty("jdp.monoSel", m); }
             javax.swing.Icon rsi = b.getRolloverSelectedIcon();
-            if (rsi != null && rsi != mono) b.setRolloverSelectedIcon(tablerForButton(b, rsi, accentFg()));
+            if (rsi != null && rsi != mono) { javax.swing.Icon m = tablerForButton(b, rsi, accentFg()); b.setRolloverSelectedIcon(m); b.putClientProperty("jdp.monoRSel", m); }
             javax.swing.Icon pi = b.getPressedIcon();
             if (pi != null && pi != mono) b.setPressedIcon(tablerForButton(b, pi, accentFg()));
             // S1(r63/r64): a DISABLED button paints its disabledIcon, not getIcon() — and JD keeps
@@ -3801,8 +3809,27 @@ public class DialogConfirmAgent {
                     int t = mar == null ? 6 : mar.top, b = mar == null ? 6 : mar.bottom;
                     m.setMargin(new java.awt.Insets(t, 8, b, 12));
                 }
+                installMenuHoverFg(m);
             }
         }
+    }
+    // FlatLaf paints MenuBar.hoverBackground (the accent) on a hovered top-level menu but does NOT flip the
+    // FOREGROUND (there is no MenuBar.hoverForeground), so "Datei/Einstellungen/..." rendered light-on-accent
+    // (unreadable). Flip it ourselves: on rollover/armed/selected the label goes dark (accentFg), else light.
+    // One listener per menu (guarded); the tone tracks the model so it survives open/close + rollover.
+    private static void installMenuHoverFg(final javax.swing.JMenu m) {
+        if (m.getClientProperty("jdp.menuHoverFg") != null) return;
+        m.putClientProperty("jdp.menuHoverFg", Boolean.TRUE);
+        final javax.swing.event.ChangeListener cl = new javax.swing.event.ChangeListener() {
+            public void stateChanged(javax.swing.event.ChangeEvent e) {
+                javax.swing.ButtonModel mm = m.getModel();
+                boolean hot = mm.isRollover() || mm.isArmed() || mm.isSelected();
+                Color want = hot ? accentFg() : SIDEBAR_TEXT;
+                if (!want.equals(m.getForeground())) m.setForeground(want);
+            }
+        };
+        m.getModel().addChangeListener(cl);
+        if (!SIDEBAR_TEXT.equals(m.getForeground())) m.setForeground(SIDEBAR_TEXT);
     }
 
     // --- main tabs: readable text on the accent selected tab ------------------
