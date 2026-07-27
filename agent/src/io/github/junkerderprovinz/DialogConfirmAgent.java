@@ -4165,6 +4165,7 @@ public class DialogConfirmAgent {
         for (Component ch : c.getComponents()) {
             if (isMainToolbar(ch.getClass()) && ch instanceof JComponent) {
                 if (!CHROME_BASE.equals(ch.getBackground())) { ch.setBackground(CHROME_BASE); ((JComponent) ch).setOpaque(true); }
+                flushToolbarButtonsLeft((Container) ch);   // #1: pull the button strip flush-left (~10px, aligned with the menu bar)
                 Container par = ch.getParent();   // the band the toolbar sits in can carry the lighter fill
                 if (par instanceof JComponent && par.getBackground() != null
                         && par.getBackground().getRed() >= 0x1b && par.getBackground().getRed() <= 0x2a
@@ -4174,6 +4175,22 @@ public class DialogConfirmAgent {
             }
             if (ch instanceof Container) darkenToolbarsIn((Container) ch);
         }
+    }
+
+    /** #1: trim the toolbar's own left inset so the leftmost button (Play) lines up with the menu bar and
+     *  the table content instead of sitting indented. Once per toolbar (client-property guarded) so we don't
+     *  fight JD or flicker; keeps top/bottom/right insets. */
+    private static void flushToolbarButtonsLeft(Container toolbar) {
+        try {
+            if (!(toolbar instanceof JComponent)) return;
+            JComponent tb = (JComponent) toolbar;
+            if (tb.getClientProperty("jdp.tbFlush") != null) return;
+            java.awt.Insets bi = tb.getInsets();
+            if (bi != null && bi.left > 1) {
+                tb.setBorder(javax.swing.BorderFactory.createEmptyBorder(bi.top, 1, bi.bottom, bi.right));
+            }
+            tb.putClientProperty("jdp.tbFlush", Boolean.TRUE);
+        } catch (Throwable ignore) { }
     }
 
     private static void recolorMainTabs() {
