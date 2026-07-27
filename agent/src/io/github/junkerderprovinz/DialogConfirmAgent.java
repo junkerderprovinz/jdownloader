@@ -189,6 +189,10 @@ public class DialogConfirmAgent {
                         if (FLAT_TABUI.equals(className)) return patchTabbedPaneUI(classfileBuffer, loader);
                         // D: recolour JD's expander [+]/[-] + column-lock glyphs at the NewTheme icon lookup.
                         if (NEW_THEME.equals(className)) return patchNewTheme(classfileBuffer, loader);
+                        // DIAG (temporary): map how the ExtTable header draws the per-column width-lock padlock.
+                        if (className != null) { String lc = className.toLowerCase();
+                            if (lc.contains("exttable") && (lc.contains("header") || lc.contains("column")))
+                                dumpExtTableClass(className, classfileBuffer); }
                         return null;
                     } catch (Throwable err) {
                         System.out.println("[jd-dialog-agent] bytecode transform skipped for " + className
@@ -511,6 +515,42 @@ public class DialogConfirmAgent {
             CHROME_CLEAN.put(ck, clean);
             return clean;
         } catch (Throwable t) { return original; }
+    }
+
+    // DIAG (temporary): dump an ExtTable header/column class — per method, its icon-key string constants and
+    // any icon/draw/NewTheme calls — to locate how the per-column width-lock padlock is loaded/painted.
+    private static final java.util.Set<String> EXT_DUMPED =
+            java.util.Collections.synchronizedSet(new java.util.HashSet<String>());
+    private static void dumpExtTableClass(String cn, byte[] buf) {
+        try {
+            if (!EXT_DUMPED.add(cn)) return;
+            System.out.println("[jd-agent-diag] ===== " + cn + " =====");
+            new ClassReader(buf).accept(new ClassVisitor(Opcodes.ASM9) {
+                @Override
+                public MethodVisitor visitMethod(int a, final String name, String desc, String s, String[] e) {
+                    return new MethodVisitor(Opcodes.ASM9) {
+                        @Override
+                        public void visitLdcInsn(Object cst) {
+                            if (cst instanceof String) {
+                                String v = ((String) cst).toLowerCase();
+                                if (v.contains("lock") || v.contains("width") || v.contains(".png") || v.contains("exttable"))
+                                    System.out.println("[jd-agent-diag]   " + name + " LDC \"" + cst + "\"");
+                            }
+                        }
+                        @Override
+                        public void visitMethodInsn(int op, String owner, String mn, String md, boolean itf) {
+                            String low = mn.toLowerCase();
+                            if (low.contains("icon") || low.contains("draw") || low.contains("paint")
+                                    || owner.contains("NewTheme") || owner.contains("IconIO"))
+                                System.out.println("[jd-agent-diag]   " + name + " -> " + owner + "." + mn + " " + md);
+                        }
+                    };
+                }
+            }, 0);
+            System.out.println("[jd-agent-diag] ===== end " + cn + " =====");
+        } catch (Throwable t) {
+            System.out.println("[jd-agent-diag] extdump failed " + cn + " (" + t + ")");
+        }
     }
 
     // --- Package-expander icons (Linkgrabber + download list) --------------------
