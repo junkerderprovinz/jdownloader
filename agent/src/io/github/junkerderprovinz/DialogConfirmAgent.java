@@ -182,11 +182,13 @@ public class DialogConfirmAgent {
                     try {
                         if (CPB_UI.equals(className))  return patchCircleBarUI(classfileBuffer, loader);
                         if (SA_CLASS.equals(className)) return patchScriptAction(classfileBuffer, loader);
-                        // #11b: swap the download + linkgrabber status-column glyphs for clean Tabler icons.
-                        if (TASK_COL.equals(className) || AVAIL_COL.equals(className))
+                        // #11b + F: swap the download/linkgrabber status + file (folder/package) column glyphs.
+                        if (TASK_COL.equals(className) || AVAIL_COL.equals(className) || FILE_COL.equals(className))
                             return patchStatusColumn(classfileBuffer, loader, className);
                         // #2: inset FlatLaf's tab-background fill so the primary nav tabs get a real gap.
                         if (FLAT_TABUI.equals(className)) return patchTabbedPaneUI(classfileBuffer, loader);
+                        // D: recolour JD's expander [+]/[-] + column-lock glyphs at the NewTheme icon lookup.
+                        if (NEW_THEME.equals(className)) return patchNewTheme(classfileBuffer, loader);
                         return null;
                     } catch (Throwable err) {
                         System.out.println("[jd-dialog-agent] bytecode transform skipped for " + className
@@ -342,6 +344,8 @@ public class DialogConfirmAgent {
     // technique as the CircledProgressBar/ScriptAction guards: any transform error leaves the bytes untouched.
     private static final String TASK_COL  = "org/jdownloader/gui/views/downloads/columns/TaskColumn";
     private static final String AVAIL_COL = "org/jdownloader/gui/views/downloads/columns/AvailabilityColumn";
+    private static final String FILE_COL  = "org/jdownloader/gui/views/downloads/columns/FileColumn";
+    private static final String NEW_THEME = "org/jdownloader/images/NewTheme";
     private static final String STATUS_GETICON_DESC =
             "(Ljd/controlling/packagecontroller/AbstractNode;)Ljavax/swing/Icon;";
     private static final String AGENT_INTERNAL = "io/github/junkerderprovinz/DialogConfirmAgent";
@@ -431,6 +435,71 @@ public class DialogConfirmAgent {
         }
         System.out.println("[jd-dialog-agent] patched FlatTabbedPaneUI.paintTabBackground -> tab gap (#2)");
         return cw.toByteArray();
+    }
+
+    // D: JD's package expander [+]/[-] and column-lock glyphs render dark because JD caches the icon in memory
+    // at startup (the on-disk light restore loses that cache race) and they are NOT column fields, so the
+    // reflective heal never reaches them. Intercept the lookup itself: patch NewTheme.getIcon(key,size) to route
+    // its return through cleanChromeIcon, which recolours only tree_plus/tree_minus/lockColumn/widthLocked to a
+    // light tone (Tabler where one exists). Hot path -> the hook fast-returns for every other key.
+    private static byte[] patchNewTheme(byte[] original, final ClassLoader loader) {
+        ClassReader cr = new ClassReader(original);
+        ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES) {
+            @Override
+            protected ClassLoader getClassLoader() { return loader != null ? loader : super.getClassLoader(); }
+        };
+        final int[] n = { 0 };
+        ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
+            @Override
+            public MethodVisitor visitMethod(int access, String name, String desc, String sig, String[] ex) {
+                MethodVisitor mv = super.visitMethod(access, name, desc, sig, ex);
+                if (!("getIcon".equals(name) && "(Ljava/lang/String;I)Ljavax/swing/Icon;".equals(desc))) return mv;
+                boolean stat = (access & Opcodes.ACC_STATIC) != 0;
+                final int keyIdx = stat ? 0 : 1;
+                final int sizeIdx = stat ? 1 : 2;
+                n[0]++;
+                return new MethodVisitor(Opcodes.ASM9, mv) {
+                    @Override
+                    public void visitInsn(int op) {
+                        if (op == Opcodes.ARETURN) {
+                            super.visitVarInsn(Opcodes.ALOAD, keyIdx);    // key
+                            super.visitVarInsn(Opcodes.ILOAD, sizeIdx);   // size
+                            super.visitMethodInsn(Opcodes.INVOKESTATIC, AGENT_INTERNAL, "cleanChromeIcon",
+                                    "(Ljavax/swing/Icon;Ljava/lang/String;I)Ljavax/swing/Icon;", false);
+                        }
+                        super.visitInsn(op);
+                    }
+                };
+            }
+        };
+        cr.accept(cv, 0);
+        if (n[0] == 0) {
+            System.out.println("[jd-dialog-agent] NewTheme.getIcon(String,int) not found — expander/lock left as-is");
+            return null;
+        }
+        System.out.println("[jd-dialog-agent] patched NewTheme.getIcon -> light expander/lock (D)");
+        return cw.toByteArray();
+    }
+
+    private static final java.util.Map<String, javax.swing.Icon> CHROME_CLEAN =
+            new java.util.concurrent.ConcurrentHashMap<String, javax.swing.Icon>();
+    /** D hook: recolour ONLY JD's expander/lock chrome glyphs to a light tone; everything else passes through. */
+    public static javax.swing.Icon cleanChromeIcon(javax.swing.Icon original, String key, int size) {
+        try {
+            if (original == null || key == null || !isHighlighterFast()) return original;
+            String k = key.toLowerCase();
+            if (!(k.contains("tree_plus") || k.contains("tree_minus")
+                    || k.contains("lockcolumn") || k.contains("widthlocked"))) return original;
+            int w = original.getIconWidth() > 0 ? original.getIconWidth() : size;
+            int h = original.getIconHeight() > 0 ? original.getIconHeight() : size;
+            String ck = key + "@" + w + "x" + h;
+            javax.swing.Icon cached = CHROME_CLEAN.get(ck);
+            if (cached != null) return cached;
+            javax.swing.Icon base = tablerBase(key, w, h);
+            javax.swing.Icon clean = (base != null) ? tintIcon(base, EXPANDER_LIGHT, null) : tintSolid(original, EXPANDER_LIGHT);
+            CHROME_CLEAN.put(ck, clean);
+            return clean;
+        } catch (Throwable t) { return original; }
     }
 
     // --- Package-expander icons (Linkgrabber + download list) --------------------
@@ -569,7 +638,6 @@ public class DialogConfirmAgent {
             monoTableRowIcons();    // #11: mono the download/linkgrabber row icons (hoster favicon kept)
             recolorDialogs();
             dimModalBackdrops();
-            hlDiag2();               // DIAG (temporary): folder/Archiv/expander icon keys + menu-bar line source
         }
         if (++lafTick >= 12) {   // every ~5s (ticks run every 400ms)
             lafTick = 0;
@@ -1530,8 +1598,6 @@ public class DialogConfirmAgent {
     // marks the mono replacements WE produced so a keyless mono icon is not re-tinted every tick (no churn).
     private static final java.util.Map<javax.swing.Icon, Boolean> EXT_MONO_MARK =
             java.util.Collections.synchronizedMap(new java.util.WeakHashMap<javax.swing.Icon, Boolean>());
-    private static final java.util.Set<String> EXP_DIAG =
-            java.util.Collections.synchronizedSet(new java.util.HashSet<String>());   // DIAG (temporary)
     private static void recolorExpanderFields(Object col) {
         if (col == null) return;
         for (Class<?> k = col.getClass(); k != null && k != Object.class; k = k.getSuperclass()) {
@@ -1544,9 +1610,6 @@ public class DialogConfirmAgent {
                     javax.swing.Icon ic = (javax.swing.Icon) o;
                     if (EXT_MONO_MARK.containsKey(ic)) continue;                 // already our mono replacement
                     String key = iconKey(ic);
-                    if (EXP_DIAG.add(col.getClass().getSimpleName() + "#" + f.getName()))   // DIAG (temporary)
-                        System.out.println("[jd-agent-diag2] EXPFIELD " + col.getClass().getSimpleName() + "#"
-                                + f.getName() + " key=" + key + " " + ic.getClass().getSimpleName());
                     javax.swing.Icon repl = null;
                     if (key != null && (key.contains("tree_plus") || key.contains("tree_minus")
                             || key.contains("lockColumn") || key.contains("widthLocked"))) {
@@ -1575,7 +1638,7 @@ public class DialogConfirmAgent {
 
     public static javax.swing.Icon cleanTaskIcon(Object owner, javax.swing.Icon original) {
         try {
-            if (original == null || !isHighlighter()) return original;
+            if (original == null || !isHighlighterFast()) return original;
             String key = STATUS_CLASS.get(original);
             if (key == null) { key = classifyStatus(owner, original); STATUS_CLASS.put(original, key == null ? "" : key); }
             int w = original.getIconWidth(), h = original.getIconHeight();
@@ -1596,8 +1659,6 @@ public class DialogConfirmAgent {
      *  on the column, (2) the icon's own key (AvailabilityColumn / FinalLinkState / PluginProgress glyphs are
      *  keyed), (3) the visible glyph is usually a fresh MergedIcon that fillColumnHelper composed past the
      *  cached fields, so classify its sub-icons and pick the dominant status. */
-    private static final java.util.Set<String> STATUS_DIAG =
-            java.util.Collections.synchronizedSet(new java.util.HashSet<String>());
     private static String classifyStatus(Object owner, javax.swing.Icon original) {
         String result = keyFromOwnerFields(owner, original);
         if (result == null) result = normalizeStatusKey(iconKey(original));
@@ -1605,92 +1666,8 @@ public class DialogConfirmAgent {
             java.util.List<String> parts = new java.util.ArrayList<String>();
             collectSubIconKeys(owner, original, parts, 0);
             result = pickDominant(parts);
-            // DIAG (temporary): log the raw sub-icon keys per distinct status composite, to curate nicer icons.
-            String sig = (original == null ? "null" : original.getClass().getSimpleName()) + parts + result;
-            if (STATUS_DIAG.add(sig)) {
-                java.util.List<String> raw = new java.util.ArrayList<String>();
-                collectRawSubKeys(original, raw, 0);
-                System.out.println("[jd-agent-diag] status parts=" + parts + " -> " + result + " raw=" + raw);
-            }
         }
         return result;
-    }
-
-    // DIAG (temporary): collect the RAW (unnormalized) iconKey of every sub-icon so extract-OK/error/etc.
-    // can be told apart and mapped to distinct nice glyphs.
-    private static void collectRawSubKeys(Object node, java.util.List<String> out, int depth) {
-        if (node == null || depth > 6) return;
-        for (Class<?> c = node.getClass(); c != null && c != Object.class; c = c.getSuperclass())
-            for (Field f : c.getDeclaredFields()) {
-                if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) continue;
-                try { f.setAccessible(true); rawConsume(f.get(node), node, out, depth); } catch (Throwable ig) { }
-            }
-    }
-    private static void rawConsume(Object v, Object node, java.util.List<String> out, int depth) {
-        if (v == null || v == node) return;
-        if (v instanceof javax.swing.Icon) {
-            javax.swing.Icon sub = (javax.swing.Icon) v;
-            String k = iconKey(sub);
-            out.add((k != null ? k : "?") + ":" + sub.getClass().getSimpleName() + " " + sub.getIconWidth() + "x" + sub.getIconHeight());
-            if (k == null) collectRawSubKeys(sub, out, depth + 1);
-        } else if (v instanceof Object[]) { for (Object o : (Object[]) v) rawConsume(o, node, out, depth); }
-        else if (v instanceof java.util.Collection) { for (Object o : (java.util.Collection<?>) v) rawConsume(o, node, out, depth); }
-        else { String vc = v.getClass().getName();
-            if (vc.startsWith("org.jdownloader.") || vc.startsWith("org.appwork.") || vc.startsWith("jd."))
-                collectRawSubKeys(v, out, depth + 1); }
-    }
-
-    // DIAG (temporary): dump the menu-bar neighbourhood (light line under it), the download/Views table row0
-    // cell icons (folder / Archiv keys), and the tree expand icons (#10 [+] / lock). One-shot.
-    private static boolean diag2Done = false;
-    private static void hlDiag2() {
-        if (diag2Done) return;
-        try {
-            boolean any = false;
-            for (Window w : Window.getWindows()) {
-                if (!w.isShowing()) continue;
-                javax.swing.JMenuBar mb = (w instanceof javax.swing.JFrame) ? ((javax.swing.JFrame) w).getJMenuBar() : null;
-                if (mb != null) {
-                    System.out.println("[jd-agent-diag2] MENUBAR " + diagComp(mb));
-                    Container p = mb.getParent();
-                    if (p != null) {
-                        System.out.println("[jd-agent-diag2]  parent " + diagComp(p));
-                        for (Component sib : p.getComponents()) System.out.println("[jd-agent-diag2]   sib " + diagComp(sib));
-                    }
-                    any = true;
-                }
-                java.util.List<JTable> tabs = new java.util.ArrayList<JTable>();
-                collectTables(w, tabs);
-                for (JTable t : tabs) {
-                    if (inConfigPanel(t) || t.getRowCount() == 0) continue;
-                    System.out.println("[jd-agent-diag2] TABLE " + t.getClass().getSimpleName() + " rows=" + t.getRowCount());
-                    for (int c = 0; c < t.getColumnCount(); c++) {
-                        try {
-                            Component cell = t.prepareRenderer(t.getCellRenderer(0, c), 0, c);
-                            javax.swing.Icon ic = diagIconOf(cell);
-                            System.out.println("[jd-agent-diag2]   col" + c + " '" + t.getColumnName(c) + "' icon="
-                                    + (ic == null ? "null" : iconKey(ic) + ":" + ic.getClass().getSimpleName()));
-                        } catch (Throwable ig) { }
-                    }
-                    any = true;
-                }
-            }
-            System.out.println("[jd-agent-diag2] Tree.expandedIcon=" + UIManager.getIcon("Tree.expandedIcon")
-                    + " collapsedIcon=" + UIManager.getIcon("Tree.collapsedIcon"));
-            if (any) diag2Done = true;
-        } catch (Throwable ig) { }
-    }
-    private static String diagComp(Component c) {
-        String b = (c instanceof JComponent) ? String.valueOf(((JComponent) c).getBorder()) : "-";
-        return c.getClass().getName() + " " + c.getBounds() + " opaque=" + c.isOpaque()
-                + " bg=" + c.getBackground() + " border=" + b;
-    }
-    private static javax.swing.Icon diagIconOf(Component c) {
-        if (c instanceof javax.swing.JLabel) return ((javax.swing.JLabel) c).getIcon();
-        if (c instanceof AbstractButton) return ((AbstractButton) c).getIcon();
-        if (c instanceof Container)
-            for (Component ch : ((Container) c).getComponents()) { javax.swing.Icon i = diagIconOf(ch); if (i != null) return i; }
-        return null;
     }
 
     /** The clean key for an icon that IS one of the owning column's named status fields, else null. */
@@ -1762,14 +1739,21 @@ public class DialogConfirmAgent {
         if (n.equals("offline")) return "error";
         if (n.equals("unknown")) return "help";
         if (n.equals("mixed")) return "true";
+        if (n.startsWith("iconArchive")) return "extract";              // FileColumn: archive package -> zip
+        if (n.equals("iconPackageOpen")) return "folder_open";          // FileColumn: open package -> open folder
+        if (n.startsWith("iconPackage")) return "folder";               // FileColumn: package -> folder
         return null;
     }
 
     private static String normalizeStatusKey(String ik) {
         if (ik == null) return null;
         String s = ik.toLowerCase();
+        if (s.contains("extract")) {                        // extraction sub-states, decided before the generic checks
+            if (s.contains("error") || s.contains("fail")) return "error";
+            if (s.contains("ok")) return "true";             // extracted OK -> clean check
+            return "extract";                                // extracting -> zip
+        }
         if (s.contains("error") || s.contains("false") || s.contains("offline") || s.contains("fail")) return "error";
-        if (s.contains("extract")) return "extract";
         if (s.contains("ok") || s.contains("true") || s.contains("finish") || s.contains("online")) return "true";
         if (s.contains("wait") || s.contains("final") || s.contains("hourglass")) return "wait";
         if (s.contains("start") || s.equals("run")) return "run";
@@ -2103,6 +2087,16 @@ public class DialogConfirmAgent {
             new java.io.File(DEFAULTS_DIR, "FlatDarkLaf.properties");
 
     private static boolean isHighlighter() { return HL_MARKER.isFile(); }
+
+    // Cached variant for hot paths (NewTheme.getIcon, per-cell status): the marker is written once at boot and
+    // never changes, so stat it at most every 3s instead of on every icon lookup.
+    private static volatile boolean hlFastVal = false;
+    private static volatile long hlFastAt = 0L;
+    private static boolean isHighlighterFast() {
+        long now = System.currentTimeMillis();
+        if (now - hlFastAt > 3000L) { hlFastVal = HL_MARKER.isFile(); hlFastAt = now; }
+        return hlFastVal;
+    }
 
     // The user's accent, read once from the rendered FlatLaf defaults (jdownloader-theme.sh
     // writes "@accentColor = #rrggbb" into HL_MARKER). NOT from UIManager: enforceDarkChrome
@@ -3287,7 +3281,12 @@ public class DialogConfirmAgent {
             if (!w.isShowing()) continue;
             if (w instanceof javax.swing.JFrame) {
                 javax.swing.JMenuBar mb = ((javax.swing.JFrame) w).getJMenuBar();
-                if (mb != null && !CHROME_BASE.equals(mb.getBackground())) { mb.setBackground(CHROME_BASE); mb.setOpaque(true); }
+                if (mb != null) {
+                    if (!CHROME_BASE.equals(mb.getBackground())) { mb.setBackground(CHROME_BASE); mb.setOpaque(true); }
+                    // E: FlatMenuBarBorder paints a bottom separator line under the menu bar; strip it.
+                    if (!(mb.getBorder() instanceof javax.swing.border.EmptyBorder))
+                        mb.setBorder(javax.swing.BorderFactory.createEmptyBorder());
+                }
             }
             darkenToolbarsIn(w);
         }
