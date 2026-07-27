@@ -2029,22 +2029,28 @@ public class DialogConfirmAgent {
                 java.util.List<Container> tbs = new java.util.ArrayList<Container>();
                 findToolbars(w, tbs);
                 for (Container tb : tbs) {
+                    // find the leftmost laid-out button; skip this pass if nothing is laid out yet
+                    Component first = null;
+                    for (Component ch : tb.getComponents()) {
+                        if (ch.getWidth() <= 0) continue;
+                        if (first == null || ch.getX() < first.getX()) first = ch;
+                    }
+                    if (first == null) continue;
                     StringBuilder sb = new StringBuilder("[TB] " + tb.getClass().getSimpleName()
                             + " insets=" + ((JComponent) tb).getInsets() + " bounds=" + tb.getBounds());
                     Object lm = tb.getLayout();
                     if (lm != null) {
-                        sb.append(" lm=").append(lm.getClass().getSimpleName());
-                        try { sb.append(" LC=[").append(lm.getClass().getMethod("getLayoutConstraints").invoke(lm)).append("]"); }
-                        catch (Throwable t) { sb.append(" LC=?"); }
+                        sb.append(" lm=").append(lm.getClass().getName());
+                        for (Class<?> k = lm.getClass(); k != null && k != Object.class; k = k.getSuperclass())
+                            for (java.lang.reflect.Field f : k.getDeclaredFields()) {
+                                if (f.getType() != int.class && f.getType() != Integer.class
+                                        && !f.getType().getSimpleName().equals("Insets")) continue;
+                                try { f.setAccessible(true); sb.append(" ").append(f.getName()).append("=").append(f.get(lm)); } catch (Throwable t) { }
+                            }
                     }
-                    int n = 0;
-                    for (Component ch : tb.getComponents()) {
-                        if (ch.getWidth() <= 0) continue;
-                        sb.append(" | ").append(ch.getClass().getSimpleName()).append("@x=").append(ch.getX()).append("w=").append(ch.getWidth());
-                        if (ch instanceof AbstractButton) sb.append("m=").append(((AbstractButton) ch).getMargin());
-                        if (lm != null) try { sb.append("cc=[").append(lm.getClass().getMethod("getComponentConstraints", Component.class).invoke(lm, ch)).append("]"); } catch (Throwable t) { }
-                        if (++n >= 3) break;
-                    }
+                    sb.append(" | first=").append(first.getClass().getSimpleName()).append("@x=").append(first.getX()).append("w=").append(first.getWidth());
+                    if (first instanceof AbstractButton) sb.append("m=").append(((AbstractButton) first).getMargin())
+                            .append("ins=").append(((AbstractButton) first).getInsets());
                     System.out.println(sb.toString());
                     tbDiagDone = true;
                 }
