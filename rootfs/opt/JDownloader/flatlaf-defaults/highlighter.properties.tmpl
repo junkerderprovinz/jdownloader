@@ -3,7 +3,7 @@
 # desktop: the theme agent / installer). The accent is the one knob; large fills stay neutral.
 
 # --- base ---
-# Three-layer elevation: base #161616 < field #1e1e1e < surface (cards/dialogs) #242424.
+# Elevation: base #161616 (chrome) < unified elevated surface #1e1e1e (cards / dialogs / lists), theme-wide.
 # Fields are only SLIGHTLY lighter than the base (subtle raise, not the too-light #262626).
 @background          = #161616
 @foreground          = #f4f4f4
@@ -114,8 +114,8 @@ List.selectionArc       = 6
 
 # --- pop-up dialogs lift off the #161616 chrome by SHADE, no lines (JOptionPane paths;
 #     custom AppWork dialogs are recoloured by the agent) ---
-OptionPane.background = #242424
-RootPane.background   = #242424
+OptionPane.background = #1e1e1e
+RootPane.background   = #1e1e1e
 
 # --- main tabs: the SELECTED tab is a rounded accent pill; HOVER = accent text on the dark strip ---
 # FlatLaf picks ONE background per tab and the ROLLOVER tab takes precedence over the selected one, so its
@@ -180,12 +180,12 @@ Table.showVerticalLines              = false
 Table.showTrailingVerticalLine       = false
 Table.gridColor                      = #161616
 Table.intercellSpacing               = 0,0
-# the column-title bar is part of the list CARD (#242424, same surface as the rows + settings cards);
+# the column-title bar is part of the list CARD (#1e1e1e, the unified elevated surface, theme-wide);
 # distinguished by its text, not a line (no border lines). Surround stays #161616 via the agent margin.
-TableHeader.background                = #242424
+TableHeader.background                = #1e1e1e
 TableHeader.foreground               = #f4f4f4
-TableHeader.separatorColor           = #242424
-TableHeader.bottomSeparatorColor     = #242424
+TableHeader.separatorColor           = #1e1e1e
+TableHeader.bottomSeparatorColor     = #1e1e1e
 TableHeader.showTrailingVerticalLine = false
 # #11: the column-title bar a touch taller (verify FlatTableHeaderUI honours this on JD's ExtTable;
 # else the agent sets the header preferred height at runtime).

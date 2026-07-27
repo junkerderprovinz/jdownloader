@@ -87,7 +87,7 @@ public class DialogConfirmAgent {
     private static final Color PAL_FIELD     = new Color(0x1a, 0x1a, 0x1a); // #1a1a1a recessed input fill
     private static final Color PAL_HEADER    = new Color(0x1e, 0x1e, 0x1e); // #1e1e1e table/section header band
     private static final Color PAL_TRACK     = new Color(0x26, 0x26, 0x26); // #262626 progress track / unselected tile
-    private static final Color PAL_SURFACE   = new Color(0x24, 0x24, 0x24); // #242424 card / dialog / chip surface
+    private static final Color PAL_SURFACE   = new Color(0x1e, 0x1e, 0x1e); // #1e1e1e card / dialog / chip / list surface (unified elevated surface, theme-wide)
     private static final Color PAL_BUTTON    = new Color(0x2a, 0x2a, 0x2a); // #2a2a2a raised button / menu field
     private static final Color PAL_DIVIDER   = new Color(0x39, 0x39, 0x39); // #393939 scrollbar thumb / faint divider
     private static final Color PAL_SELECTION = new Color(0x52, 0x52, 0x52); // #525252 neutral row selection
@@ -1922,8 +1922,9 @@ public class DialogConfirmAgent {
     // properties) with the darker #161616 chrome around them — matching the settings cards. Here we add the
     // surrounding MARGIN so the card floats: the scrollpane band paints the base colour, the viewport/table
     // paint the card colour. Guarded once per scrollpane so we neither fight JD nor flicker.
-    private static final Color MAIN_CARD = PAL_SURFACE;   // #242424 list-card surface
+    private static final Color MAIN_CARD = PAL_SURFACE;   // #1e1e1e unified elevated surface
     private static final int   CARD_GAP  = 10;            // darker chrome gap around the card
+    private static final int   CARD_ARC  = 14;            // corner radius, matches the settings cards
     private static void cardMainTables() {
         for (Window w : Window.getWindows()) {
             if (!w.isShowing()) continue;
@@ -1947,10 +1948,57 @@ public class DialogConfirmAgent {
                     sp.setBorder(javax.swing.BorderFactory.createEmptyBorder(CARD_GAP, CARD_GAP, CARD_GAP, CARD_GAP));
                     sp.putClientProperty("jdp.mainCard", Boolean.TRUE);
                     sp.revalidate(); sp.repaint();
+                    installCardCornerOverlay(sp);   // round the card corners (mouse-transparent mask overlay)
                 }
             }
         }
     }
+
+    /** Round the card: overlay a mouse-transparent mask that paints the four corners in the BASE colour, ON
+     *  TOP of the (opaque, square) table — the only way to round a live Swing data table. Added to the
+     *  scrollpane's parent in the SAME MigLayout cell (reflectively) so it overlaps the scrollpane exactly and
+     *  follows its size. Bails cleanly (rectangular card) if the layout is not the MigLayout we probed. */
+    private static void installCardCornerOverlay(javax.swing.JScrollPane sp) {
+        try {
+            Container par = sp.getParent();
+            if (par == null || sp.getClientProperty("jdp.cardCorner") != null) return;
+            Object lm = par.getLayout();
+            if (lm == null || !lm.getClass().getName().contains("MigLayout")) return;
+            Object cc = lm.getClass().getMethod("getComponentConstraints", Component.class).invoke(lm, sp);
+            CardCornerOverlay ov = new CardCornerOverlay();
+            par.add(ov);
+            try { lm.getClass().getMethod("setComponentConstraints", Component.class, Object.class).invoke(lm, ov, cc); }
+            catch (Throwable t) { par.remove(ov); return; }   // constraint didn't take -> rectangular card, no harm
+            par.setComponentZOrder(ov, 0);   // topmost, paints over the table
+            sp.putClientProperty("jdp.cardCorner", ov);
+            par.revalidate(); par.repaint();
+        } catch (Throwable ignore) { }
+    }
+    private static final class CardCornerOverlay extends JComponent {
+        CardCornerOverlay() { setOpaque(false); }
+        @Override public boolean contains(int x, int y) { return false; }   // mouse-transparent: events pass to the table
+        @Override protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            try {
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(PAL_BASE);
+                int m = CARD_GAP, r = CARD_ARC, w = getWidth(), h = getHeight();
+                int L = m, T = m, R = w - m, B = h - m;   // card rectangle (inside the margin)
+                paintCorner(g2, L, T, r, true, true);
+                paintCorner(g2, R, T, r, false, true);
+                paintCorner(g2, L, B, r, true, false);
+                paintCorner(g2, R, B, r, false, false);
+            } finally { g2.dispose(); }
+        }
+        private void paintCorner(Graphics2D g2, int cx, int cy, int r, boolean left, boolean top) {
+            int x = left ? cx : cx - r, y = top ? cy : cy - r;
+            int ecx = cx + (left ? r : -r), ecy = cy + (top ? r : -r);
+            java.awt.geom.Area a = new java.awt.geom.Area(new java.awt.Rectangle(x, y, r, r));
+            a.subtract(new java.awt.geom.Area(new java.awt.geom.Ellipse2D.Float(ecx - r, ecy - r, 2 * r, 2 * r)));
+            g2.fill(a);
+        }
+    }
+
     /** Add `add` to the left inset of the EmptyBorder held in field `name`, but ONLY when it is still the
      *  pristine `baseLeft` (so a rebuild/second pass never compounds it). */
     private static void bumpBorderLeft(Object col, String name, int baseLeft, int add) {
