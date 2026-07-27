@@ -768,12 +768,22 @@ public class DialogConfirmAgent {
     }
     private static void styleCornerProgressIn(Component c) {
         String cn = c.getClass().getName();
-        if (cn.endsWith("ExtractorProgress") || cn.endsWith("UpdateProgress")) recolorCircleProgress(c);
+        // ExtractorProgress: its zip glyph is a TEMPLATE the painter tints by foreground -> foreground recolour
+        //   alone monos it (no image swap). UpdateProgress: its globe is a COLOURED image drawn AS-IS (and
+        //   AbstractIcon.paintIcon(null,...) fails, so it can't be re-tinted), so swap the image for a fresh
+        //   light Tabler "update" glyph instead.
+        if (cn.endsWith("ExtractorProgress")) recolorCircleProgress(c, null);
+        else if (cn.endsWith("UpdateProgress")) recolorCircleProgress(c, "update");
         if (c instanceof Container) for (Component ch : ((Container) c).getComponents()) styleCornerProgressIn(ch);
     }
-    private static void recolorCircleProgress(Component c) {
+    private static void recolorCircleProgress(Component c, String replaceKey) {
         try {
             if (!accentColor().equals(c.getForeground())) c.setForeground(accentColor());   // the progress ring
+            javax.swing.Icon repl = null;
+            if (replaceKey != null) {
+                javax.swing.Icon base = tablerBase(replaceKey, 16, 16);
+                if (base != null) repl = tintSolid(base, EXPANDER_LIGHT);   // a clean light mono glyph, drawable
+            }
             boolean changed = false;
             for (Class<?> k = c.getClass(); k != null && k != Object.class; k = k.getSuperclass())
                 for (Field f : k.getDeclaredFields()) {
@@ -794,18 +804,15 @@ public class DialogConfirmAgent {
                                 if (!want.equals(cur)) { fg.set(p, want); changed = true; }
                             }
                         }
-                        // The UpdateProgress globe is a COLOURED image the painter draws AS-IS (foreground doesn't
-                        // tint it), so recolour the image itself to a mono light silhouette. Marked so the tick
-                        // never re-tints our own replacement; if JD re-provisions the green image we re-mono it.
-                        java.lang.reflect.Field img = null;
-                        try { img = p.getClass().getDeclaredField("image"); } catch (NoSuchFieldException e) { }
-                        if (img != null) {
-                            img.setAccessible(true);
-                            Object curImg = img.get(p);
-                            if (curImg instanceof javax.swing.Icon && !EXT_MONO_MARK.containsKey(curImg)) {
-                                javax.swing.Icon mono = tintSolid((javax.swing.Icon) curImg, EXPANDER_LIGHT);
-                                if (mono instanceof javax.swing.ImageIcon && mono != curImg) {
-                                    img.set(p, mono); EXT_MONO_MARK.put(mono, Boolean.TRUE); changed = true;
+                        // UpdateProgress only: replace the coloured globe image with the fresh light Tabler glyph.
+                        if (repl instanceof javax.swing.ImageIcon) {
+                            java.lang.reflect.Field img = null;
+                            try { img = p.getClass().getDeclaredField("image"); } catch (NoSuchFieldException e) { }
+                            if (img != null) {
+                                img.setAccessible(true);
+                                Object curImg = img.get(p);
+                                if (curImg instanceof javax.swing.Icon && curImg != repl && !EXT_MONO_MARK.containsKey(curImg)) {
+                                    img.set(p, repl); EXT_MONO_MARK.put(repl, Boolean.TRUE); changed = true;
                                 }
                             }
                         }
