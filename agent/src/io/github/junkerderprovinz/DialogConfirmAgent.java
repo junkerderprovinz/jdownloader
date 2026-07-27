@@ -453,17 +453,20 @@ public class DialogConfirmAgent {
             @Override
             public MethodVisitor visitMethod(int access, String name, String desc, String sig, String[] ex) {
                 MethodVisitor mv = super.visitMethod(access, name, desc, sig, ex);
-                if (!("getIcon".equals(name) && "(Ljava/lang/String;I)Ljavax/swing/Icon;".equals(desc))) return mv;
+                boolean twoArg = "getIcon".equals(name) && "(Ljava/lang/String;I)Ljavax/swing/Icon;".equals(desc);
+                boolean oneArg = "getIcon".equals(name) && "(Ljava/lang/String;)Ljavax/swing/Icon;".equals(desc);
+                if (!twoArg && !oneArg) return mv;
                 boolean stat = (access & Opcodes.ACC_STATIC) != 0;
                 final int keyIdx = stat ? 0 : 1;
-                final int sizeIdx = stat ? 1 : 2;
+                final int sizeIdx = twoArg ? (stat ? 1 : 2) : -1;   // -1 = no size param (getIcon(String))
                 n[0]++;
                 return new MethodVisitor(Opcodes.ASM9, mv) {
                     @Override
                     public void visitInsn(int op) {
                         if (op == Opcodes.ARETURN) {
                             super.visitVarInsn(Opcodes.ALOAD, keyIdx);    // key
-                            super.visitVarInsn(Opcodes.ILOAD, sizeIdx);   // size
+                            if (sizeIdx >= 0) super.visitVarInsn(Opcodes.ILOAD, sizeIdx);   // size
+                            else super.visitInsn(Opcodes.ICONST_0);                          // no size -> 0
                             super.visitMethodInsn(Opcodes.INVOKESTATIC, AGENT_INTERNAL, "cleanChromeIcon",
                                     "(Ljavax/swing/Icon;Ljava/lang/String;I)Ljavax/swing/Icon;", false);
                         }
@@ -483,33 +486,21 @@ public class DialogConfirmAgent {
 
     private static final java.util.Map<String, javax.swing.Icon> CHROME_CLEAN =
             new java.util.concurrent.ConcurrentHashMap<String, javax.swing.Icon>();
-    private static final java.util.Set<String> CHROME_DIAG =
-            java.util.Collections.synchronizedSet(new java.util.HashSet<String>());   // DIAG (temporary)
     /** D hook: swap JD's column-lock chrome glyph for a clean Tabler lock; everything else passes through.
      *  (tree_plus/minus are handled by the folder-plus package glyph, so JD's own handle is left alone.) */
     public static javax.swing.Icon cleanChromeIcon(javax.swing.Icon original, String key, int size) {
         try {
             if (original == null || key == null || !isHighlighterFast()) return original;
             String k = key.toLowerCase();
-            // DIAG (temporary): log every distinct NewTheme icon key that carries lock/width/sort/exttable, to
-            // find the actual column-lock key/path (the narrow lockColumn/widthLocked match caught nothing).
-            if ((k.contains("lock") || k.contains("width") || k.contains("sort") || k.contains("exttable"))
-                    && CHROME_DIAG.add("K:" + key))
-                System.out.println("[jd-agent-diag] NTKEY " + key + " size=" + size);
-            String tab = null;
-            if (k.contains("lockcolumn") || k.contains("widthlocked") || k.contains("lock")
-                    || k.contains("columnbutton")) tab = "lock";   // the per-column header button JD renders dark
-            if (tab == null) return original;
+            if (!(k.contains("lock") || k.contains("columnbutton") || k.contains("widthlocked"))) return original;
             int w = original.getIconWidth() > 0 ? original.getIconWidth() : size;
             int h = original.getIconHeight() > 0 ? original.getIconHeight() : size;
             int s = Math.min(w, h); if (s <= 0) s = Math.max(w, h);
-            String ck = tab + "@" + s;
+            String ck = "lock@" + s;
             javax.swing.Icon cached = CHROME_CLEAN.get(ck);
             if (cached != null) return cached;
-            javax.swing.Icon base = tablerBase(tab, s, s);
+            javax.swing.Icon base = tablerBase("lock", s, s);
             javax.swing.Icon clean = (base != null) ? tintIcon(base, EXPANDER_LIGHT, null) : tintSolid(original, EXPANDER_LIGHT);
-            if (CHROME_DIAG.add("R:" + key))   // DIAG (temporary): confirm the replacement actually returns
-                System.out.println("[jd-agent-diag] chromeret " + key + " -> " + tab + " s=" + s + " base=" + (base != null));
             CHROME_CLEAN.put(ck, clean);
             return clean;
         } catch (Throwable t) { return original; }
@@ -4232,6 +4223,17 @@ public class DialogConfirmAgent {
                     String cn = cur.getClass().getName().toLowerCase();
                     if (cn.contains("favicon") || cn.contains("hoster") || cn.contains("domain")) continue;
                     tc.setCellRenderer(new MonoIconRenderer(cur));
+                }
+                // Some Views tables ignore the per-column renderer (custom getCellRenderer) -> wrap the DEFAULT too.
+                java.util.Set<Class<?>> seen = new java.util.HashSet<Class<?>>();
+                for (int i = 0; i < cm.getColumnCount(); i++) {
+                    Class<?> cc; try { cc = t.getColumnClass(i); } catch (Throwable ig) { continue; }
+                    if (!seen.add(cc)) continue;
+                    javax.swing.table.TableCellRenderer def = t.getDefaultRenderer(cc);
+                    if (def == null || def instanceof MonoIconRenderer) continue;
+                    String dn = def.getClass().getName().toLowerCase();
+                    if (dn.contains("favicon") || dn.contains("hoster") || dn.contains("domain")) continue;
+                    t.setDefaultRenderer(cc, new MonoIconRenderer(def));
                 }
             }
         } catch (Throwable ignore) { }
