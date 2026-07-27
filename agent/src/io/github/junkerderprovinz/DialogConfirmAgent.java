@@ -227,25 +227,6 @@ public class DialogConfirmAgent {
             @Override
             public MethodVisitor visitMethod(int access, String name, String desc, String sig, String[] ex) {
                 MethodVisitor mv = super.visitMethod(access, name, desc, sig, ex);
-                // (un)installListeners() deref circleBar too: on a FlatLaf LAF re-apply (updateComponentTreeUI ->
-                // CircledProgressBar.updateUI -> setUI -> uninstallUI -> uninstallListeners) circleBar can be null
-                // -> NPE (SEVERE in the log). Guard those the simple way: return early when circleBar is null
-                // (no rebind — no component arg here). Fixes the SEVERE the corner-ring hide surfaced.
-                if (("uninstallListeners".equals(name) || "installListeners".equals(name)) && "()V".equals(desc)) {
-                    patchedCount[0]++;
-                    return new MethodVisitor(Opcodes.ASM9, mv) {
-                        @Override
-                        public void visitCode() {
-                            super.visitCode();
-                            Label go = new Label();
-                            visitVarInsn(Opcodes.ALOAD, 0);
-                            visitFieldInsn(Opcodes.GETFIELD, CPB_UI, "circleBar", CPB_FIELD_DESC);
-                            visitJumpInsn(Opcodes.IFNONNULL, go);
-                            visitInsn(Opcodes.RETURN);
-                            visitLabel(go);
-                        }
-                    };
-                }
                 final int cIdx;
                 final boolean isVoid;
                 if ("getPreferredSize".equals(name) && "(Ljavax/swing/JComponent;)Ljava/awt/Dimension;".equals(desc)) {
@@ -253,6 +234,12 @@ public class DialogConfirmAgent {
                 } else if (("paint".equals(name) || "update".equals(name))
                         && "(Ljava/awt/Graphics;Ljavax/swing/JComponent;)V".equals(desc)) {
                     cIdx = 2; isVoid = true;
+                } else if ("uninstallUI".equals(name) && "(Ljavax/swing/JComponent;)V".equals(desc)) {
+                    // On a LAF re-apply, uninstallUI -> uninstallListeners does `circleBar.removePropertyChangeListener`
+                    // and stops the animation timer; when circleBar is null that NPE'd (SEVERE) AND left the timer
+                    // running (-> a second getAnimationFPS NPE). REBIND circleBar from the component `c` here (same
+                    // as paint) so uninstall completes cleanly and stops the timer. cIdx=1 (the JComponent).
+                    cIdx = 1; isVoid = true;
                 } else {
                     return mv;
                 }
