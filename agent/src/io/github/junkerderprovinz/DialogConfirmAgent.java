@@ -692,6 +692,7 @@ public class DialogConfirmAgent {
             monoTableRowIcons();    // #11: mono the download/linkgrabber row icons (hoster favicon kept)
             monoConfigTableIcons(); // #8: mono the settings config-table row + action icons (favicons stay native)
             fixWidthLockIcon();     // D: swap the header width-lock padlock field for a clean Tabler lock
+            stylePropertiesPanel(); // #4: flatten the bottom package/link properties strip (no fine lines)
             hlDiag3();              // DIAG (temporary): special settings panels + properties panel + corner icons
             recolorDialogs();
             dimModalBackdrops();
@@ -1928,6 +1929,7 @@ public class DialogConfirmAgent {
                 java.util.List<JTable> tabs = new java.util.ArrayList<JTable>();
                 collectTables(w, tabs);
                 for (JTable t : tabs) {
+                    if (inConfigPanel(t) && DIAG3.add("X:" + t.getClass().getName())) diag3ExtTable(t);
                     if (!DIAG3.add("T:" + t.getClass().getName())) continue;
                     StringBuilder anc = new StringBuilder();
                     int n = 0;
@@ -1939,19 +1941,69 @@ public class DialogConfirmAgent {
             }
         } catch (Throwable ig) { }
     }
+    // #8 probe: does this config ExtTable actually USE renderers we set, and what icon does its render path yield?
+    private static void diag3ExtTable(JTable t) {
+        try {
+            StringBuilder ec = new StringBuilder();
+            for (Object col : extColumns(t)) ec.append(col.getClass().getSimpleName()).append(",");
+            System.out.println("[jd-agent-diag3] EXTCOLS " + t.getClass().getSimpleName() + " = " + ec);
+            int cols = t.getColumnModel().getColumnCount();
+            for (int i = 0; i < cols; i++) {
+                javax.swing.table.TableCellRenderer cur = null;
+                try { cur = t.getCellRenderer(0, i); } catch (Throwable ig) { }
+                String rc = (cur == null) ? "null" : cur.getClass().getName();
+                javax.swing.Icon ric = null;
+                try { ric = firstIcon(t.prepareRenderer(t.getCellRenderer(0, i), 0, i)); } catch (Throwable ig) { }
+                String is = (ric == null) ? "-" : (ric.getClass().getSimpleName() + " key=" + iconKey(ric) + " site=" + isSiteLogo(ric));
+                System.out.println("[jd-agent-diag3]   COL" + i + " rnd=" + rc + " icon=" + is);
+            }
+            // decisive: set a sentinel on column 0 and check whether getCellRenderer echoes it back.
+            javax.swing.table.TableColumn c0 = t.getColumnModel().getColumn(0);
+            javax.swing.table.TableCellRenderer sentinel = new javax.swing.table.DefaultTableCellRenderer();
+            javax.swing.table.TableCellRenderer prev = c0.getCellRenderer();
+            c0.setCellRenderer(sentinel);
+            boolean honored = (t.getCellRenderer(0, 0) == sentinel);
+            c0.setCellRenderer(prev);
+            System.out.println("[jd-agent-diag3] HONORS_TABLECOLUMN=" + honored + " (" + t.getClass().getSimpleName() + ")");
+        } catch (Throwable ig) { }
+    }
+    // #6 probe: dump every icon-bearing descendant of a section Header so we see why monoLabelIcon skips it.
+    private static void diag3Header(Component h) {
+        diag3HeaderWalk(h, h.getClass().getName());
+    }
+    private static void diag3HeaderWalk(Component c, String owner) {
+        try {
+            javax.swing.Icon ic = (c instanceof javax.swing.JLabel) ? ((javax.swing.JLabel) c).getIcon()
+                    : (c instanceof AbstractButton) ? ((AbstractButton) c).getIcon() : null;
+            if (ic != null) {
+                String txt = (c instanceof javax.swing.JLabel) ? ((javax.swing.JLabel) c).getText()
+                        : (c instanceof AbstractButton) ? ((AbstractButton) c).getText() : null;
+                String jk = iconKey(ic);
+                System.out.println("[jd-agent-diag3] HDRICON in " + owner + " comp=" + c.getClass().getName()
+                        + " isJLabel=" + (c instanceof javax.swing.JLabel) + " key=" + jk + " iconCls=" + ic.getClass().getSimpleName()
+                        + " site=" + isSiteLogo(ic) + " title=" + txt);
+            }
+        } catch (Throwable ig) { }
+        if (c instanceof Container) for (Component ch : ((Container) c).getComponents()) diag3HeaderWalk(ch, owner);
+    }
     private static void diag3Walk(Component c, int winH) {
         try {
             String cn = c.getClass().getName(), lc = cn.toLowerCase();
             if ((lc.contains("properties") || lc.endsWith(".header") || lc.contains("packagizer") || lc.contains("extensiontable"))
-                    && DIAG3.add("C:" + cn))
+                    && DIAG3.add("C:" + cn)) {
                 System.out.println("[jd-agent-diag3] COMP " + cn + " inCfg=" + inConfigPanel(c));
+                if (lc.endsWith(".header")) diag3Header(c);
+            }
             javax.swing.Icon ic = (c instanceof javax.swing.JLabel) ? ((javax.swing.JLabel) c).getIcon()
                     : (c instanceof AbstractButton) ? ((AbstractButton) c).getIcon() : null;
             if (ic != null && c.getParent() != null) {
                 java.awt.Point pt = javax.swing.SwingUtilities.convertPoint(c.getParent(), c.getLocation(), null);
-                if (pt.y > winH - 60 && DIAG3.add("B:" + c.getClass().getName() + iconKey(ic)))
-                    System.out.println("[jd-agent-diag3] BOTICON " + c.getClass().getSimpleName() + " key=" + iconKey(ic)
-                            + " site=" + isSiteLogo(ic) + " cls=" + ic.getClass().getSimpleName() + " y=" + pt.y);
+                Container par = c.getParent();
+                String pc = (par == null) ? "?" : par.getClass().getSimpleName();
+                if (pt.y > winH - 70 && DIAG3.add("B:" + pc + "|" + (pt.x / 40) + "|" + ic.getClass().getName()))
+                    System.out.println("[jd-agent-diag3] BOTICON " + c.getClass().getSimpleName() + " parent=" + pc
+                            + " key=" + iconKey(ic) + " site=" + isSiteLogo(ic) + " cls=" + ic.getClass().getSimpleName()
+                            + " x=" + pt.x + " y=" + pt.y);
             }
         } catch (Throwable ig) { }
         if (c instanceof Container) for (Component ch : ((Container) c).getComponents()) diag3Walk(ch, winH);
@@ -1991,6 +2043,58 @@ public class DialogConfirmAgent {
                 }
             }
         }
+    }
+
+    // #4: the package/link PROPERTIES panel that slides up at the bottom of the Download + LinkGrabber
+    // views when a package is selected (org.jdownloader.gui.views.{downloads,linkgrabber}.properties.*).
+    // JD draws it with fine MatteBorder hairlines + JSeparators + framed AppWork value fields and a
+    // slightly-off background — the "feine Linien" the user flagged. Flatten the whole subtree: drop the
+    // lines/separators, pin every band to base #161616 so it reads as ONE clean surface, and route its
+    // value fields through the same borderless treatment the settings pages use. Idempotent (the helpers
+    // no-op once a component is already flat), so the tick can re-run it after JD rebuilds the panel.
+    private static void stylePropertiesPanel() {
+        for (Window w : Window.getWindows()) if (w.isShowing()) stylePropsIn(w);
+    }
+    private static boolean isPropertiesRoot(Class<?> k) {
+        String n = k.getName();
+        return n.contains(".properties.")
+                && (n.endsWith("ScrollPane") || n.endsWith("BasePanel"));
+    }
+    private static void stylePropsIn(Container c) {
+        for (Component ch : c.getComponents()) {
+            if (ch instanceof Container && isPropertiesRoot(ch.getClass())) {
+                styleOneProperties((Container) ch);
+            } else if (ch instanceof Container) {
+                stylePropsIn((Container) ch);
+            }
+        }
+    }
+    private static void styleOneProperties(Container root) {
+        try {
+            clearLinesIn(root, 0);            // strip Matte/Line/Etched hairlines (+ pins scroll chrome to base)
+            hideSeparators(root);             // drop the JSeparator lines between rows
+            unifyFieldsIn(root, true);        // value fields -> borderless FIELD_BG pills (same as settings)
+            pinPropsBg(root, 0);              // blend every non-field band into base so no box/line shows
+        } catch (Throwable ignore) { }
+    }
+    // Pin container bands (panels, viewports, scrollpanes) to base #161616 so the properties strip reads as
+    // one flat surface. Value fields (FIELD_BG) + cards (DIALOG_BG) are left alone: only recolour a band
+    // whose current bg is one of JD's off-base greys, never a field/card we deliberately set.
+    private static void pinPropsBg(Component c, int depth) {
+        if (depth > 14) return;
+        if (c instanceof JComponent) {
+            JComponent jc = (JComponent) c;
+            boolean field = (c instanceof javax.swing.text.JTextComponent) || (c instanceof javax.swing.JComboBox)
+                    || (c instanceof javax.swing.JSpinner) || (c instanceof AbstractButton);
+            if (!field) {
+                Color bg = jc.getBackground();
+                if (bg != null && !BASE_BG.equals(bg) && !FIELD_BG.equals(bg) && !DIALOG_BG.equals(bg)) {
+                    jc.setBackground(BASE_BG);
+                    if (!jc.isOpaque() && (c instanceof javax.swing.JPanel)) jc.setOpaque(true);
+                }
+            }
+        }
+        if (c instanceof Container) for (Component ch : ((Container) c).getComponents()) pinPropsBg(ch, depth + 1);
     }
 
     // ------------------------------------------------------ borderless config tables (round 14)
@@ -2727,6 +2831,7 @@ public class DialogConfirmAgent {
     // #2a2a2a. Checkboxes/radios keep their transparent fill. Guarded on value so it is a no-op once set.
     private static final Color FIELD_BG   = new Color(0x1a, 0x1a, 0x1a);
     private static final Color BTN_CFG_BG = new Color(0x2a, 0x2a, 0x2a);
+    private static final Color BASE_BG    = new Color(0x16, 0x16, 0x16);   // #4: chrome base for the properties strip
     private static void unifyConfigFields() {
         for (Window w : Window.getWindows()) if (w.isShowing()) unifyFieldsIn(w, false);
     }
