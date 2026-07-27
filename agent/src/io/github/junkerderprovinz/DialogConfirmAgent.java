@@ -87,7 +87,7 @@ public class DialogConfirmAgent {
     private static final Color PAL_FIELD     = new Color(0x1a, 0x1a, 0x1a); // #1a1a1a recessed input fill
     private static final Color PAL_HEADER    = new Color(0x1e, 0x1e, 0x1e); // #1e1e1e table/section header band
     private static final Color PAL_TRACK     = new Color(0x26, 0x26, 0x26); // #262626 progress track / unselected tile
-    private static final Color PAL_SURFACE   = new Color(0x1e, 0x1e, 0x1e); // #1e1e1e card / dialog / chip / list surface (unified elevated surface, theme-wide)
+    private static final Color PAL_SURFACE   = new Color(0x24, 0x24, 0x24); // #242424 card / dialog / chip / list surface (unified elevated surface, theme-wide)
     private static final Color PAL_BUTTON    = new Color(0x2a, 0x2a, 0x2a); // #2a2a2a raised button / menu field
     private static final Color PAL_DIVIDER   = new Color(0x39, 0x39, 0x39); // #393939 scrollbar thumb / faint divider
     private static final Color PAL_SELECTION = new Color(0x52, 0x52, 0x52); // #525252 neutral row selection

@@ -211,10 +211,10 @@ d = json.load(open(p))
 d["colorforpanelborders"] = "#ff161616"              # account/plugin config boxes -> invisible
 d["linktablehorizontalrowlineweight"] = 0            # download/linkgrabber rows: no horizontal lines
 d["paintstatusbartopborder"] = False                 # drop the statusbar top hairline
-# The download/linkgrabber LIST sits in the unified elevated CARD surface (#1e1e1e, same as the settings
+# The download/linkgrabber LIST sits in the unified elevated CARD surface (#242424, same as the settings
 # cards + dialogs, theme-wide) with the darker #161616 chrome around it. Lift the row surfaces one
 # elevation step; the agent adds the surrounding margin so the card floats. Uniform (no stripes).
-CARD = "#ff1e1e1e"
+CARD = "#ff242424"
 d["colorfortablepackagerowbackground"] = CARD
 d["colorfortablealternaterowbackground"] = CARD
 d["colorfortablerowgap"] = CARD
