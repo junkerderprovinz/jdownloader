@@ -1924,7 +1924,6 @@ public class DialogConfirmAgent {
     // paint the card colour. Guarded once per scrollpane so we neither fight JD nor flicker.
     private static final Color MAIN_CARD = PAL_SURFACE;   // #242424 list-card surface
     private static final int   CARD_GAP  = 10;            // darker chrome gap around the card
-    private static final boolean CARD_DIAG = true;        // one-shot card structure probe (REMOVE before release)
     private static void cardMainTables() {
         for (Window w : Window.getWindows()) {
             if (!w.isShowing()) continue;
@@ -1948,19 +1947,6 @@ public class DialogConfirmAgent {
                     sp.setBorder(javax.swing.BorderFactory.createEmptyBorder(CARD_GAP, CARD_GAP, CARD_GAP, CARD_GAP));
                     sp.putClientProperty("jdp.mainCard", Boolean.TRUE);
                     sp.revalidate(); sp.repaint();
-                    if (CARD_DIAG) {
-                        StringBuilder db = new StringBuilder("[CARD] table=" + cn + " sp=" + sp.getClass().getName()
-                                + " spBorder=" + (sp.getBorder() == null ? "null" : sp.getBorder().getClass().getName())
-                                + " spBounds=" + sp.getBounds());
-                        int d = 0;
-                        for (Container p = sp.getParent(); p != null && d < 5; p = p.getParent(), d++)
-                            db.append(" | p").append(d).append("=").append(p.getClass().getName())
-                              .append(b(p)).append(" bg=").append(p.getBackground())
-                              .append(" border=").append(p instanceof JComponent && ((JComponent) p).getBorder() != null
-                                      ? ((JComponent) p).getBorder().getClass().getSimpleName() : "null")
-                              .append(" lm=").append(p.getLayout() == null ? "null" : p.getLayout().getClass().getSimpleName());
-                        System.out.println(db.toString());
-                    }
                 }
             }
         }
