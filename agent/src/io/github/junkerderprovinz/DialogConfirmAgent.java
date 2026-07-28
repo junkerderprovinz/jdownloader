@@ -1951,36 +1951,29 @@ public class DialogConfirmAgent {
         } catch (Throwable ignore) { }
     }
 
-    // #1 (retry, with diagnostics): try to pull the toolbar button strip flush-left. JD's MainToolBar is a
-    // JToolBar whose live layout is Swing's DefaultToolBarLayout; find WHAT positions the first button at ~x=5
-    // (border / margin / a fixed gap) by logging it, then zero that source. Log is one-shot (removed after).
-    private static boolean tbLogged = false;
+    // #1: pull the toolbar button strip flush-left with the list card / menu bar. JD's MainToolBar uses a
+    // MigLayout "ins 0 3 0 0" (a 3px LEADING gap on top of the 2px FlatToolBarBorder), so the first button
+    // sits at x=5 and its centred glyph ~3px right of the card edge. Zero the MigLayout insets whenever the
+    // first button is right of the border edge (x>2). Idempotent + self-healing: JD periodically rebuilds the
+    // toolbar / resets the layout (it even flips to Swing's DefaultToolBarLayout, where the button is already
+    // flush at x=2), so re-apply each tick only when needed. The glyph stays CENTRED in its button.
     private static void alignToolbarLeft() {
         for (Window w : Window.getWindows()) {
             if (!w.isShowing()) continue;
             java.util.List<Container> tbs = new java.util.ArrayList<Container>();
             findToolbars(w, tbs);
             for (Container tb : tbs) {
-                if (!(tb instanceof JComponent)) continue;
                 Component first = null;
                 for (Component ch : tb.getComponents()) if (ch.getWidth() > 0 && (first == null || ch.getX() < first.getX())) first = ch;
-                if (first == null) continue;
-                if (!tbLogged) {
-                    tbLogged = true;
-                    String mg = (tb instanceof javax.swing.JToolBar) ? String.valueOf(((javax.swing.JToolBar) tb).getMargin()) : "n/a";
-                    System.out.println("[TB2] lm=" + tb.getLayout().getClass().getName()
-                            + " insets=" + ((JComponent) tb).getInsets()
-                            + " border=" + (((JComponent) tb).getBorder() == null ? "null" : ((JComponent) tb).getBorder().getClass().getName())
-                            + " margin=" + mg + " | first=" + first.getClass().getName() + "@x=" + first.getX() + "w=" + first.getWidth());
+                if (first == null || first.getX() <= 2) continue;   // already flush at the border edge
+                Object lm = tb.getLayout();
+                if (lm != null && lm.getClass().getName().contains("MigLayout")) {
+                    try {
+                        lm.getClass().getMethod("setLayoutConstraints", Object.class).invoke(lm, "ins 0 0 0 0");
+                        try { lm.getClass().getMethod("invalidateLayout", Container.class).invoke(lm, tb); } catch (Throwable ig) { }
+                        tb.revalidate(); tb.repaint();
+                    } catch (Throwable t) { }
                 }
-                // shift the strip left: for a JToolBar the buttons start at margin.left + border.left; force the
-                // FIRST button's location AND zero the margin/border so the layout keeps it there.
-                if (tb instanceof javax.swing.JToolBar) {
-                    javax.swing.JToolBar jt = (javax.swing.JToolBar) tb;
-                    if (jt.getMargin() != null && jt.getMargin().left != 0) jt.setMargin(new java.awt.Insets(jt.getMargin().top, 0, jt.getMargin().bottom, jt.getMargin().right));
-                }
-                java.awt.Insets bi = ((JComponent) tb).getInsets();
-                if (bi != null && bi.left > 2) ((JComponent) tb).setBorder(javax.swing.BorderFactory.createEmptyBorder(bi.top, 2, bi.bottom, bi.right));
             }
         }
     }
