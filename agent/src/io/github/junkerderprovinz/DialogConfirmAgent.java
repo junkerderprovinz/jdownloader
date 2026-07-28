@@ -2022,6 +2022,7 @@ public class DialogConfirmAgent {
     // at x=5 and its centred glyph at ~13, a few px right of the card edge. Reflectively zero the MigLayout
     // insets so the strip starts at the border edge -> glyph lines up with the card / menu bar. The glyph
     // stays CENTRED in its button (no per-button margin hack). Once per toolbar (client-property guarded).
+    private static boolean tbAlignLogged = false;   // one-shot toolbar-align outcome log (remove before release)
     private static void alignToolbarLeft() {
         for (Window w : Window.getWindows()) {
             if (!w.isShowing()) continue;
@@ -2030,12 +2031,23 @@ public class DialogConfirmAgent {
             for (Container tb : tbs) {
                 if (!(tb instanceof JComponent) || ((JComponent) tb).getClientProperty("jdp.tbAligned") != null) continue;
                 Object lm = tb.getLayout();
-                if (lm == null || !lm.getClass().getName().contains("MigLayout")) continue;
+                if (lm == null || !lm.getClass().getName().contains("MigLayout")) {
+                    if (!tbAlignLogged) { tbAlignLogged = true;
+                        System.out.println("[jd-dialog-agent] toolbar align: layout is " + (lm == null ? "null" : lm.getClass().getName()) + " (not MigLayout) — skipped"); }
+                    continue;
+                }
                 try {
                     lm.getClass().getMethod("setLayoutConstraints", Object.class).invoke(lm, "ins 0 0 0 0");
+                    try { lm.getClass().getMethod("invalidateLayout", Container.class).invoke(lm, tb); } catch (Throwable ig) { }
                     ((JComponent) tb).putClientProperty("jdp.tbAligned", Boolean.TRUE);
-                    tb.revalidate(); tb.repaint();
-                } catch (Throwable t) { }
+                    tb.invalidate(); tb.validate(); tb.repaint();
+                    Component first = null;
+                    for (Component ch : tb.getComponents()) if (ch.getWidth() > 0 && (first == null || ch.getX() < first.getX())) first = ch;
+                    if (!tbAlignLogged) { tbAlignLogged = true;
+                        System.out.println("[jd-dialog-agent] toolbar align: set ins 0 0 0 0; first button now @x=" + (first == null ? "?" : first.getX())); }
+                } catch (Throwable t) {
+                    if (!tbAlignLogged) { tbAlignLogged = true; System.out.println("[jd-dialog-agent] toolbar align FAILED: " + t); }
+                }
             }
         }
     }
