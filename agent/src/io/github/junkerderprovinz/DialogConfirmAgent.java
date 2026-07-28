@@ -117,7 +117,8 @@ public class DialogConfirmAgent {
     // enforceDarkChrome() still runs afterwards as polish + fallback.
     private static final java.io.File DEFAULTS_DIR = new java.io.File("/opt/JDownloader/flatlaf-defaults");
     private static Instrumentation INSTRUMENTATION;
-    private static boolean defaultsRegistered = false;
+    private static volatile boolean defaultsRegistered = false;
+    private static volatile boolean flatLafLoadHookFired = false;
     private static boolean lafRefreshDone     = false;
     private static int     lafStableTicks     = 0;
     private static int     registrationWait   = 0;
@@ -211,6 +212,11 @@ public class DialogConfirmAgent {
                         if (EXT_TABLE.equals(className)) return patchExtTableRenderer(classfileBuffer, loader);
                         // menu hover: flip a rolled-over top-level menubar menu's text to selectionForeground (dark).
                         if (FLAT_MI_RENDERER.equals(className)) return patchMenuItemRenderer(classfileBuffer, loader);
+                        // theme robustness: the instant FlatLaf's base class loads (before JD's
+                        // setLookAndFeel), register our custom-defaults source so the FIRST paint
+                        // already carries our colours -> removes the reliance on the fragile
+                        // live-re-apply fallback that lost the race on cold/slow boots (grey chrome).
+                        if (FLAT_LAF.equals(className)) registerDefaultsOnFlatLafLoad(loader);
                         return null;
                     } catch (Throwable err) {
                         System.out.println("[jd-dialog-agent] bytecode transform skipped for " + className
@@ -441,6 +447,7 @@ public class DialogConfirmAgent {
     // FlatTabbedPaneUI.paintTabBackground(g,placement,index,x,y,w,h,sel) at entry: x += tabGap(); w -= 2*tabGap().
     // Gated via the tabGap() hook (0 when not highlighter) so plain-dark tabs are untouched. Fail-safe.
     private static final String FLAT_TABUI = "com/formdev/flatlaf/ui/FlatTabbedPaneUI";
+    private static final String FLAT_LAF   = "com/formdev/flatlaf/FlatLaf";
     private static final int TAB_GAP = 4;   // px inset per side -> ~8px visible gap between tiles
     public static int tabGap() { return isHighlighter() ? TAB_GAP : 0; }
     private static byte[] patchTabbedPaneUI(byte[] original, final ClassLoader loader) {
@@ -1059,6 +1066,37 @@ public class DialogConfirmAgent {
             System.out.println("[jd-dialog-agent] registerCustomDefaultsSource unavailable ("
                     + e.getClass().getSimpleName() + ") — legacy chrome remap only");
         }
+    }
+
+    /**
+     * Race-proof registration, fired from the class-load transformer the moment FlatLaf's
+     * base class is defined (well before JD builds its GUI or calls setLookAndFeel). We
+     * register on a SEPARATE daemon thread so we never recurse into the in-progress class
+     * definition on the defining thread: loadClass blocks until FlatLaf is fully defined,
+     * then registerCustomDefaultsSource runs before JD reads the LAF defaults, so the very
+     * first paint uses our colours. This removes the dependency on the fragile live-re-apply
+     * fallback, which lost the race on cold/slow boots and left stock-grey FlatDarkLaf.
+     */
+    private static void registerDefaultsOnFlatLafLoad(final ClassLoader loader) {
+        if (flatLafLoadHookFired) return;
+        flatLafLoadHookFired = true;
+        if (loader == null || defaultsRegistered || !DEFAULTS_DIR.isDirectory()) return;
+        Thread t = new Thread(new Runnable() {
+            public void run() {
+                try {
+                    Class<?> flatLaf = loader.loadClass("com.formdev.flatlaf.FlatLaf");
+                    flatLaf.getMethod("registerCustomDefaultsSource", java.io.File.class)
+                           .invoke(null, DEFAULTS_DIR);
+                    defaultsRegistered = true;
+                    System.out.println("[jd-dialog-agent] registered custom defaults source at FlatLaf class-load (race won)");
+                } catch (Throwable e) {
+                    System.out.println("[jd-dialog-agent] early defaults registration failed ("
+                            + e.getClass().getSimpleName() + ") — tick-loop registration will retry");
+                }
+            }
+        }, "jd-laf-early-register");
+        t.setDaemon(true);
+        t.start();
     }
 
     /**
