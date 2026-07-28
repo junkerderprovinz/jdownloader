@@ -845,7 +845,6 @@ public class DialogConfirmAgent {
             indentNameColumns();    // #1: line the Name-column folder icons up with their header (~10px flush)
             cardMainTables();       // main lists (download/linkgrabber) float as a lighter card on the dark chrome
             alignToolbarLeft();
-            if (MENU_DIAG) diagMenuHeights();
             monoConfigTableIcons(); // #8: mono the settings config-table row + action icons (favicons stay native)
             fixWidthLockIcon();     // D: swap the header width-lock padlock field for a clean Tabler lock
             stylePropertiesPanel(); // #4: flatten the bottom package/link properties strip (no fine lines)
@@ -1952,42 +1951,6 @@ public class DialogConfirmAgent {
         }
     }
 
-    // one-shot menu-item-height probe (REMOVE before release): dump the class/height/margin/icon of the items
-    // in any open popup menu, to find why the first two Settings-menu rows are shorter.
-    private static final boolean MENU_DIAG = true;
-    private static boolean menuDiagLogged = false;
-    private static void diagMenuHeights() {
-        if (menuDiagLogged) return;
-        try {
-            for (Window w : Window.getWindows()) {
-                if (!w.isShowing()) continue;
-                java.util.List<Component> pops = new java.util.ArrayList<Component>();
-                collectPopups(w, pops);
-                for (Component pc : pops) {
-                    JPopupMenu pm = (JPopupMenu) pc;
-                    if (pm.getComponentCount() < 2) continue;
-                    StringBuilder sb = new StringBuilder("[MENUH]");
-                    for (Component it : pm.getComponents()) {
-                        sb.append(" | ").append(it.getClass().getName()).append(" h=").append(it.getHeight())
-                          .append(" pref=").append(it.getPreferredSize().height);
-                        if (it instanceof AbstractButton) {
-                            AbstractButton b = (AbstractButton) it;
-                            sb.append(" m=").append(b.getMargin());
-                            if (b.getIcon() != null) sb.append(" ic=").append(b.getIcon().getClass().getSimpleName()).append("/k=").append(iconKey(b.getIcon())).append("/site=").append(isSiteLogo(b.getIcon()));
-                        }
-                    }
-                    System.out.println(sb.toString());
-                    menuDiagLogged = true;
-                }
-            }
-        } catch (Throwable ignore) { }
-    }
-    private static void collectPopups(Container c, java.util.List<Component> out) {
-        for (Component ch : c.getComponents()) {
-            if (ch instanceof JPopupMenu && ch.isShowing()) out.add(ch);
-            if (ch instanceof Container) collectPopups((Container) ch, out);
-        }
-    }
 
     /** Add `add` to the left inset of the EmptyBorder held in field `name`, but ONLY when it is still the
      *  pristine `baseLeft` (so a rebuild/second pass never compounds it). */
@@ -3343,6 +3306,17 @@ public class DialogConfirmAgent {
                 if (b.getIcon() != b.getClientProperty("jdp.monoBtn")) monoButtonIcon(b);
             }
         });
+        // #Zwischenablage: JD swaps the TOGGLE's selected/rollover-selected icon (the clipboard "monitoring"
+        // composite) lazily on toggle — a "selectedIcon"/"rolloverSelectedIcon" change, NOT the "icon" property
+        // — so mono it INSTANTLY on that event, else the old coloured logo flashes until the next 400ms tick.
+        java.beans.PropertyChangeListener sl = new java.beans.PropertyChangeListener() {
+            public void propertyChange(java.beans.PropertyChangeEvent e) {
+                monoToggleStateIcon(b, "jdp.monoSel", true);
+                monoToggleStateIcon(b, "jdp.monoRSel", false);
+            }
+        };
+        b.addPropertyChangeListener("selectedIcon", sl);
+        b.addPropertyChangeListener("rolloverSelectedIcon", sl);
     }
 
     /** #Zwischenablage: a TOGGLE's selected / rollover-selected icon is set LAZILY by JD (the clipboard
