@@ -910,7 +910,6 @@ public class DialogConfirmAgent {
             monoTableRowIcons();    // #11: mono the download/linkgrabber row icons (hoster favicon kept)
             indentNameColumns();    // #1: line the Name-column folder icons up with their header (~10px flush)
             cardMainTables();       // main lists (download/linkgrabber) float as a lighter card on the dark chrome
-            alignToolbarLeft();     // #1: pull the toolbar button strip flush-left with the card / menu bar
             monoConfigTableIcons(); // #8: mono the settings config-table row + action icons (favicons stay native)
             fixWidthLockIcon();     // D: swap the header width-lock padlock field for a clean Tabler lock
             stylePropertiesPanel(); // #4: flatten the bottom package/link properties strip (no fine lines)
@@ -2015,49 +2014,6 @@ public class DialogConfirmAgent {
             if (in.left != baseLeft) return;   // already bumped or an unexpected value -> leave it
             f.set(col, javax.swing.BorderFactory.createEmptyBorder(in.top, baseLeft + add, in.bottom, in.right));
         } catch (Throwable ignore) { }
-    }
-
-    // #1: align the main toolbar's button strip flush-left with the list card (~10px). JD builds the toolbar
-    // with a MigLayout "ins 0 3 0 0" (a 3px LEADING gap); on top of the 2px border that puts the first button
-    // at x=5 and its centred glyph at ~13, a few px right of the card edge. Reflectively zero the MigLayout
-    // insets so the strip starts at the border edge -> glyph lines up with the card / menu bar. The glyph
-    // stays CENTRED in its button (no per-button margin hack). Once per toolbar (client-property guarded).
-    private static void alignToolbarLeft() {
-        for (Window w : Window.getWindows()) {
-            if (!w.isShowing()) continue;
-            java.util.List<Container> tbs = new java.util.ArrayList<Container>();
-            findToolbars(w, tbs);
-            for (Container tb : tbs) {
-                if (!(tb instanceof JComponent)) continue;
-                boolean changed = false;
-                // JD's MainToolBar is a JToolBar whose layout flips between JD's MigLayout and Swing's
-                // DefaultToolBarLayout (a LAF re-apply resets it). Cover BOTH, idempotently, so whichever is
-                // live at any tick the button strip still starts flush at the border edge (~ card / menu bar).
-                if (tb instanceof javax.swing.JToolBar) {
-                    java.awt.Insets m = ((javax.swing.JToolBar) tb).getMargin();
-                    if (m != null && m.left != 0) { ((javax.swing.JToolBar) tb).setMargin(new java.awt.Insets(m.top, 0, m.bottom, m.right)); changed = true; }
-                }
-                java.awt.Insets bi = ((JComponent) tb).getInsets();
-                if (bi != null && bi.left > 0) { ((JComponent) tb).setBorder(javax.swing.BorderFactory.createEmptyBorder(bi.top, 0, bi.bottom, bi.right)); changed = true; }
-                Object lm = tb.getLayout();
-                if (lm != null && lm.getClass().getName().contains("MigLayout")
-                        && !Boolean.TRUE.equals(((JComponent) tb).getClientProperty("jdp.tbMig"))) {
-                    try {
-                        lm.getClass().getMethod("setLayoutConstraints", Object.class).invoke(lm, "ins 0 0 0 0");
-                        try { lm.getClass().getMethod("invalidateLayout", Container.class).invoke(lm, tb); } catch (Throwable ig) { }
-                        ((JComponent) tb).putClientProperty("jdp.tbMig", Boolean.TRUE);
-                        changed = true;
-                    } catch (Throwable t) { }
-                }
-                if (changed) { tb.invalidate(); tb.validate(); tb.repaint(); }
-            }
-        }
-    }
-    private static void findToolbars(Container c, java.util.List<Container> out) {
-        for (Component ch : c.getComponents()) {
-            if (isMainToolbar(ch.getClass()) && ch instanceof Container) out.add((Container) ch);
-            if (ch instanceof Container) findToolbars((Container) ch, out);
-        }
     }
 
     /** Set our dark fill/track on every JProgressBar-typed field of the object. */
