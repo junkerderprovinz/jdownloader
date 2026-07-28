@@ -4977,11 +4977,12 @@ public class DialogConfirmAgent {
                     if (isUpdater && rp instanceof JComponent) {
                         if (!DIALOG_BG.equals(rp.getBackground())) rp.setBackground(DIALOG_BG);
                         rp.setOpaque(true);
-                        // NO border line (never a line — differentiate by shade only): the #242424 card
-                        // surface on the #161616 main view is the elevation; add invisible padding so the
-                        // content is not cramped. A prior LineBorder here was the "eckig mit Rahmenlinie" bug.
+                        // NO border line (never a line) AND no fat padding: the undecorated updater window is
+                        // sized by JD for its exact content, so a 10px root-pane border ate 20px vertically and
+                        // clipped the bottom button ("falsch beschnitten"). stripFramingBorder above already
+                        // removed any line; leave just a hair of horizontal breathing room, none vertical.
                         if (!(rp.getBorder() instanceof javax.swing.border.EmptyBorder))
-                            rp.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 10, 10, 10));
+                            rp.setBorder(javax.swing.BorderFactory.createEmptyBorder(0, 8, 0, 8));
                     }
                 }
                 styleDialogContent(cp);
@@ -5025,16 +5026,21 @@ public class DialogConfirmAgent {
                     installBtnHoverBg(ab);
                 } else if (ch instanceof javax.swing.JLabel && ((javax.swing.JLabel) ch).getIcon() != null) {
                     javax.swing.JLabel l = (javax.swing.JLabel) ch;
-                    javax.swing.Icon cur = l.getIcon();
-                    if (l.getClientProperty("jdp.monoLbl") != cur) {
-                        // A LARGE image is a LOGO (the updater's JD logo) — keep it, just strip the baked-in
-                        // black box so it sits clean on the #242424 surface (never a mono silhouette, never a
-                        // box). Small icons are chrome glyphs -> mono as before (favicons/thumbnails are in
-                        // the download table, never in a dialog).
-                        javax.swing.Icon m;
-                        if (cur.getIconWidth() >= 40 || cur.getIconHeight() >= 40) m = deBoxIcon(cur, l);
-                        else m = tablerIcon(cur, SIDEBAR_TEXT, l);
-                        if (m != cur) { l.setIcon(m); l.putClientProperty("jdp.monoLbl", m); }
+                    // JD's updater "ProgressLogo" custom-PAINTS its coloured, black-boxed HighDPI globe and
+                    // ignores setIcon, so it can't be mono'd from here and clashed with the theme ("das logo
+                    // passt nicht"). Hide it -> the updater reads clean (text + bar + close), no colour/box.
+                    if (l.getClass().getName().endsWith(".ProgressLogo")) {
+                        if (l.isVisible()) l.setVisible(false);
+                    } else {
+                        javax.swing.Icon cur = l.getIcon();
+                        if (l.getClientProperty("jdp.monoLbl") != cur) {
+                            // Small icons are chrome glyphs -> mono. A LARGE image is a normal logo -> just
+                            // de-box it (favicons/thumbnails live in the download table, never in a dialog).
+                            javax.swing.Icon m;
+                            if (cur.getIconWidth() >= 40 || cur.getIconHeight() >= 40) m = deBoxIcon(cur, l);
+                            else m = tablerIcon(cur, SIDEBAR_TEXT, l);
+                            if (m != cur) { l.setIcon(m); l.putClientProperty("jdp.monoLbl", m); }
+                        }
                     }
                 } else if (ch instanceof JComponent) {
                     stripFramingBorder((JComponent) ch);
