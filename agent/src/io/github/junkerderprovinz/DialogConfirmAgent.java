@@ -3410,6 +3410,16 @@ public class DialogConfirmAgent {
         };
         b.addPropertyChangeListener("selectedIcon", sl);
         b.addPropertyChangeListener("rolloverSelectedIcon", sl);
+        // #Zwischenablage (flip on toggle): JD re-derives the composite state icon the instant the toggle
+        // changes on/off, and the property events above can miss the base-icon swap. Re-mono EVERY icon slot
+        // synchronously on the item event too, so the old coloured logo never shows even for one frame.
+        b.addItemListener(new java.awt.event.ItemListener() {
+            public void itemStateChanged(java.awt.event.ItemEvent e) {
+                monoToggleStateIcon(b, "jdp.monoSel", true);
+                monoToggleStateIcon(b, "jdp.monoRSel", false);
+                if (b.getIcon() != b.getClientProperty("jdp.monoBtn")) monoButtonIcon(b);
+            }
+        });
     }
 
     /** #Zwischenablage: a TOGGLE's selected / rollover-selected icon is set LAZILY by JD (the clipboard
@@ -4946,6 +4956,10 @@ public class DialogConfirmAgent {
     // (1) recolour each shown dialog to the #242424 surface (styleDialogContent) so it lifts off the
     //     #161616 chrome by shade; inputs/buttons get the same unified fills as the settings cards.
     private static final Color DIALOG_BG = PAL_SURFACE;   // surface (matches cards)
+    // The updater window floats in the CENTRE of the main view, ON TOP of the download list card (which now
+    // fills the viewport, also #242424) -> a #242424 dialog on a #242424 card had zero contrast ("gleiche
+    // farbe wie hintergrund"). Give the updater a MORE-elevated shade so it lifts off the card by shade.
+    private static final Color UPDATER_BG = new Color(0x30, 0x30, 0x30);
 
     private static void recolorDialogs() {
         for (Window w : Window.getWindows()) {
@@ -4964,10 +4978,11 @@ public class DialogConfirmAgent {
                 javax.swing.RootPaneContainer rpc = (javax.swing.RootPaneContainer) w;
                 // The grey rectangle around the pop-up is a border on the content pane / root pane
                 // itself (my walk only iterated their CHILDREN), so strip those directly too.
+                Color bg = isUpdater ? UPDATER_BG : DIALOG_BG;   // updater gets the elevated shade to lift off the card
                 Container cp = rpc.getContentPane();
                 if (cp instanceof JComponent) {
                     stripFramingBorder((JComponent) cp);
-                    if (!DIALOG_BG.equals(cp.getBackground())) cp.setBackground(DIALOG_BG);
+                    if (!bg.equals(cp.getBackground())) cp.setBackground(bg);
                     if (!((JComponent) cp).isOpaque()) ((JComponent) cp).setOpaque(true);   // #2: paint the surface
                 }
                 javax.swing.JRootPane rp = rpc.getRootPane();
@@ -4975,7 +4990,7 @@ public class DialogConfirmAgent {
                     stripFramingBorder(rp);
                     if (rp.getLayeredPane() != null) stripFramingBorder(rp.getLayeredPane());
                     if (isUpdater && rp instanceof JComponent) {
-                        if (!DIALOG_BG.equals(rp.getBackground())) rp.setBackground(DIALOG_BG);
+                        if (!bg.equals(rp.getBackground())) rp.setBackground(bg);
                         rp.setOpaque(true);
                         // NO border line (never a line) AND no fat padding: the undecorated updater window is
                         // sized by JD for its exact content, so a 10px root-pane border ate 20px vertically and
@@ -4985,7 +5000,8 @@ public class DialogConfirmAgent {
                             rp.setBorder(javax.swing.BorderFactory.createEmptyBorder(0, 8, 0, 8));
                     }
                 }
-                styleDialogContent(cp);
+                styleDialogContent(cp, bg);
+                if (isUpdater) roundUpdaterBar(cp);   // give the 100% progress bar rounded ends, not square
             } catch (Throwable ignore) { }
         }
     }
@@ -4995,12 +5011,12 @@ public class DialogConfirmAgent {
      *  "eckig mit Rahmen, unterschiedliche Farben" complaint). Run every tick, fully idempotent
      *  (guarded on value), so late-built dialog content is caught too. Icons are mono'd by the
      *  monoChrome sweep which already walks dialog windows. */
-    private static void styleDialogContent(Container c) {
+    private static void styleDialogContent(Container c, Color bg) {
         for (Component ch : c.getComponents()) {
             try {
                 if (ch instanceof javax.swing.JPanel || ch instanceof javax.swing.JOptionPane
                         || ch instanceof javax.swing.Box || ch instanceof javax.swing.JScrollPane) {
-                    if (!DIALOG_BG.equals(ch.getBackground())) ch.setBackground(DIALOG_BG);
+                    if (!bg.equals(ch.getBackground())) ch.setBackground(bg);
                     stripFramingBorder((JComponent) ch);
                 } else if (ch instanceof javax.swing.text.JTextComponent
                         && !((javax.swing.text.JTextComponent) ch).isEditable()) {
@@ -5009,7 +5025,7 @@ public class DialogConfirmAgent {
                     // + opaque and read as a dark box inside the dialog. Make it transparent so the dialog
                     // surface shows through, matching the config-panel handling.
                     if (((JComponent) ch).isOpaque()) ((JComponent) ch).setOpaque(false);
-                    if (!DIALOG_BG.equals(ch.getBackground())) ch.setBackground(DIALOG_BG);
+                    if (!bg.equals(ch.getBackground())) ch.setBackground(bg);
                     stripFramingBorder((JComponent) ch);
                 } else if (ch instanceof javax.swing.text.JTextComponent || ch instanceof javax.swing.JComboBox
                         || ch instanceof javax.swing.JSpinner) {
@@ -5026,11 +5042,11 @@ public class DialogConfirmAgent {
                     installBtnHoverBg(ab);
                 } else if (ch instanceof javax.swing.JLabel && ((javax.swing.JLabel) ch).getIcon() != null) {
                     javax.swing.JLabel l = (javax.swing.JLabel) ch;
-                    // JD's updater "ProgressLogo" custom-PAINTS its coloured, black-boxed HighDPI globe and
-                    // ignores setIcon, so it can't be mono'd from here and clashed with the theme ("das logo
-                    // passt nicht"). Hide it -> the updater reads clean (text + bar + close), no colour/box.
+                    // JD's updater "ProgressLogo" custom-PAINTS its coloured HighDPI globe (ignores setIcon).
+                    // Reflectively replace whatever Image/Icon field it paints from with a clean mono Tabler
+                    // refresh glyph, so the updater keeps a logo that FITS the theme (not hidden, not coloured).
                     if (l.getClass().getName().endsWith(".ProgressLogo")) {
-                        if (l.isVisible()) l.setVisible(false);
+                        monoProgressLogo(l);
                     } else {
                         javax.swing.Icon cur = l.getIcon();
                         if (l.getClientProperty("jdp.monoLbl") != cur) {
@@ -5046,7 +5062,67 @@ public class DialogConfirmAgent {
                     stripFramingBorder((JComponent) ch);
                 }
             } catch (Throwable ignore) { }
-            if (ch instanceof Container) styleDialogContent((Container) ch);
+            if (ch instanceof Container) styleDialogContent((Container) ch, bg);
+        }
+    }
+
+    /** JD's updater ProgressLogo custom-paints a coloured HighDPI globe from an internal Image/Icon field
+     *  (setIcon has no effect). Render a clean mono Tabler refresh glyph to an image and reflectively push it
+     *  into every Image/Icon field of the ProgressLogo, so it keeps a logo that FITS the mono theme. Idempotent. */
+    private static void monoProgressLogo(javax.swing.JLabel l) {
+        try {
+            if (Boolean.TRUE.equals(l.getClientProperty("jdp.updLogo"))) return;
+            int sz = l.getWidth() > 0 ? l.getWidth() : 48;
+            if (sz < 40) sz = 48; if (sz > 64) sz = 64;
+            javax.swing.Icon tb = tablerBase("refresh", sz, sz);
+            if (tb == null) return;
+            javax.swing.Icon mono = tintIcon(tb, SIDEBAR_TEXT, l);
+            java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(sz, sz, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+            java.awt.Graphics2D g = img.createGraphics();
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            mono.paintIcon(l, g, 0, 0);
+            g.dispose();
+            boolean done = false;
+            for (Class<?> k = l.getClass(); k != null && k != javax.swing.JLabel.class; k = k.getSuperclass()) {
+                for (java.lang.reflect.Field f : k.getDeclaredFields()) {
+                    try {
+                        Class<?> ft = f.getType();
+                        if (java.awt.Image.class.isAssignableFrom(ft)) { f.setAccessible(true); f.set(l, img); done = true; }
+                        else if (javax.swing.Icon.class.isAssignableFrom(ft)) { f.setAccessible(true); f.set(l, mono); done = true; }
+                    } catch (Throwable ig) { }
+                }
+            }
+            l.setIcon(mono);
+            // The ProgressLogo paints an opaque BLACK box behind the glyph -> match it to the updater surface
+            // so no black square shows around the clean refresh icon.
+            l.setOpaque(false);
+            if (!UPDATER_BG.equals(l.getBackground())) l.setBackground(UPDATER_BG);
+            l.putClientProperty("jdp.updLogo", Boolean.TRUE);
+            l.repaint();
+        } catch (Throwable ig) { }
+    }
+
+    /** Round the updater's progress bar ends (it painted square). Try FlatLaf's per-component style first
+     *  (works if the bar uses a FlatLaf UI); also set a big arc on its UI reflectively as a fallback. */
+    private static void roundUpdaterBar(Container c) {
+        for (Component ch : c.getComponents()) {
+            if (ch instanceof javax.swing.JProgressBar) {
+                javax.swing.JProgressBar pb = (javax.swing.JProgressBar) ch;
+                if (!Boolean.TRUE.equals(pb.getClientProperty("jdp.updBar"))) {
+                    try { pb.putClientProperty("FlatLaf.style", "arc: 999"); } catch (Throwable ig) { }
+                    setUiIntField(pb.getUI(), "arc", 999);   // fallback for a Basic/other UI that keeps an arc field
+                    pb.putClientProperty("jdp.updBar", Boolean.TRUE);
+                    pb.repaint();
+                }
+            }
+            if (ch instanceof Container) roundUpdaterBar((Container) ch);
+        }
+    }
+    private static void setUiIntField(Object ui, String name, int val) {
+        if (ui == null) return;
+        for (Class<?> k = ui.getClass(); k != null && k != Object.class; k = k.getSuperclass()) {
+            try { java.lang.reflect.Field f = k.getDeclaredField(name); f.setAccessible(true);
+                  if (f.getType() == int.class) f.setInt(ui, val); return; } catch (NoSuchFieldException ns) { } catch (Throwable t) { return; }
         }
     }
 
