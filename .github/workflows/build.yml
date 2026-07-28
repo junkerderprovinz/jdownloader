@@ -89,6 +89,13 @@ jobs:
             BUILD_SHA=${{ github.sha }}
             BUILD_DATE=${{ github.event.repository.updated_at }}
           cache-from: type=gha
+          # Always recompile the agent stage from the current source. The shaded-ASM
+          # javac step is ~3s, but a stale type=gha cache hit here can ship an old
+          # agent jar: in v4.3.1 the multi-arch push build cache-hit agent-builder and
+          # shipped the pre-fix jar, while THIS smoke build compiled a fresh one — so
+          # the gate passed on bytes that never shipped. Pin the stage off-cache in both
+          # builds so the smoke test and the pushed image carry the identical fresh jar.
+          no-cache-filters: agent-builder
 
       - name: Smoke test — amd64 must boot and serve the WebUI
         run: |
@@ -202,6 +209,9 @@ jobs:
             BUILD_DATE=${{ github.event.repository.updated_at }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          # See the smoke build above: force a fresh agent-builder compile so a stale
+          # cache hit can never ship an old agent jar into the pushed image.
+          no-cache-filters: agent-builder
 
       # Mirror the GitHub README to the Docker Hub repo's full description (same
       # text as on GitHub; relative image/link paths completed to absolute so they
