@@ -845,6 +845,7 @@ public class DialogConfirmAgent {
             indentNameColumns();    // #1: line the Name-column folder icons up with their header (~10px flush)
             cardMainTables();       // main lists (download/linkgrabber) float as a lighter card on the dark chrome
             alignToolbarLeft();
+            if (MENU_DIAG) diagMenuHeights();
             monoConfigTableIcons(); // #8: mono the settings config-table row + action icons (favicons stay native)
             fixWidthLockIcon();     // D: swap the header width-lock padlock field for a clean Tabler lock
             stylePropertiesPanel(); // #4: flatten the bottom package/link properties strip (no fine lines)
@@ -1883,8 +1884,8 @@ public class DialogConfirmAgent {
                     sp.setBorder(javax.swing.BorderFactory.createEmptyBorder(CARD_GAP, CARD_GAP, CARD_GAP, CARD_GAP));
                     sp.putClientProperty("jdp.mainCard", Boolean.TRUE);
                     sp.revalidate(); sp.repaint();
-                    installCardCornerOverlay(sp);   // round the card corners (mouse-transparent mask overlay)
                 }
+                installCardCornerOverlay(sp);   // round the card corners; every tick, idempotent + self-healing
             }
         }
     }
@@ -1893,20 +1894,30 @@ public class DialogConfirmAgent {
      *  TOP of the (opaque, square) table — the only way to round a live Swing data table. Added to the
      *  scrollpane's parent in the SAME MigLayout cell (reflectively) so it overlaps the scrollpane exactly and
      *  follows its size. Bails cleanly (rectangular card) if the layout is not the MigLayout we probed. */
+    private static boolean cardOvLogged = false;   // one-shot card-overlay probe (remove before release)
     private static void installCardCornerOverlay(javax.swing.JScrollPane sp) {
         try {
             Container par = sp.getParent();
-            if (par == null || sp.getClientProperty("jdp.cardCorner") != null) return;
+            if (par == null) return;
+            Object existing = sp.getClientProperty("jdp.cardCorner");
+            if (existing instanceof CardCornerOverlay && ((CardCornerOverlay) existing).getParent() == par) return;   // still valid
             Object lm = par.getLayout();
-            if (lm == null || !lm.getClass().getName().contains("MigLayout")) return;
+            if (lm == null || !lm.getClass().getName().contains("MigLayout")) {
+                if (!cardOvLogged) { cardOvLogged = true; System.out.println("[CARDOV] parent not MigLayout: par="
+                        + par.getClass().getName() + " lm=" + (lm == null ? "null" : lm.getClass().getName())); }
+                return;
+            }
             Object cc = lm.getClass().getMethod("getComponentConstraints", Component.class).invoke(lm, sp);
             CardCornerOverlay ov = new CardCornerOverlay();
             par.add(ov);
             try { lm.getClass().getMethod("setComponentConstraints", Component.class, Object.class).invoke(lm, ov, cc); }
-            catch (Throwable t) { par.remove(ov); return; }   // constraint didn't take -> rectangular card, no harm
+            catch (Throwable t) { par.remove(ov);
+                if (!cardOvLogged) { cardOvLogged = true; System.out.println("[CARDOV] setComponentConstraints failed: " + t); }
+                return; }
             par.setComponentZOrder(ov, 0);   // topmost, paints over the table
             sp.putClientProperty("jdp.cardCorner", ov);
             par.revalidate(); par.repaint();
+            if (!cardOvLogged) { cardOvLogged = true; System.out.println("[CARDOV] added; ovBounds=" + ov.getBounds() + " spBounds=" + sp.getBounds()); }
         } catch (Throwable ignore) { }
     }
     private static final class CardCornerOverlay extends JComponent {
@@ -1934,6 +1945,43 @@ public class DialogConfirmAgent {
         }
     }
 
+    // one-shot menu-item-height probe (REMOVE before release): dump the class/height/margin/icon of the items
+    // in any open popup menu, to find why the first two Settings-menu rows are shorter.
+    private static final boolean MENU_DIAG = true;
+    private static boolean menuDiagLogged = false;
+    private static void diagMenuHeights() {
+        if (menuDiagLogged) return;
+        try {
+            for (Window w : Window.getWindows()) {
+                if (!w.isShowing()) continue;
+                java.util.List<Component> pops = new java.util.ArrayList<Component>();
+                collectPopups(w, pops);
+                for (Component pc : pops) {
+                    JPopupMenu pm = (JPopupMenu) pc;
+                    if (pm.getComponentCount() < 2) continue;
+                    StringBuilder sb = new StringBuilder("[MENUH]");
+                    for (Component it : pm.getComponents()) {
+                        sb.append(" | ").append(it.getClass().getName()).append(" h=").append(it.getHeight())
+                          .append(" pref=").append(it.getPreferredSize().height);
+                        if (it instanceof AbstractButton) {
+                            AbstractButton b = (AbstractButton) it;
+                            sb.append(" m=").append(b.getMargin());
+                            if (b.getIcon() != null) sb.append(" ic=").append(b.getIcon().getClass().getSimpleName()).append("/k=").append(iconKey(b.getIcon())).append("/site=").append(isSiteLogo(b.getIcon()));
+                        }
+                    }
+                    System.out.println(sb.toString());
+                    menuDiagLogged = true;
+                }
+            }
+        } catch (Throwable ignore) { }
+    }
+    private static void collectPopups(Container c, java.util.List<Component> out) {
+        for (Component ch : c.getComponents()) {
+            if (ch instanceof JPopupMenu && ch.isShowing()) out.add(ch);
+            if (ch instanceof Container) collectPopups((Container) ch, out);
+        }
+    }
+
     /** Add `add` to the left inset of the EmptyBorder held in field `name`, but ONLY when it is still the
      *  pristine `baseLeft` (so a rebuild/second pass never compounds it). */
     private static void bumpBorderLeft(Object col, String name, int baseLeft, int add) {
@@ -1951,29 +1999,37 @@ public class DialogConfirmAgent {
         } catch (Throwable ignore) { }
     }
 
-    // #1: pull the toolbar button strip flush-left with the list card / menu bar. JD's MainToolBar uses a
-    // MigLayout "ins 0 3 0 0" (a 3px LEADING gap on top of the 2px FlatToolBarBorder), so the first button
-    // sits at x=5 and its centred glyph ~3px right of the card edge. Zero the MigLayout insets whenever the
-    // first button is right of the border edge (x>2). Idempotent + self-healing: JD periodically rebuilds the
-    // toolbar / resets the layout (it even flips to Swing's DefaultToolBarLayout, where the button is already
-    // flush at x=2), so re-apply each tick only when needed. The glyph stays CENTRED in its button.
+    // #1: align the toolbar button strip with the LIST CARD's left edge (CARD_GAP), not the window edge. JD's
+    // MainToolBar layout flips between a MigLayout "ins 0 3 0 0" and Swing's DefaultToolBarLayout, both of which
+    // start the buttons at the FlatToolBarBorder's left inset (2px). Set that border inset to CARD_GAP so the
+    // buttons begin where the card begins (button edge = card edge, centred glyph ~= the card's first content),
+    // and zero the MigLayout leading gap so it doesn't add on top. Idempotent + self-healing across rebuilds.
     private static void alignToolbarLeft() {
         for (Window w : Window.getWindows()) {
             if (!w.isShowing()) continue;
             java.util.List<Container> tbs = new java.util.ArrayList<Container>();
             findToolbars(w, tbs);
             for (Container tb : tbs) {
+                if (!(tb instanceof JComponent)) continue;
+                JComponent tbj = (JComponent) tb;
                 Component first = null;
                 for (Component ch : tb.getComponents()) if (ch.getWidth() > 0 && (first == null || ch.getX() < first.getX())) first = ch;
-                if (first == null || first.getX() <= 2) continue;   // already flush at the border edge
+                if (first == null) continue;
+                boolean changed = false;
+                java.awt.Insets bi = tbj.getInsets();
+                if (bi != null && bi.left != CARD_GAP) {   // border left = card margin -> buttons start at the card edge
+                    tbj.setBorder(javax.swing.BorderFactory.createEmptyBorder(bi.top, CARD_GAP, bi.bottom, bi.right));
+                    changed = true;
+                }
                 Object lm = tb.getLayout();
-                if (lm != null && lm.getClass().getName().contains("MigLayout")) {
+                if (lm != null && lm.getClass().getName().contains("MigLayout") && first.getX() > CARD_GAP + 1) {
                     try {
                         lm.getClass().getMethod("setLayoutConstraints", Object.class).invoke(lm, "ins 0 0 0 0");
                         try { lm.getClass().getMethod("invalidateLayout", Container.class).invoke(lm, tb); } catch (Throwable ig) { }
-                        tb.revalidate(); tb.repaint();
+                        changed = true;
                     } catch (Throwable t) { }
                 }
+                if (changed) { tb.revalidate(); tb.repaint(); }
             }
         }
     }
