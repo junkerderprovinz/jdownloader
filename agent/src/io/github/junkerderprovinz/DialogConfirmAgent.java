@@ -910,7 +910,7 @@ public class DialogConfirmAgent {
             monoTableRowIcons();    // #11: mono the download/linkgrabber row icons (hoster favicon kept)
             indentNameColumns();    // #1: line the Name-column folder icons up with their header (~10px flush)
             cardMainTables();       // main lists (download/linkgrabber) float as a lighter card on the dark chrome
-            if (TB_DIAG) diagToolbar();
+            alignToolbarLeft();     // #1: pull the toolbar button strip flush-left with the card / menu bar
             monoConfigTableIcons(); // #8: mono the settings config-table row + action icons (favicons stay native)
             fixWidthLockIcon();     // D: swap the header width-lock padlock field for a clean Tabler lock
             stylePropertiesPanel(); // #4: flatten the bottom package/link properties strip (no fine lines)
@@ -2017,45 +2017,27 @@ public class DialogConfirmAgent {
         } catch (Throwable ignore) { }
     }
 
-    // one-shot toolbar-layout probe (REMOVE before release): dump the MainToolBar MigLayout insets + the
-    // first components' bounds/constraints so we can trim the leading gap to align the button strip.
-    private static final boolean TB_DIAG = true;
-    private static boolean tbDiagDone = false;
-    private static void diagToolbar() {
-        if (tbDiagDone) return;
-        try {
-            for (Window w : Window.getWindows()) {
-                if (!w.isShowing()) continue;
-                java.util.List<Container> tbs = new java.util.ArrayList<Container>();
-                findToolbars(w, tbs);
-                for (Container tb : tbs) {
-                    // find the leftmost laid-out button; skip this pass if nothing is laid out yet
-                    Component first = null;
-                    for (Component ch : tb.getComponents()) {
-                        if (ch.getWidth() <= 0) continue;
-                        if (first == null || ch.getX() < first.getX()) first = ch;
-                    }
-                    if (first == null) continue;
-                    StringBuilder sb = new StringBuilder("[TB] " + tb.getClass().getSimpleName()
-                            + " insets=" + ((JComponent) tb).getInsets() + " bounds=" + tb.getBounds());
-                    Object lm = tb.getLayout();
-                    if (lm != null) {
-                        sb.append(" lm=").append(lm.getClass().getName());
-                        for (Class<?> k = lm.getClass(); k != null && k != Object.class; k = k.getSuperclass())
-                            for (java.lang.reflect.Field f : k.getDeclaredFields()) {
-                                if (f.getType() != int.class && f.getType() != Integer.class
-                                        && !f.getType().getSimpleName().equals("Insets")) continue;
-                                try { f.setAccessible(true); sb.append(" ").append(f.getName()).append("=").append(f.get(lm)); } catch (Throwable t) { }
-                            }
-                    }
-                    sb.append(" | first=").append(first.getClass().getSimpleName()).append("@x=").append(first.getX()).append("w=").append(first.getWidth());
-                    if (first instanceof AbstractButton) sb.append("m=").append(((AbstractButton) first).getMargin())
-                            .append("ins=").append(((AbstractButton) first).getInsets());
-                    System.out.println(sb.toString());
-                    tbDiagDone = true;
-                }
+    // #1: align the main toolbar's button strip flush-left with the list card (~10px). JD builds the toolbar
+    // with a MigLayout "ins 0 3 0 0" (a 3px LEADING gap); on top of the 2px border that puts the first button
+    // at x=5 and its centred glyph at ~13, a few px right of the card edge. Reflectively zero the MigLayout
+    // insets so the strip starts at the border edge -> glyph lines up with the card / menu bar. The glyph
+    // stays CENTRED in its button (no per-button margin hack). Once per toolbar (client-property guarded).
+    private static void alignToolbarLeft() {
+        for (Window w : Window.getWindows()) {
+            if (!w.isShowing()) continue;
+            java.util.List<Container> tbs = new java.util.ArrayList<Container>();
+            findToolbars(w, tbs);
+            for (Container tb : tbs) {
+                if (!(tb instanceof JComponent) || ((JComponent) tb).getClientProperty("jdp.tbAligned") != null) continue;
+                Object lm = tb.getLayout();
+                if (lm == null || !lm.getClass().getName().contains("MigLayout")) continue;
+                try {
+                    lm.getClass().getMethod("setLayoutConstraints", Object.class).invoke(lm, "ins 0 0 0 0");
+                    ((JComponent) tb).putClientProperty("jdp.tbAligned", Boolean.TRUE);
+                    tb.revalidate(); tb.repaint();
+                } catch (Throwable t) { }
             }
-        } catch (Throwable ignore) { }
+        }
     }
     private static void findToolbars(Container c, java.util.List<Container> out) {
         for (Component ch : c.getComponents()) {
