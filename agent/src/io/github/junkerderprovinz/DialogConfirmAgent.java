@@ -1959,40 +1959,35 @@ public class DialogConfirmAgent {
      *  follows its size. Bails cleanly (rectangular card) if the layout is not the MigLayout we probed. */
     private static void installCardCornerOverlay(javax.swing.JScrollPane sp) {
         try {
-            Container par = sp.getParent();
-            if (par == null) return;
-            Object lm = par.getLayout();
-            if (lm == null || !lm.getClass().getName().contains("MigLayout")) return;
+            if (!sp.isShowing()) return;
+            // ROBUST (flicker-free): the corner masks live in the window's LAYERED PANE, on a layer ABOVE the
+            // content, NOT as a sibling of the scrollpane. A transparent sibling was overdrawn by JD's table on
+            // every row repaint (the corners "flipped between square and round"); a proper layer is repainted on
+            // top for any dirty region, so the masks always survive. Positioned over the scrollpane in
+            // layered-pane coordinates; the mask rect itself comes from the viewport bounds (see paintComponent).
+            javax.swing.JRootPane rp = javax.swing.SwingUtilities.getRootPane(sp);
+            if (rp == null) return;
+            javax.swing.JLayeredPane lp = rp.getLayeredPane();
+            if (lp == null) return;
             Object existing = sp.getClientProperty("jdp.cardCorner");
             CardCornerOverlay ov;
-            if (existing instanceof CardCornerOverlay && ((CardCornerOverlay) existing).getParent() == par) {
-                ov = (CardCornerOverlay) existing;   // present -> just keep it synced to the scrollpane's bounds
+            if (existing instanceof CardCornerOverlay && ((CardCornerOverlay) existing).getParent() == lp) {
+                ov = (CardCornerOverlay) existing;
             } else {
+                if (existing instanceof CardCornerOverlay && ((CardCornerOverlay) existing).getParent() != null)
+                    ((CardCornerOverlay) existing).getParent().remove((CardCornerOverlay) existing);   // drop a stale sibling overlay
                 ov = new CardCornerOverlay();
-                par.add(ov);
+                lp.add(ov, javax.swing.JLayeredPane.PALETTE_LAYER);   // above the content, below popups/tooltips
                 sp.putClientProperty("jdp.cardCorner", ov);
             }
-            ov.sp = sp;   // so the overlay masks the VIEWPORT's corners (excludes the scrollbar/column-control column)
-            // MigLayout gives a reused/empty constraint 0x0, so pin the overlay absolutely to the scrollpane's
-            // bounds via a "pos" constraint and keep it in sync each tick (survives resize / resolution change).
-            java.awt.Rectangle b = sp.getBounds();
+            ov.sp = sp;   // the overlay masks the VIEWPORT's corners (excludes the scrollbar / column-control column)
+            // position the overlay exactly over the scrollpane, in layered-pane coordinates (tracks resize/scroll)
+            java.awt.Rectangle b = javax.swing.SwingUtilities.convertRectangle(sp.getParent(), sp.getBounds(), lp);
             if (b.width <= 0 || b.height <= 0) return;
             if (!ov.getBounds().equals(b)) {
-                lm.getClass().getMethod("setComponentConstraints", Component.class, Object.class)
-                        .invoke(lm, ov, "pos " + b.x + " " + b.y + " " + (b.x + b.width) + " " + (b.y + b.height));
-                // #6 (RIGHT corners square after window RESIZE): the MigLayout "pos" re-apply lagged, so the
-                // overlay kept the OLD width and its right-edge masks fell off the resized card. setBounds the
-                // overlay DIRECTLY too, so it tracks the scrollpane within one tick regardless of MigLayout.
                 ov.setBounds(b);
-                par.setComponentZOrder(ov, 0);   // topmost, paints over the table
-                par.revalidate(); par.repaint();
-            } else if (par.getComponentZOrder(ov) != 0) {
-                par.setComponentZOrder(ov, 0);
+                lp.setLayer(ov, javax.swing.JLayeredPane.PALETTE_LAYER);
             }
-            // #6: the table repaints its rows constantly, and Swing does not always repaint an overlapping
-            // NON-opaque sibling's full region — so 3 of the 4 corner masks were being over-drawn by the
-            // table and only the top-left survived. Repaint the overlay every tick so all four corner masks
-            // are re-asserted on top. Cheap: a transparent component painting four small corner Areas.
             ov.repaint();
         } catch (Throwable ignore) { }
     }
