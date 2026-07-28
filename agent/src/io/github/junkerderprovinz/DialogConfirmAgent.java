@@ -3719,8 +3719,14 @@ public class DialogConfirmAgent {
         {"verschiedenes", "wrench"}, {"erweiterte einstellungen", "advancedConfig"}, {"erweiterungen", "extension"},
         {"archiventpacker", "extract"}, {"archiv", "extract"}, {"zielordner", "folder"},
         {"passwortliste", "password"}, {"paketverwalter", "packagizer"}, {"ordnerüberwachung", "folder_add"},
-        {"infosymbol", "minimize"}, {"profieinstellungen", "advancedConfig"}, {"benutzeraccount", "premium"},
+        {"infosymbol", "info"}, {"profieinstellungen", "advancedConfig"}, {"benutzeraccount", "premium"},
         {"mein benutzer", "premium"}, {"verbindung", "network-idle"}, {"passwort", "password"},
+        // #3 (live-QA): more GERMAN section titles that fell through to the grey old-logo silhouette
+        // (captured via a TITLEMISS dump). Substrings, mapped to shipped Tabler PNG keys.
+        {"downloadverzeichnis", "downloadpath"}, {"downloadverwaltung", "downloadmanagment"},
+        {"automatisch starten", "media-playback-start"}, {"linksammler", "linkgrabber"},
+        {"schreiben von datei", "save"}, {"standardauthentifizierung", "basicauth"},
+        {"linkfilter", "filter"}, {"ereignis", "event"}, {"skripter", "event"},
     };
     private static String titleToKey(String text) {
         if (text == null) return null;
