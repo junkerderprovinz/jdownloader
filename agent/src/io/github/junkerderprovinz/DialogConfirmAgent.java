@@ -1979,6 +1979,10 @@ public class DialogConfirmAgent {
             if (!ov.getBounds().equals(b)) {
                 lm.getClass().getMethod("setComponentConstraints", Component.class, Object.class)
                         .invoke(lm, ov, "pos " + b.x + " " + b.y + " " + (b.x + b.width) + " " + (b.y + b.height));
+                // #6 (RIGHT corners square after window RESIZE): the MigLayout "pos" re-apply lagged, so the
+                // overlay kept the OLD width and its right-edge masks fell off the resized card. setBounds the
+                // overlay DIRECTLY too, so it tracks the scrollpane within one tick regardless of MigLayout.
+                ov.setBounds(b);
                 par.setComponentZOrder(ov, 0);   // topmost, paints over the table
                 par.revalidate(); par.repaint();
             } else if (par.getComponentZOrder(ov) != 0) {
@@ -1991,6 +1995,7 @@ public class DialogConfirmAgent {
             ov.repaint();
         } catch (Throwable ignore) { }
     }
+    private static final java.util.Set<String> CARD_PAINT_SEEN = new java.util.HashSet<>();   // TEMP diag
     private static final class CardCornerOverlay extends JComponent {
         CardCornerOverlay() { setOpaque(false); }
         @Override public boolean contains(int x, int y) { return false; }   // mouse-transparent: events pass to the table
@@ -2001,6 +2006,8 @@ public class DialogConfirmAgent {
                 g2.setColor(PAL_BASE);
                 int m = CARD_GAP, r = CARD_ARC, w = getWidth(), h = getHeight();
                 int L = m, T = m, R = w - m, B = h - m;   // card rectangle (inside the margin)
+                if (CARD_PAINT_SEEN.add(w + "x" + h))     // TEMP: verify the overlay paints at the card width (remove after)
+                    System.out.println("[CARDPAINT] w=" + w + " h=" + h + " L=" + L + " R=" + R + " T=" + T + " B=" + B);
                 paintCorner(g2, L, T, r, true, true);
                 paintCorner(g2, R, T, r, false, true);
                 paintCorner(g2, L, B, r, true, false);
@@ -3313,6 +3320,19 @@ public class DialogConfirmAgent {
             // Re-assert our stored clean disabled icon on EVERY tick so JD's override never survives.
             Object md = b.getClientProperty("jdp.monoDisabled");
             if (md instanceof javax.swing.Icon && b.getDisabledIcon() != md) b.setDisabledIcon((javax.swing.Icon) md);
+            // r66 (RECONNECT LOGO REGRESSION): AppWork's ExtButton derives its DISABLED icon from the ACTION's
+            // SMALL_ICON, and JD resets that to the RAW glyph on state changes (e.g. the periodic update-check),
+            // so the idle Reconnect button blobbed back to its raw logo. The one-shot SMALL_ICON fix below sits
+            // AFTER the "already mono" guard, so it never re-ran once the button was mono'd. Re-point SMALL_ICON
+            // at our stored mono EVERY tick (before that guard) + invalidate ExtButton's cached disabled icon, so
+            // the derived disabled glyph is re-cleaned the instant JD reverts it. Guarded on identity (no churn).
+            if (mb0 instanceof javax.swing.Icon) {
+                javax.swing.Action ra = b.getAction();
+                if (ra != null && ra.getValue(javax.swing.Action.SMALL_ICON) != mb0) {
+                    ra.putValue(javax.swing.Action.SMALL_ICON, (javax.swing.Icon) mb0);
+                    invalidateExtDisabledIcon(b);
+                }
+            }
             // Zwischenablage/toggle bug: a TOGGLE paints getSelectedIcon() while ON, and JD sets that COMPOSITE
             // state icon (the clipboard-monitoring logo) LAZILY on first activate — AFTER our one-shot mono pass
             // — so it was never mono'd and the old colour came back. Mono the state icons EVERY tick: whenever
