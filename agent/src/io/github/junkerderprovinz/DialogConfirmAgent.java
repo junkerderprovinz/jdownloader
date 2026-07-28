@@ -853,6 +853,7 @@ public class DialogConfirmAgent {
             growTableHeaders();     // #11: accent-on-hover column title
             recolorDialogs();
             dimModalBackdrops();
+            qaDiag();            // TEMP live-QA evidence dump (remove after)
         }
         if (++lafTick >= 12) {   // every ~5s (ticks run every 400ms)
             lafTick = 0;
@@ -861,6 +862,74 @@ public class DialogConfirmAgent {
         }
     }
 
+
+    // ===== TEMP live-QA evidence dump (remove after) =====
+    private static final boolean QA_DIAG = true;
+    private static final java.util.Set<String> QA_SEEN = new java.util.HashSet<>();
+    private static void qaOnce(String key, String msg) { if (QA_SEEN.add(key)) System.out.println("[QA] " + msg); }
+    private static String qaIc(javax.swing.Icon i) {
+        if (i == null) return "null";
+        return i.getClass().getSimpleName() + "(" + i.getIconWidth() + "x" + i.getIconHeight() + ")@" + Integer.toHexString(System.identityHashCode(i));
+    }
+    private static String qaCol(Object c) {
+        if (!(c instanceof Color)) return String.valueOf(c);
+        Color k = (Color) c; return String.format("#%02x%02x%02x", k.getRed(), k.getGreen(), k.getBlue());
+    }
+    private static Object qaField(Object o, String name) {
+        if (o == null) return "-";
+        try { for (Class<?> k = o.getClass(); k != null && k != Object.class; k = k.getSuperclass())
+            try { java.lang.reflect.Field f = k.getDeclaredField(name); f.setAccessible(true); return f.get(o); } catch (NoSuchFieldException ns) { } } catch (Throwable t) { }
+        return "-";
+    }
+    private static void qaDiag() {
+        if (!QA_DIAG) return;
+        try { for (Window w : Window.getWindows()) if (w.isShowing()) qaScan(w); } catch (Throwable t) { System.out.println("[QA] err " + t); }
+    }
+    private static void qaScan(Container c) {
+        for (Component ch : c.getComponents()) {
+            if (ch instanceof javax.swing.AbstractButton) {
+                javax.swing.AbstractButton b = (javax.swing.AbstractButton) ch;
+                javax.swing.Action a = b.getAction();
+                String an = (a != null) ? a.getClass().getSimpleName() : "-";
+                if (an.toLowerCase().contains("clipboard")) {
+                    qaOnce("clip-" + b.isSelected(), "CLIP act=" + an + " sel=" + b.isSelected() + " btn=" + b.getClass().getName()
+                        + " icon=" + qaIc(b.getIcon()) + " monoBtn?=" + (b.getIcon() == b.getClientProperty("jdp.monoBtn"))
+                        + " selIcon=" + qaIc(b.getSelectedIcon()) + " monoSel?=" + (b.getSelectedIcon() == b.getClientProperty("jdp.monoSel"))
+                        + " rselIcon=" + qaIc(b.getRolloverSelectedIcon()) + " rollIcon=" + qaIc(b.getRolloverIcon())
+                        + " pressIcon=" + qaIc(b.getPressedIcon()) + " ui=" + b.getUI().getClass().getName());
+                }
+            }
+            if (ch instanceof javax.swing.JList) {
+                javax.swing.JList<?> l = (javax.swing.JList<?>) ch;
+                if (javax.swing.SwingUtilities.getAncestorOfClass(javax.swing.JScrollPane.class, l) != null) {
+                    javax.swing.ListModel<?> m = l.getModel();
+                    for (int i = 0; i < m.getSize() && i < 40; i++) {
+                        Object it = m.getElementAt(i);
+                        javax.swing.Icon ico = null;
+                        try { Object r = it.getClass().getMethod("getIcon").invoke(it); if (r instanceof javax.swing.Icon) ico = (javax.swing.Icon) r; } catch (Throwable t) { }
+                        String txt = "-"; try { Object r = it.getClass().getMethod("getName").invoke(it); if (r != null) txt = String.valueOf(r); } catch (Throwable t) { }
+                        qaOnce("side-" + (it == null ? "n" : it.getClass().getSimpleName()) + "-" + i,
+                            "SIDE[" + i + "] '" + txt + "' item=" + (it == null ? "-" : it.getClass().getName()) + " icon=" + qaIc(ico));
+                    }
+                }
+            }
+            if (ch instanceof javax.swing.JPopupMenu && ch.isShowing()) {
+                for (Component mc : ((javax.swing.JPopupMenu) ch).getComponents()) {
+                    if (mc instanceof javax.swing.JMenuItem) {
+                        javax.swing.JMenuItem mi = (javax.swing.JMenuItem) mc;
+                        Object ui = mi.getUI();
+                        Object cp = mi.getClientProperty(javax.swing.plaf.basic.BasicHTML.propertyKey);
+                        qaOnce("mi-" + mi.getText(), "MI '" + mi.getText() + "' cls=" + mi.getClass().getSimpleName()
+                            + " fg=" + qaCol(mi.getForeground()) + " fgIsUIResource=" + (mi.getForeground() instanceof javax.swing.plaf.UIResource)
+                            + " html?=" + (cp != null) + " ui=" + (ui == null ? "-" : ui.getClass().getName())
+                            + " uiSelFg=" + qaCol(qaField(ui, "selectionForeground")) + " h=" + mi.getHeight() + " prefH=" + mi.getPreferredSize().height);
+                    }
+                }
+            }
+            if (ch instanceof Container) qaScan((Container) ch);
+        }
+    }
+    // ===== end TEMP live-QA =====
 
     // #10: the JD status rings (org.jdownloader.updatev2.UpdateProgress = update check, ExtractorProgress =
     // extraction, and the LinkCollector crawl indicator that pops up when a link is added) are all AppWork
@@ -1666,7 +1735,24 @@ public class DialogConfirmAgent {
             jc.setMaximumSize(new java.awt.Dimension(Integer.MAX_VALUE, max));
             changed = true;
         }
-        if (changed) { pm.revalidate(); pm.repaint(); }
+        if (changed) {
+            pm.revalidate(); pm.repaint();
+            // #2 regression fix: the popup WINDOW was already sized for the old (shorter) rows, so growing rows
+            // clipped the last one. Grow the popup to fit its new preferred size. Heavyweight popup -> resize its
+            // window; lightweight popup (inside the layered pane) -> setPopupSize. Never touches the main frame.
+            try {
+                java.awt.Dimension pref = pm.getPreferredSize();
+                java.awt.Window win = javax.swing.SwingUtilities.getWindowAncestor(pm);
+                if (win != null && win.getClass().getName().toLowerCase().contains("popup")) {
+                    if (win.getHeight() < pref.height || win.getWidth() < pref.width) {
+                        win.setSize(Math.max(win.getWidth(), pref.width), Math.max(win.getHeight(), pref.height));
+                        win.validate();
+                    }
+                } else if (pm.getHeight() < pref.height || pm.getWidth() < pref.width) {
+                    pm.setPopupSize(Math.max(pm.getWidth(), pref.width), Math.max(pm.getHeight(), pref.height));
+                }
+            } catch (Throwable ignore) { }
+        }
     }
 
     // Re-style every VISIBLE popup menu each tick, so JD's lazy re-render of the Speed-Limit / editor rows
@@ -1924,6 +2010,9 @@ public class DialogConfirmAgent {
             } else if (par.getComponentZOrder(ov) != 0) {
                 par.setComponentZOrder(ov, 0);
             }
+            qaOnce("card-" + b + "-" + ov.getBounds(), "CARD sp=" + b + " ovAfter=" + ov.getBounds()
+                + " parLayout=" + lm.getClass().getSimpleName() + " parSize=" + par.getWidth() + "x" + par.getHeight()
+                + " spBorderInsets=" + sp.getInsets() + " z=" + par.getComponentZOrder(ov));
         } catch (Throwable ignore) { }
     }
     private static final class CardCornerOverlay extends JComponent {
