@@ -218,6 +218,11 @@ CARD = "#ff242424"
 d["colorfortablepackagerowbackground"] = CARD
 d["colorfortablealternaterowbackground"] = CARD
 d["colorfortablerowgap"] = CARD
+# the download/linkgrabber progress bar FILL stays adaptive (JD paints it contrast-BW: light on a dark row,
+# DARK on the yellow accent mouseover row, so the bar is visible on both). The "%" TEXT is a fixed grey, so
+# lift it to a MID grey that reads on BOTH a light bar and the dark mouseover bar.
+for _i in range(1, 6):
+    d["colorforprogressbarforeground%d" % _i] = "#ff8d8d8d"
 # list/table row HOVER highlight = the accent, with an auto-contrasted (dark-on-light) text
 d["colorfortablemouseoverrowbackground"] = "#ff" + acc
 d["colorfortablemouseoverrowforeground"] = "#ff" + accfg

@@ -211,8 +211,6 @@ public class DialogConfirmAgent {
                         if (EXT_TABLE.equals(className)) return patchExtTableRenderer(classfileBuffer, loader);
                         // menu hover: flip a rolled-over top-level menubar menu's text to selectionForeground (dark).
                         if (FLAT_MI_RENDERER.equals(className)) return patchMenuItemRenderer(classfileBuffer, loader);
-                        // progress bars: fixed light fill so the % string reads on the accent mouseover row too.
-                        if (RENDERER_BAR.equals(className)) return patchRendererBar(classfileBuffer, loader);
                         return null;
                     } catch (Throwable err) {
                         System.out.println("[jd-dialog-agent] bytecode transform skipped for " + className
@@ -398,13 +396,6 @@ public class DialogConfirmAgent {
     // return true for a rolled-over top-level menubar JMenu -> FlatLaf then paints its hover text with
     // selectionForeground (= @@ACCENT_FG@@, dark). Scoped to JMenu.isTopLevelMenu() so dropdown items are untouched.
     private static final String FLAT_MI_RENDERER = "com/formdev/flatlaf/ui/FlatMenuItemRenderer";
-    // download/linkgrabber progress bars: the FILL is RendererProgressBar.getForeground(), which is INHERITED
-    // from the cell/panel = the ROW foreground — light (#f4f4f4) on a normal row but DARK (#161616) on the
-    // yellow accent mouseover row. The "%" string is a fixed grey, so on the mouseover row it was
-    // grey-on-dark (invisible). RendererProgressBar does not override getForeground, so ADD an override that
-    // returns a fixed light tone for highlighter -> the fill is always light and the grey string reads on
-    // EVERY row; plain-dark returns null and keeps the inherited (contrast) foreground.
-    private static final String RENDERER_BAR = "org/appwork/swing/exttable/renderercomponents/RendererProgressBar";
     private static final String STATUS_GETICON_DESC =
             "(Ljd/controlling/packagecontroller/AbstractNode;)Ljavax/swing/Icon;";
     private static final String AGENT_INTERNAL = "io/github/junkerderprovinz/DialogConfirmAgent";
@@ -551,63 +542,6 @@ public class DialogConfirmAgent {
         return cw.toByteArray();
     }
 
-    // progress bars: ADD a getForeground() override to RendererProgressBar ->
-    //   Color c = progressFillOverride(); return (c != null) ? c : super.getForeground();
-    // The bar FILL is getForeground(), inherited from the cell = the ROW foreground (dark on the accent
-    // mouseover row). RendererProgressBar does not declare getForeground, so we synthesize the override in
-    // visitEnd: highlighter -> fixed light fill (grey % string reads on every row); plain-dark -> super.
-    private static byte[] patchRendererBar(byte[] original, final ClassLoader loader) {
-        ClassReader cr = new ClassReader(original);
-        ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES) {
-            @Override
-            protected ClassLoader getClassLoader() { return loader != null ? loader : super.getClassLoader(); }
-        };
-        final boolean[] already = { false };
-        final boolean[] added = { false };
-        ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
-            @Override
-            public MethodVisitor visitMethod(int access, String name, String desc, String sig, String[] ex) {
-                if ("getForeground".equals(name) && "()Ljava/awt/Color;".equals(desc)) already[0] = true;
-                return super.visitMethod(access, name, desc, sig, ex);
-            }
-            @Override
-            public void visitEnd() {
-                if (!already[0]) {
-                    MethodVisitor mv = super.visitMethod(Opcodes.ACC_PUBLIC, "getForeground", "()Ljava/awt/Color;", null, null);
-                    mv.visitCode();
-                    Label sup = new Label();
-                    mv.visitMethodInsn(Opcodes.INVOKESTATIC, AGENT_INTERNAL, "progressFillOverride", "()Ljava/awt/Color;", false);
-                    mv.visitInsn(Opcodes.DUP);
-                    mv.visitJumpInsn(Opcodes.IFNULL, sup);
-                    mv.visitInsn(Opcodes.ARETURN);           // highlighter -> fixed light fill
-                    mv.visitLabel(sup);
-                    mv.visitInsn(Opcodes.POP);               // drop the null
-                    mv.visitVarInsn(Opcodes.ALOAD, 0);
-                    mv.visitMethodInsn(Opcodes.INVOKESPECIAL, "javax/swing/JProgressBar", "getForeground", "()Ljava/awt/Color;", false);
-                    mv.visitInsn(Opcodes.ARETURN);           // plain-dark -> inherited/super foreground
-                    mv.visitMaxs(0, 0);
-                    mv.visitEnd();
-                    added[0] = true;
-                }
-                super.visitEnd();
-            }
-        };
-        cr.accept(cv, 0);
-        if (already[0]) {
-            System.out.println("[jd-dialog-agent] RendererProgressBar already overrides getForeground — progress fill left as-is");
-            return null;
-        }
-        if (!added[0]) return null;
-        System.out.println("[jd-dialog-agent] added RendererProgressBar.getForeground -> fixed light fill (readable % on accent hover)");
-        return cw.toByteArray();
-    }
-
-    /** #hover: fixed light fill for the download/linkgrabber progress bars under highlighter (so the grey
-     *  "%" string reads on the accent mouseover row); null on plain-dark keeps the inherited (contrast) fill.
-     *  Called from the bytecode-synthesized RendererProgressBar.getForeground (resolved via system loader). */
-    public static java.awt.Color progressFillOverride() {
-        return isHighlighterFast() ? PAL_TEXT : null;
-    }
 
     // D: JD's package expander [+]/[-] and column-lock glyphs render dark because JD caches the icon in memory
     // at startup (the on-disk light restore loses that cache race) and they are NOT column fields, so the
@@ -910,6 +844,7 @@ public class DialogConfirmAgent {
             monoTableRowIcons();    // #11: mono the download/linkgrabber row icons (hoster favicon kept)
             indentNameColumns();    // #1: line the Name-column folder icons up with their header (~10px flush)
             cardMainTables();       // main lists (download/linkgrabber) float as a lighter card on the dark chrome
+            alignToolbarLeft();
             monoConfigTableIcons(); // #8: mono the settings config-table row + action icons (favicons stay native)
             fixWidthLockIcon();     // D: swap the header width-lock padlock field for a clean Tabler lock
             stylePropertiesPanel(); // #4: flatten the bottom package/link properties strip (no fine lines)
@@ -2014,6 +1949,46 @@ public class DialogConfirmAgent {
             if (in.left != baseLeft) return;   // already bumped or an unexpected value -> leave it
             f.set(col, javax.swing.BorderFactory.createEmptyBorder(in.top, baseLeft + add, in.bottom, in.right));
         } catch (Throwable ignore) { }
+    }
+
+    // #1 (retry, with diagnostics): try to pull the toolbar button strip flush-left. JD's MainToolBar is a
+    // JToolBar whose live layout is Swing's DefaultToolBarLayout; find WHAT positions the first button at ~x=5
+    // (border / margin / a fixed gap) by logging it, then zero that source. Log is one-shot (removed after).
+    private static boolean tbLogged = false;
+    private static void alignToolbarLeft() {
+        for (Window w : Window.getWindows()) {
+            if (!w.isShowing()) continue;
+            java.util.List<Container> tbs = new java.util.ArrayList<Container>();
+            findToolbars(w, tbs);
+            for (Container tb : tbs) {
+                if (!(tb instanceof JComponent)) continue;
+                Component first = null;
+                for (Component ch : tb.getComponents()) if (ch.getWidth() > 0 && (first == null || ch.getX() < first.getX())) first = ch;
+                if (first == null) continue;
+                if (!tbLogged) {
+                    tbLogged = true;
+                    String mg = (tb instanceof javax.swing.JToolBar) ? String.valueOf(((javax.swing.JToolBar) tb).getMargin()) : "n/a";
+                    System.out.println("[TB2] lm=" + tb.getLayout().getClass().getName()
+                            + " insets=" + ((JComponent) tb).getInsets()
+                            + " border=" + (((JComponent) tb).getBorder() == null ? "null" : ((JComponent) tb).getBorder().getClass().getName())
+                            + " margin=" + mg + " | first=" + first.getClass().getName() + "@x=" + first.getX() + "w=" + first.getWidth());
+                }
+                // shift the strip left: for a JToolBar the buttons start at margin.left + border.left; force the
+                // FIRST button's location AND zero the margin/border so the layout keeps it there.
+                if (tb instanceof javax.swing.JToolBar) {
+                    javax.swing.JToolBar jt = (javax.swing.JToolBar) tb;
+                    if (jt.getMargin() != null && jt.getMargin().left != 0) jt.setMargin(new java.awt.Insets(jt.getMargin().top, 0, jt.getMargin().bottom, jt.getMargin().right));
+                }
+                java.awt.Insets bi = ((JComponent) tb).getInsets();
+                if (bi != null && bi.left > 2) ((JComponent) tb).setBorder(javax.swing.BorderFactory.createEmptyBorder(bi.top, 2, bi.bottom, bi.right));
+            }
+        }
+    }
+    private static void findToolbars(Container c, java.util.List<Container> out) {
+        for (Component ch : c.getComponents()) {
+            if (isMainToolbar(ch.getClass()) && ch instanceof Container) out.add((Container) ch);
+            if (ch instanceof Container) findToolbars((Container) ch, out);
+        }
     }
 
     /** Set our dark fill/track on every JProgressBar-typed field of the object. */
