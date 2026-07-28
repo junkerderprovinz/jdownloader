@@ -2066,9 +2066,14 @@ public class DialogConfirmAgent {
                 for (Component ch : tb.getComponents()) if (ch.getWidth() > 0 && (first == null || ch.getX() < first.getX())) first = ch;
                 if (first == null) continue;
                 boolean changed = false;
+                // The toolbar BUTTONS are transparent (only the glyphs are visible), and the first glyph sits
+                // ~11px inside its button -> a border of CARD_GAP(10) left the play glyph at ~21px, well right of
+                // the tabs/card content (~14px). Shift the whole toolbar left so the FIRST GLYPH lands on the
+                // card's content line; the invisible button edge going a few px past the card edge doesn't show.
+                final int TB_LEFT = 2;
                 java.awt.Insets bi = tbj.getInsets();
-                if (bi != null && bi.left != CARD_GAP) {   // border left = card margin -> buttons start at the card edge
-                    tbj.setBorder(javax.swing.BorderFactory.createEmptyBorder(bi.top, CARD_GAP, bi.bottom, bi.right));
+                if (bi != null && bi.left != TB_LEFT) {
+                    tbj.setBorder(javax.swing.BorderFactory.createEmptyBorder(bi.top, TB_LEFT, bi.bottom, bi.right));
                     changed = true;
                 }
                 Object lm = tb.getLayout();
