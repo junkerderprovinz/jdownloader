@@ -1652,18 +1652,22 @@ public class DialogConfirmAgent {
             if (h > max) max = h;
         }
         if (max <= 0) return;
+        boolean changed = false;
         for (Component ch : pm.getComponents()) {
             if (ch instanceof javax.swing.JSeparator || !(ch instanceof JComponent) || !ch.isVisible()) continue;
+            JComponent jc = (JComponent) ch;
+            // Some rows (JD's MenuItemData$3 std items) report pref=max but render SHORTER (their own
+            // maximumSize caps them below pref). So pin min+max height on EVERY row, not only the ones whose
+            // pref differs — min forces the popup's BoxLayout to give at least `max`. Idempotent (guarded).
+            java.awt.Dimension mn = jc.getMinimumSize();
+            if (mn != null && mn.height == max && jc.getMaximumSize() != null && jc.getMaximumSize().height == max) continue;
             java.awt.Dimension pr = ch.getPreferredSize();
-            if (pr.height != max) {
-                JComponent jc = (JComponent) ch;
-                // JMenuItem caps its maximumSize.height at its own preferred height, so setPreferredSize alone
-                // does NOT grow it — pin preferred + minimum + maximum height so the popup lays every row at `max`.
-                jc.setPreferredSize(new java.awt.Dimension(pr.width, max));
-                jc.setMinimumSize(new java.awt.Dimension(0, max));
-                jc.setMaximumSize(new java.awt.Dimension(Integer.MAX_VALUE, max));
-            }
+            jc.setPreferredSize(new java.awt.Dimension(pr.width, max));
+            jc.setMinimumSize(new java.awt.Dimension(0, max));
+            jc.setMaximumSize(new java.awt.Dimension(Integer.MAX_VALUE, max));
+            changed = true;
         }
+        if (changed) { pm.revalidate(); pm.repaint(); }
     }
 
     // Re-style every VISIBLE popup menu each tick, so JD's lazy re-render of the Speed-Limit / editor rows
@@ -1894,30 +1898,33 @@ public class DialogConfirmAgent {
      *  TOP of the (opaque, square) table — the only way to round a live Swing data table. Added to the
      *  scrollpane's parent in the SAME MigLayout cell (reflectively) so it overlaps the scrollpane exactly and
      *  follows its size. Bails cleanly (rectangular card) if the layout is not the MigLayout we probed. */
-    private static boolean cardOvLogged = false;   // one-shot card-overlay probe (remove before release)
     private static void installCardCornerOverlay(javax.swing.JScrollPane sp) {
         try {
             Container par = sp.getParent();
             if (par == null) return;
-            Object existing = sp.getClientProperty("jdp.cardCorner");
-            if (existing instanceof CardCornerOverlay && ((CardCornerOverlay) existing).getParent() == par) return;   // still valid
             Object lm = par.getLayout();
-            if (lm == null || !lm.getClass().getName().contains("MigLayout")) {
-                if (!cardOvLogged) { cardOvLogged = true; System.out.println("[CARDOV] parent not MigLayout: par="
-                        + par.getClass().getName() + " lm=" + (lm == null ? "null" : lm.getClass().getName())); }
-                return;
+            if (lm == null || !lm.getClass().getName().contains("MigLayout")) return;
+            Object existing = sp.getClientProperty("jdp.cardCorner");
+            CardCornerOverlay ov;
+            if (existing instanceof CardCornerOverlay && ((CardCornerOverlay) existing).getParent() == par) {
+                ov = (CardCornerOverlay) existing;   // present -> just keep it synced to the scrollpane's bounds
+            } else {
+                ov = new CardCornerOverlay();
+                par.add(ov);
+                sp.putClientProperty("jdp.cardCorner", ov);
             }
-            Object cc = lm.getClass().getMethod("getComponentConstraints", Component.class).invoke(lm, sp);
-            CardCornerOverlay ov = new CardCornerOverlay();
-            par.add(ov);
-            try { lm.getClass().getMethod("setComponentConstraints", Component.class, Object.class).invoke(lm, ov, cc); }
-            catch (Throwable t) { par.remove(ov);
-                if (!cardOvLogged) { cardOvLogged = true; System.out.println("[CARDOV] setComponentConstraints failed: " + t); }
-                return; }
-            par.setComponentZOrder(ov, 0);   // topmost, paints over the table
-            sp.putClientProperty("jdp.cardCorner", ov);
-            par.revalidate(); par.repaint();
-            if (!cardOvLogged) { cardOvLogged = true; System.out.println("[CARDOV] added; ovBounds=" + ov.getBounds() + " spBounds=" + sp.getBounds()); }
+            // MigLayout gives a reused/empty constraint 0x0, so pin the overlay absolutely to the scrollpane's
+            // bounds via a "pos" constraint and keep it in sync each tick (survives resize / resolution change).
+            java.awt.Rectangle b = sp.getBounds();
+            if (b.width <= 0 || b.height <= 0) return;
+            if (!ov.getBounds().equals(b)) {
+                lm.getClass().getMethod("setComponentConstraints", Component.class, Object.class)
+                        .invoke(lm, ov, "pos " + b.x + " " + b.y + " " + (b.x + b.width) + " " + (b.y + b.height));
+                par.setComponentZOrder(ov, 0);   // topmost, paints over the table
+                par.revalidate(); par.repaint();
+            } else if (par.getComponentZOrder(ov) != 0) {
+                par.setComponentZOrder(ov, 0);
+            }
         } catch (Throwable ignore) { }
     }
     private static final class CardCornerOverlay extends JComponent {
