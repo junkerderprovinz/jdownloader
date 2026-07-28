@@ -1972,6 +1972,7 @@ public class DialogConfirmAgent {
                 par.add(ov);
                 sp.putClientProperty("jdp.cardCorner", ov);
             }
+            ov.sp = sp;   // so the overlay masks the VIEWPORT's corners (excludes the scrollbar/column-control column)
             // MigLayout gives a reused/empty constraint 0x0, so pin the overlay absolutely to the scrollpane's
             // bounds via a "pos" constraint and keep it in sync each tick (survives resize / resolution change).
             java.awt.Rectangle b = sp.getBounds();
@@ -1995,8 +1996,8 @@ public class DialogConfirmAgent {
             ov.repaint();
         } catch (Throwable ignore) { }
     }
-    private static final java.util.Set<String> CARD_PAINT_SEEN = new java.util.HashSet<>();   // TEMP diag
     private static final class CardCornerOverlay extends JComponent {
+        javax.swing.JScrollPane sp;   // the card's scrollpane; the card = its VIEWPORT (+ column header)
         CardCornerOverlay() { setOpaque(false); }
         @Override public boolean contains(int x, int y) { return false; }   // mouse-transparent: events pass to the table
         @Override protected void paintComponent(Graphics g) {
@@ -2004,10 +2005,22 @@ public class DialogConfirmAgent {
             try {
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                 g2.setColor(PAL_BASE);
-                int m = CARD_GAP, r = CARD_ARC, w = getWidth(), h = getHeight();
-                int L = m, T = m, R = w - m, B = h - m;   // card rectangle (inside the margin)
-                if (CARD_PAINT_SEEN.add(w + "x" + h))     // TEMP: verify the overlay paints at the card width (remove after)
-                    System.out.println("[CARDPAINT] w=" + w + " h=" + h + " L=" + L + " R=" + R + " T=" + T + " B=" + B);
+                int r = CARD_ARC;
+                // The card is the VIEWPORT's data area (+ the column header above it), NOT the whole scrollpane
+                // minus the margin: a vertical scrollbar / JD's column-control corner reserve a ~20px column on
+                // the RIGHT, so "width - margin" put the right masks INTO that column and the real card corner
+                // (further left) stayed square. Derive the rect from the viewport bounds; fall back to the old
+                // inset if the viewport can't be read.
+                int L = CARD_GAP, T = CARD_GAP, R = getWidth() - CARD_GAP, B = getHeight() - CARD_GAP;
+                try {
+                    javax.swing.JViewport vp = (sp != null) ? sp.getViewport() : null;
+                    if (vp != null) {
+                        java.awt.Rectangle vb = vp.getBounds();   // scrollpane coords = overlay coords (overlay overlaps sp)
+                        L = vb.x; R = vb.x + vb.width; B = vb.y + vb.height;
+                        javax.swing.JViewport ch = sp.getColumnHeader();
+                        T = (ch != null) ? ch.getBounds().y : vb.y;   // card top = column-header top (part of the card)
+                    }
+                } catch (Throwable ignore) { }
                 paintCorner(g2, L, T, r, true, true);
                 paintCorner(g2, R, T, r, false, true);
                 paintCorner(g2, L, B, r, true, false);
