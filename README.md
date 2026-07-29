@@ -47,8 +47,8 @@ download graph keeps its full height. Full GUI in your browser via Selkies, zero
 6. [Troubleshooting](#6-troubleshooting)
 7. [Architecture](#7-architecture)
 8. [Contributing / License](#8-contributing--license)
-9. [Support this project](#9-support-this-project)
-10. [License](#10-license)
+9. [License](#9-license)
+10. [Support this project](#10-support-this-project)
 <br>
 
 ## 1. Overview
@@ -332,7 +332,17 @@ find . -name '*.xml' | xargs xmllint --noout
 
 <br>
 
-## 9. Support this project
+## 9. License
+
+**Copyright (C) 2026 Junker der Provinz.**
+
+This repository packages JDownloader as a container for Unraid. The packaging in this repository (Dockerfile, scripts, theme, web assets and everything else original here) is free software under the **GNU Affero General Public License v3.0** (AGPL-3.0); see [LICENSE](LICENSE). If you distribute it, or run a modified version as a network service, you must release your source under the same AGPL-3.0 terms and keep the existing copyright and attribution notices intact.
+
+**Scope.** The AGPL applies to this repository's own code and assets. JDownloader itself is a separate project under its own license and name; this repository does not claim it. The banner, logo, theme and other branding original to this repository remain reserved: a fork must use its own branding and may not present itself as this project.
+
+<br>
+
+## 10. Support this project
 
 If this image saves you time or a debug night, consider buying me a coffee:
 
@@ -341,13 +351,3 @@ If this image saves you time or a debug night, consider buying me a coffee:
     <img src=".github/assets/button-buy-me-a-coffee.svg" alt="Buy me a coffee" width="220">
   </a>
 </p>
-
-<br>
-
-## 10. License
-
-**Copyright (C) 2026 Junker der Provinz.**
-
-This repository packages JDownloader as a container for Unraid. The packaging in this repository (Dockerfile, scripts, theme, web assets and everything else original here) is free software under the **GNU Affero General Public License v3.0** (AGPL-3.0); see [LICENSE](LICENSE). If you distribute it, or run a modified version as a network service, you must release your source under the same AGPL-3.0 terms and keep the existing copyright and attribution notices intact.
-
-**Scope.** The AGPL applies to this repository's own code and assets. JDownloader itself is a separate project under its own license and name; this repository does not claim it. The banner, logo, theme and other branding original to this repository remain reserved: a fork must use its own branding and may not present itself as this project.
