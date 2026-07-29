@@ -13,7 +13,7 @@
   <a href="https://github.com/junkerderprovinz/jdownloader/pkgs/container/jdownloader"><img src="https://img.shields.io/badge/Arch-amd64%20%7C%20arm64-success?style=for-the-badge&logo=linux&logoColor=white" alt="Arch" height="36"></a>&nbsp;
   <a href="https://github.com/selkies-project/selkies"><img src="https://img.shields.io/badge/Web-Selkies-3daee9?style=for-the-badge&logo=kde&logoColor=white" alt="Selkies" height="36"></a>&nbsp;
   <a href="https://unraid.net"><img src="https://img.shields.io/badge/Unraid-Template-f15a2c?style=for-the-badge&logo=unraid&logoColor=white" alt="Unraid" height="36"></a>&nbsp;
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge&logo=opensourceinitiative&logoColor=white" alt="License" height="36"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-AGPL--3.0-blue?style=for-the-badge&logo=gnu&logoColor=white" alt="License: AGPL-3.0" height="36"></a>
 </p>
 
 <br>
@@ -47,7 +47,8 @@ download graph keeps its full height. Full GUI in your browser via Selkies, zero
 6. [Troubleshooting](#6-troubleshooting)
 7. [Architecture](#7-architecture)
 8. [Contributing / License](#8-contributing--license)
-9. [Support this project](#9-support-this-project)
+9. [License](#9-license)
+10. [Support this project](#10-support-this-project)
 <br>
 
 ## 1. Overview
@@ -191,6 +192,7 @@ services:
 | `JD_ACCENT` | `#ffee00` | Accent colour for the `jd-highlighter` theme (any hex) — lights up checkmarks, toggles, focus, the progress bar and primary buttons; large fills stay neutral |
 | `JD_SELFUPDATE` | `true` | `false` disables JD's periodic self-update checks (opt-in "frozen appliance"). **Note:** the same update channel delivers the hoster plugins, which go stale within weeks — downloads may start failing. First install always uses the updater. |
 | `JD_ENABLE_BROWSER` | `false` | `true` enables JD's "solve captcha in browser" flow: reCAPTCHA/hCaptcha/Turnstile open in a bundled **Firefox** (with **uBlock Origin**) on the web desktop, solved with one click from the container's own IP (tokens are IP-bound); the profile persists in `/config/.config/mozilla`. Off by default — no browser process runs. Only enable it if a hoster you use needs browser captchas (classic image captchas are auto-solved either way); enabling it runs a full browser (more resources + attack surface). |
+| `JD_UI_SCALE` | _(empty)_ | Optional HiDPI scaling for the whole JDownloader UI, e.g. `1.5` or `2`; empty keeps 1x. Renders the UI crisp and large at the desktop's native resolution so you do not need browser zoom (browser zoom upscales the Selkies video stream and blurs it). See Troubleshooting if text looks tiny or blurry. |
 | `PUID` | `99` | User ID — Unraid's *nobody* |
 | `PGID` | `100` | Group ID — Unraid's *users* |
 | `TZ` | `Europe/Vienna` | Timezone |
@@ -263,6 +265,14 @@ The base image also supports `/config/custom-cont-init.d/` for your own init scr
 </details>
 
 <details>
+<summary><b>Text looks tiny at high resolution, or blurry when I zoom the browser</b></summary>
+
+- This is how a streamed desktop works: Selkies sends the whole X display as one video stream, so zooming your browser upscales that video and blurs the text.
+- Instead of browser zoom, set **`JD_UI_SCALE`** (for example `1.5` or `2`). JDownloader then renders its UI larger at full pixel density, so text stays crisp at the desktop's native resolution.
+- Keep the browser at 100% zoom once `JD_UI_SCALE` is set, and restart the container after changing it.
+</details>
+
+<details>
 <summary><b>"Permission denied" on /downloads</b></summary>
 
 - Check `PUID` / `PGID`. On Unraid, `99:100` (nobody:users) matches share permissions.
@@ -312,7 +322,7 @@ Pull requests welcome. Issues: <https://github.com/junkerderprovinz/jdownloader/
 
 **Licensing — dual:**
 
-- This **wrapper repository** (Dockerfile, `rootfs/`, scripts, Unraid template, README and banner/icon artwork) is licensed under the [MIT License](LICENSE).
+- This **wrapper repository** (Dockerfile, `rootfs/`, scripts, Unraid template, README and banner/icon artwork) is licensed under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0).
 - **JDownloader 2** itself retains its own license (see [jdownloader.org/license](https://jdownloader.org/license)). When you run or redistribute the resulting container image, you must comply with JDownloader's license as well.
 
 ```bash
@@ -332,7 +342,17 @@ find . -name '*.xml' | xargs xmllint --noout
 
 <br>
 
-## 9. Support this project
+## 9. License
+
+**Copyright (C) 2026 Junker der Provinz.**
+
+This repository packages JDownloader as a container for Unraid. The packaging in this repository (Dockerfile, scripts, theme, web assets and everything else original here) is free software under the **GNU Affero General Public License v3.0** (AGPL-3.0); see [LICENSE](LICENSE). If you distribute it, or run a modified version as a network service, you must release your source under the same AGPL-3.0 terms and keep the existing copyright and attribution notices intact.
+
+**Scope.** The AGPL applies to this repository's own code and assets. JDownloader itself is a separate project under its own license and name; this repository does not claim it. The banner, logo, theme and other branding original to this repository remain reserved: a fork must use its own branding and may not present itself as this project.
+
+<br>
+
+## 10. Support this project
 
 If this image saves you time or a debug night, consider buying me a coffee:
 
@@ -341,7 +361,3 @@ If this image saves you time or a debug night, consider buying me a coffee:
     <img src=".github/assets/button-buy-me-a-coffee.svg" alt="Buy me a coffee" width="220">
   </a>
 </p>
-
----
-
-<sub>Part of a family of self-hosted Unraid apps + plugins by <b>junkerderprovinz</b> — see them all at <a href="https://github.com/junkerderprovinz">github.com/junkerderprovinz</a>, or install from <a href="https://unraid.net/community/apps">Community Applications</a>.</sub>

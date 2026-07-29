@@ -65,19 +65,49 @@ fi
 # kde-open, absent here). BROWSER points xdg-open's fallback at ff-launch (not bare
 # firefox) so that path also gets the stdio-detached launch. Left off, JD has no
 # browser handler and never launches one — zero browser process, exactly as before.
+# The opt-in is remembered in a /config sentinel so it survives a container recreate
+# (a Docker update): even if the recreated container comes up with the "auto" default
+# or without JD_ENABLE_BROWSER at all, the saved choice is re-applied instead of the
+# browser silently turning off. Only an explicit false/off is a real opt-out and
+# clears the sentinel. The wiring runs on every boot from cont-init.
+browser_sentinel=/config/.jd-browser-enabled
+wire_browser_on() {
+    printf '[Default Applications]\nx-scheme-handler/http=firefox.desktop\nx-scheme-handler/https=firefox.desktop\ntext/html=firefox.desktop\n' \
+        > /etc/xdg/mimeapps.list
+    printf '%s' "XFCE"                        > /run/s6/container_environment/XDG_CURRENT_DESKTOP
+    printf '%s' "/usr/local/bin/ff-launch"    > /run/s6/container_environment/BROWSER
+}
+wire_browser_off() {
+    # Ensure a stale handler from a previously-enabled run can't linger and make
+    # JD open a browser after the switch was turned back off.
+    rm -f /etc/xdg/mimeapps.list
+}
 case "${JD_ENABLE_BROWSER,,}" in
     true|yes|1|on)
-        printf '[Default Applications]\nx-scheme-handler/http=firefox.desktop\nx-scheme-handler/https=firefox.desktop\ntext/html=firefox.desktop\n' \
-            > /etc/xdg/mimeapps.list
-        printf '%s' "XFCE"                        > /run/s6/container_environment/XDG_CURRENT_DESKTOP
-        printf '%s' "/usr/local/bin/ff-launch"    > /run/s6/container_environment/BROWSER
+        wire_browser_on
+        : > "${browser_sentinel}"
         log "in-container browser ENABLED (JD_ENABLE_BROWSER) — captcha 'solve in browser' will open Firefox"
         ;;
+    false|no|0|off)
+        wire_browser_off
+        rm -f "${browser_sentinel}"
+        log "in-container browser disabled (JD_ENABLE_BROWSER=false) — Firefox captcha solving off"
+        ;;
+    ""|auto)
+        # No explicit choice this boot (the "auto" default, or the variable was dropped
+        # by a container recreate): follow the saved opt-in so an update cannot silently
+        # turn the browser off.
+        if [ -f "${browser_sentinel}" ]; then
+            wire_browser_on
+            log "in-container browser ENABLED from saved choice (/config) — survives container recreate"
+        else
+            wire_browser_off
+            log "in-container browser disabled (default) — set JD_ENABLE_BROWSER=true to enable Firefox captcha solving"
+        fi
+        ;;
     *)
-        # Ensure a stale handler from a previously-enabled run can't linger and make
-        # JD open a browser after the switch was turned back off.
-        rm -f /etc/xdg/mimeapps.list
-        log "in-container browser disabled (default) — set JD_ENABLE_BROWSER=true to enable Firefox captcha solving"
+        wire_browser_off
+        log "in-container browser disabled (unrecognised JD_ENABLE_BROWSER='${JD_ENABLE_BROWSER}') — use true, false or auto"
         ;;
 esac
 

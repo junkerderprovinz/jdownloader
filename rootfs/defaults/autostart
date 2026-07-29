@@ -9,6 +9,36 @@ export LANG="${LANG:-en_US.UTF-8}"
 export LANGUAGE="${LANGUAGE:-en_US:en}"
 export LC_ALL="${LC_ALL:-en_US.UTF-8}"
 
+# Browser wiring for JD's link/captcha opener. cont-init writes BROWSER +
+# XDG_CURRENT_DESKTOP into the s6 container-environment, but svc-de (which launches
+# this JVM) has no s6-rc dependency on that cont-init oneshot, so on some boots the
+# session starts before the write and JD comes up with no browser handler (AppWork
+# "Unsupported OpenBrowser"). Re-derive them HERE, in the JVM's direct parent, so they
+# are always inherited. JD_ENABLE_BROWSER is captured at container start (always
+# present); the /config sentinel covers a recreate that dropped the variable.
+case "${JD_ENABLE_BROWSER:-}" in
+    [Tt][Rr][Uu][Ee]|[Yy][Ee][Ss]|1|[Oo][Nn]) _jd_browser=1 ;;
+    *) [ -f /config/.jd-browser-enabled ] && _jd_browser=1 || _jd_browser=0 ;;
+esac
+if [ "${_jd_browser}" = "1" ]; then
+    export XDG_CURRENT_DESKTOP="${XDG_CURRENT_DESKTOP:-XFCE}"
+    export BROWSER="${BROWSER:-/usr/local/bin/ff-launch}"
+fi
+
+# Optional HiDPI UI scaling. On a Selkies web desktop the whole X display is streamed
+# as one H.264 video and the browser scales that stream, so zooming the browser to read
+# a high-resolution desktop upscales the video and blurs the text. JD_UI_SCALE instead
+# tells Swing to render the WHOLE JDownloader UI larger at full pixel density, so text
+# stays crisp at the desktop's native resolution with the browser at 100%. Empty/unset
+# keeps JD's native 1x. Example values: 1.25, 1.5, 2.
+JD_UI_SCALE_OPT=""
+case "${JD_UI_SCALE:-}" in
+    "") : ;;
+    *[!0-9.]*) echo "[jdownloader-autostart] ignoring invalid JD_UI_SCALE='${JD_UI_SCALE}' (use a number like 1.5)" >&2 ;;
+    *) JD_UI_SCALE_OPT="-Dsun.java2d.uiScale=${JD_UI_SCALE}"
+       echo "[jdownloader-autostart] JD_UI_SCALE=${JD_UI_SCALE} -> HiDPI Swing scaling enabled (crisp text without browser zoom)" >&2 ;;
+esac
+
 # Set X11 root window (desktop background) to the theme's #161616 base so
 # the area outside JD's window is dark instead of the default grey/white.
 xsetroot -solid '#161616' 2>/dev/null || true
@@ -548,12 +578,14 @@ PYEOF
 
     launch_ts=$(date +%s)
     echo "[jdownloader-autostart] launching JDownloader JVM (the GUI starts here)..." >&2
+    # shellcheck disable=SC2086  # JD_UI_SCALE_OPT is a single optional -D flag (empty = omit it)
     java \
         -Dawt.useSystemAAFontSettings=on \
         -Dswing.aatext=true \
         -Dsun.java2d.opengl=false \
         -Dsun.awt.disablemixing=true \
         -Dsun.awt.disablegrab=true \
+        ${JD_UI_SCALE_OPT} \
         -jar "${LAUNCHER}"
     EXIT=$?
 

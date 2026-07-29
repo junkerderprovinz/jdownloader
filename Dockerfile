@@ -245,11 +245,16 @@ ENV S6_KILL_GRACETIME=30000 \
 #                 (opt-in "frozen appliance"; Achtung: derselbe Kanal liefert die
 #                 Hoster-Plugins — die veralten in Wochen)
 # JD_INST_DIR   – Installations-Pfad (nicht ändern außer für Debugging)
+# JD_UI_SCALE   – optionale HiDPI-Skalierung der Swing-GUI (z. B. 1.5, 2); leer = 1x.
+#                 Rendert die GUI größer bei voller Pixeldichte, so bleibt Text bei
+#                 nativer Desktop-Auflösung scharf statt per Browser-Zoom (der den
+#                 Selkies-H.264-Stream hochskaliert und unscharf macht).
 ENV JD_LANG=en \
     JD_THEME=Dark \
     JD_ACCENT=#ffee00 \
     JD_SELFUPDATE=true \
     JD_INST_DIR=/config/JDownloader \
+    JD_UI_SCALE= \
     LANG=en_US.UTF-8 \
     LANGUAGE=en_US:en \
     LC_ALL=en_US.UTF-8

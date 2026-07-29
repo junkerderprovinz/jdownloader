@@ -25,6 +25,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      security-events: write   # upload the Trivy SARIF to the Security tab
 
     steps:
       - name: Checkout
@@ -88,6 +89,12 @@ jobs:
             BUILD_SHA=${{ github.sha }}
             BUILD_DATE=${{ github.event.repository.updated_at }}
           cache-from: type=gha
+          # Recompile the agent stage fresh every build (~3s). agent-builder is the only
+          # stage that compiles our own source; pinning it off-cache makes the shipped
+          # agent deterministic rather than dependent on cross-build cache timing (on a
+          # tag-only push, agent-builder could otherwise restore an older cached layer).
+          # Kept on BOTH builds so the smoke test and the pushed image compile the same agent.
+          no-cache-filters: agent-builder
 
       - name: Smoke test — amd64 must boot and serve the WebUI
         run: |
@@ -164,6 +171,27 @@ jobs:
           docker rm -f "$name" >/dev/null
           exit 1
 
+      # CVE scan of the locally-built smoke image. Report-only: exit-code stays 0
+      # so a fresh CVE in the base can never block a push; findings land in the
+      # repo's Security tab (SARIF) for triage. Ignores unfixed CVEs (nothing to
+      # do until upstream ships a fix) and only surfaces HIGH/CRITICAL.
+      - name: Scan image for CVEs (Trivy)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: jdownloader:smoke-amd64
+          format: sarif
+          output: trivy-results.sarif
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "0"     # MUST stay 0 — report only, never fail the build
+
+      - name: Upload Trivy results to the Security tab
+        if: ${{ github.event_name != 'pull_request' }}
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy
+
       - name: Build & push
         uses: docker/build-push-action@v7
         with:
@@ -173,11 +201,16 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          provenance: true
+          sbom: true
           build-args: |
             BUILD_SHA=${{ github.sha }}
             BUILD_DATE=${{ github.event.repository.updated_at }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          # See the smoke build above: force a fresh agent-builder compile so the shipped
+          # agent never depends on a cached layer from another build.
+          no-cache-filters: agent-builder
 
       # Mirror the GitHub README to the Docker Hub repo's full description (same
       # text as on GitHub; relative image/link paths completed to absolute so they
