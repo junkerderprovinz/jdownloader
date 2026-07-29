@@ -9,6 +9,22 @@ export LANG="${LANG:-en_US.UTF-8}"
 export LANGUAGE="${LANGUAGE:-en_US:en}"
 export LC_ALL="${LC_ALL:-en_US.UTF-8}"
 
+# Browser wiring for JD's link/captcha opener. cont-init writes BROWSER +
+# XDG_CURRENT_DESKTOP into the s6 container-environment, but svc-de (which launches
+# this JVM) has no s6-rc dependency on that cont-init oneshot, so on some boots the
+# session starts before the write and JD comes up with no browser handler (AppWork
+# "Unsupported OpenBrowser"). Re-derive them HERE, in the JVM's direct parent, so they
+# are always inherited. JD_ENABLE_BROWSER is captured at container start (always
+# present); the /config sentinel covers a recreate that dropped the variable.
+case "${JD_ENABLE_BROWSER:-}" in
+    [Tt][Rr][Uu][Ee]|[Yy][Ee][Ss]|1|[Oo][Nn]) _jd_browser=1 ;;
+    *) [ -f /config/.jd-browser-enabled ] && _jd_browser=1 || _jd_browser=0 ;;
+esac
+if [ "${_jd_browser}" = "1" ]; then
+    export XDG_CURRENT_DESKTOP="${XDG_CURRENT_DESKTOP:-XFCE}"
+    export BROWSER="${BROWSER:-/usr/local/bin/ff-launch}"
+fi
+
 # Set X11 root window (desktop background) to the theme's #161616 base so
 # the area outside JD's window is dark instead of the default grey/white.
 xsetroot -solid '#161616' 2>/dev/null || true
