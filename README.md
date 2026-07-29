@@ -191,6 +191,7 @@ services:
 | `JD_THEME` | `Dark` | UI theme — `Dark` = monochrome Carbon `#161616`, `Light` = JD's light theme |
 | `JD_SELFUPDATE` | `true` | `false` disables JD's periodic self-update checks (opt-in "frozen appliance"). **Note:** the same update channel delivers the hoster plugins, which go stale within weeks — downloads may start failing. First install always uses the updater. |
 | `JD_ENABLE_BROWSER` | `false` | `true` enables JD's "solve captcha in browser" flow: reCAPTCHA/hCaptcha/Turnstile open in a bundled **Firefox** (with **uBlock Origin**) on the web desktop, solved with one click from the container's own IP (tokens are IP-bound); the profile persists in `/config/.config/mozilla`. Off by default — no browser process runs. Only enable it if a hoster you use needs browser captchas (classic image captchas are auto-solved either way); enabling it runs a full browser (more resources + attack surface). |
+| `JD_UI_SCALE` | _(empty)_ | Optional HiDPI scaling for the whole JDownloader UI, e.g. `1.5` or `2`; empty keeps 1x. Renders the UI crisp and large at the desktop's native resolution so you do not need browser zoom (browser zoom upscales the Selkies video stream and blurs it). See Troubleshooting if text looks tiny or blurry. |
 | `PUID` | `99` | User ID — Unraid's *nobody* |
 | `PGID` | `100` | Group ID — Unraid's *users* |
 | `TZ` | `Europe/Vienna` | Timezone |
@@ -260,6 +261,14 @@ The base image also supports `/config/custom-cont-init.d/` for your own init scr
 - Verify `JD_THEME=Dark` is set in your template
 - Check the container log for `[jdownloader-theme]` lines
 - The theme is applied at container start, not live — restart after changing `JD_THEME`
+</details>
+
+<details>
+<summary><b>Text looks tiny at high resolution, or blurry when I zoom the browser</b></summary>
+
+- This is how a streamed desktop works: Selkies sends the whole X display as one video stream, so zooming your browser upscales that video and blurs the text.
+- Instead of browser zoom, set **`JD_UI_SCALE`** (for example `1.5` or `2`). JDownloader then renders its UI larger at full pixel density, so text stays crisp at the desktop's native resolution.
+- Keep the browser at 100% zoom once `JD_UI_SCALE` is set, and restart the container after changing it.
 </details>
 
 <details>
