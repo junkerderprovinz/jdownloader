@@ -1612,10 +1612,18 @@ public class DialogConfirmAgent {
                     JComponent jc = (JComponent) ch;
                     if (jc.getClientProperty("jdp.fieldRound") == null) {
                         jc.putClientProperty("jdp.fieldRound", Boolean.TRUE);
+                        // The old code kept the ORIGINAL FlatLaf field border as the inner border of the
+                        // compound — but that border IS the light rounded OUTLINE ("Rahmen") the user kept
+                        // reporting. The corner-mask only rounded its corners, it never removed the line, so
+                        // the dropdown fields always showed a visible border ([[never-border-lines]] violation
+                        // that survived every "fix"). Drop the outline: keep ONLY the border's insets (padding)
+                        // via an EmptyBorder so text isn't clipped, then round the corners with the mask. Result
+                        // = shade-only rounded field, no outline.
                         javax.swing.border.Border ob = jc.getBorder();
+                        java.awt.Insets bi = (ob != null) ? ob.getBorderInsets(jc) : new java.awt.Insets(3, 8, 3, 8);
+                        javax.swing.border.Border inner = new javax.swing.border.EmptyBorder(bi);
                         javax.swing.border.Border mask = new RoundCornerMaskBorder(menuFieldMaskColor(jc), UI_RADIUS);
-                        jc.setBorder(ob == null ? mask
-                                : javax.swing.BorderFactory.createCompoundBorder(mask, ob));
+                        jc.setBorder(javax.swing.BorderFactory.createCompoundBorder(mask, inner));
                     }
                 }
             }
