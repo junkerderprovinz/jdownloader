@@ -1606,10 +1606,29 @@ public class DialogConfirmAgent {
                         Container par = ch.getParent();
                         if (par != null) { par.invalidate(); par.revalidate(); }
                     }
+                    // JD's menu spinners ignore FlatLaf's Spinner/ComboBox/TextComponent.arc (custom UI) and
+                    // rendered SQUARE. Mask their corners with the popup background so they read as 8px-rounded,
+                    // like the updater bar. Guarded so the border is applied once (no per-tick churn).
+                    JComponent jc = (JComponent) ch;
+                    if (jc.getClientProperty("jdp.fieldRound") == null) {
+                        jc.putClientProperty("jdp.fieldRound", Boolean.TRUE);
+                        javax.swing.border.Border ob = jc.getBorder();
+                        javax.swing.border.Border mask = new RoundCornerMaskBorder(menuFieldMaskColor(jc), UI_RADIUS);
+                        jc.setBorder(ob == null ? mask
+                                : javax.swing.BorderFactory.createCompoundBorder(mask, ob));
+                    }
                 }
             }
             if (ch instanceof Container) styleMenuFieldsIn((Container) ch, menu);
         }
+    }
+
+    /** Colour behind a menu field = the enclosing popup's background, used to mask the field corners round. */
+    private static Color menuFieldMaskColor(Component field) {
+        for (Component p = field.getParent(); p != null; p = p.getParent()) {
+            if (p instanceof javax.swing.JPopupMenu && p.getBackground() != null) return p.getBackground();
+        }
+        return PAL_HEADER;
     }
 
     // S8 — menu-open flash. Menus open UNSTYLED and only get themed on the next ~400ms tick, so the old
@@ -1704,24 +1723,44 @@ public class DialogConfirmAgent {
             jc.setMaximumSize(new java.awt.Dimension(Integer.MAX_VALUE, max));
             changed = true;
         }
-        if (changed) {
-            pm.revalidate(); pm.repaint();
-            // #2 regression fix: the popup WINDOW was already sized for the old (shorter) rows, so growing rows
-            // clipped the last one. Grow the popup to fit its new preferred size. Heavyweight popup -> resize its
-            // window; lightweight popup (inside the layered pane) -> setPopupSize. Never touches the main frame.
-            try {
-                java.awt.Dimension pref = pm.getPreferredSize();
-                java.awt.Window win = javax.swing.SwingUtilities.getWindowAncestor(pm);
-                if (win != null && win.getClass().getName().toLowerCase().contains("popup")) {
-                    if (win.getHeight() < pref.height || win.getWidth() < pref.width) {
-                        win.setSize(Math.max(win.getWidth(), pref.width), Math.max(win.getHeight(), pref.height));
-                        win.validate();
-                    }
-                } else if (pm.getHeight() < pref.height || pm.getWidth() < pref.width) {
-                    pm.setPopupSize(Math.max(pm.getWidth(), pref.width), Math.max(pm.getHeight(), pref.height));
-                }
-            } catch (Throwable ignore) { }
-        }
+        if (changed) { pm.revalidate(); pm.repaint(); }
+        repackPopupIfClipped(pm);   // grow the popup to fit grown rows + lazily-added items (every tick, not only on change)
+    }
+
+    /** Grow a SHOWING popup so grown rows / lazily-added items are not clipped. Runs EVERY tick from
+     *  uniformMenuRowHeights (not only when rows change), because JD adds items to the settings dropdown
+     *  AFTER it is shown — the on-open size was too short so the last item(s) were cut ("unten abgeschnitten").
+     *  On-open the popup isn't attached yet (getWindowAncestor null, height 0) -> skipped; once showing, resize
+     *  the popup WINDOW (heavyweight) or the popup component in the layered pane (lightweight, getWindowAncestor
+     *  returns the main frame). Idempotent: no-op once it fits. Never shrinks, never touches the main frame. */
+    private static void repackPopupIfClipped(javax.swing.JPopupMenu pm) {
+        try {
+            if (!pm.isShowing() || pm.getHeight() <= 0) return;
+            // Measure the REAL content from the children — pm.getPreferredSize() came back stale/capped after
+            // JD lazily added menu items, so the popup thought it already fit (155px) and was never grown, and
+            // the last item(s) stayed clipped ("nicht alle Einträge sichtbar"). Sum the visible children.
+            int need = 0, wide = 0;
+            for (Component ch : pm.getComponents()) {
+                if (!ch.isVisible()) continue;
+                java.awt.Dimension d = ch.getPreferredSize();
+                if (d == null) continue;
+                need += d.height; if (d.width > wide) wide = d.width;
+            }
+            java.awt.Insets in = pm.getInsets();
+            if (in != null) { need += in.top + in.bottom; wide += in.left + in.right; }
+            if (need <= 0 || (pm.getHeight() >= need && pm.getWidth() >= wide)) return;   // already fits
+            int nw = Math.max(pm.getWidth(), wide), nh = Math.max(pm.getHeight(), need);
+            java.awt.Window win = javax.swing.SwingUtilities.getWindowAncestor(pm);
+            boolean heavy = win != null && win.getClass().getName().toLowerCase().contains("popup");
+            if (heavy) {
+                if (win.getHeight() < nh || win.getWidth() < nw) { win.setSize(nw, nh); win.validate(); }
+            } else {
+                pm.setSize(nw, nh);
+                java.awt.Container par = pm.getParent();
+                if (par != null) { par.setSize(Math.max(par.getWidth(), nw), Math.max(par.getHeight(), nh)); par.revalidate(); }
+                pm.revalidate(); pm.repaint();
+            }
+        } catch (Throwable ignore) { }
     }
 
     // Re-style every VISIBLE popup menu each tick, so JD's lazy re-render of the Speed-Limit / editor rows
@@ -1916,9 +1955,14 @@ public class DialogConfirmAgent {
     // properties) with the darker #161616 chrome around them — matching the settings cards. Here we add the
     // surrounding MARGIN so the card floats: the scrollpane band paints the base colour, the viewport/table
     // paint the card colour. Guarded once per scrollpane so we neither fight JD nor flicker.
+    // SYSTEM-WIDE standard corner rounding (normalised): every rounded element in the theme uses this one
+    // radius so cards, buttons, menus, dropdowns and the updater window/bar/button all match. UI_ARC = 2*radius
+    // is the diameter value that RoundRectangle2D / fillRoundRect / FlatLaf-style expect.
+    static final int UI_RADIUS = 8;
+    static final int UI_ARC    = 2 * UI_RADIUS;   // = 16
     private static final Color MAIN_CARD = PAL_SURFACE;   // #1e1e1e unified elevated surface
     private static final int   CARD_GAP  = 10;            // darker chrome gap around the card
-    private static final int   CARD_ARC  = 14;            // corner radius, matches the settings cards
+    private static final int   CARD_ARC  = UI_RADIUS;     // card corner RADIUS (system standard)
     private static void cardMainTables() {
         for (Window w : Window.getWindows()) {
             if (!w.isShowing()) continue;
@@ -3453,6 +3497,11 @@ public class DialogConfirmAgent {
             Object light = mi.getClientProperty("jdp.miLight");
             if (cur == light || cur == mi.getClientProperty("jdp.miDark")) { installMenuItemHoverIcon(mi); return; }
             javax.swing.Icon lo = tablerIcon(cur, SIDEBAR_TEXT, mi);
+            // #Extras: extension-toggle icons (Ereignis-Skripter / Ordnerüberwachung) carry NO Tabler key AND a
+            // baked-in opaque near-black square box -> tablerIcon returns the raw icon (lo==cur), leaving the
+            // black box visible. De-box it (flood-fill the near-black corners to transparent, safe no-op on any
+            // icon whose corners aren't a dark box) then mono it — mirroring the large-dialog-image path.
+            if (lo == cur) lo = tintSolid(deBoxIcon(cur, mi), SIDEBAR_TEXT, mi);
             // #3: derive the DARK hover glyph from the LIGHT one via tintSolid (re-tint its exact pixels), NOT a
             // fresh tablerIcon(cur, accentFg) — for some menu glyphs the latter produced an 18x18 but fully
             // TRANSPARENT icon, so the armed row on the accent hover looked like it "lost" its icon. tintSolid
@@ -3499,7 +3548,11 @@ public class DialogConfirmAgent {
                 // dark check-selection background, so the glyph there must stay LIGHT even while armed; the dark
                 // glyph is only right on a non-selected ARMED row (which shows the accent fill). So dark iff
                 // armed AND not selected; light otherwise. (Derived from the FlatLaf source, no bytecode needed.)
-                boolean hot = mi.isEnabled() && m.isArmed() && !m.isSelected();
+                // A submenu JMenu (e.g. Datei>Sicherung) has isSelected()==true while its popup is open — the
+                // SAME state as hovering its row — so the checkbox-only !isSelected() guard wrongly kept its icon
+                // light on the accent fill (its text DID flip, proving it is armed). Exempt JMenus so the icon
+                // flips dark on hover too; checkbox/radio items keep the !isSelected() behaviour.
+                boolean hot = mi.isEnabled() && m.isArmed() && (mi instanceof javax.swing.JMenu || !m.isSelected());
                 Object want = mi.getClientProperty(hot ? "jdp.miDark" : "jdp.miLight");
                 if (want instanceof javax.swing.Icon) {
                     javax.swing.Icon wi = (javax.swing.Icon) want;
@@ -4006,7 +4059,7 @@ public class DialogConfirmAgent {
     private static final String SB_BTN           = "jdp.sbButton";
     private static final Color  SB_BASE          = PAL_BASE;  // deep sidebar base the tiles float on
     private static final Color  SB_BTN_BG        = PAL_SURFACE;  // button tile on the #161616 sidebar
-    private static final int    SB_BTN_GAP_V = 3, SB_BTN_GAP_H = 8, SB_BTN_ARC = 12;
+    private static final int    SB_BTN_GAP_V = 3, SB_BTN_GAP_H = 8, SB_BTN_ARC = UI_ARC;   // system standard
 
     /** CC-style: each sidebar row is a rounded button tile floating on the dark sidebar, not a
      *  continuous bar. One reused instance wraps JD's (reconfigured) cell component each render; it
@@ -4326,9 +4379,14 @@ public class DialogConfirmAgent {
     }
 
     private static void recolorMainTabs() {
-        Color selFg = UIManager.getColor("TabbedPane.selectedForeground");   // accent_fg (dark)
-        Color norFg = UIManager.getColor("TabbedPane.foreground");           // light
-        if (selFg == null || norFg == null) return;
+        // selFg = the dark-on-accent tab foreground. On Linux FlatLaf leaves TabbedPane.selectedForeground
+        // NULL (@accentColor = systemColor(accent) = null), so reading that key directly made this method
+        // bail every tick -> the main tabs fell back to FlatLaf's plain underline (no accent pill / grey
+        // tiles). Use accentFg() (which derives the dark contrast tone from the accent when the key is null)
+        // and PAL_TEXT for the light tone, so the tabs are themed regardless of what the LAF populates.
+        Color selFg = accentFg();                                   // accent_fg (dark)
+        Color norFg = UIManager.getColor("TabbedPane.foreground");  // light
+        if (norFg == null) norFg = PAL_TEXT;
         for (Window w : Window.getWindows()) {
             if (w.isShowing()) recolorTabsIn(w, selFg, norFg);
         }
@@ -4498,18 +4556,81 @@ public class DialogConfirmAgent {
      *  paint an accent RoundRect (SB_BTN_ARC = 6px radius) only when the button is hovered/selected/pressed,
      *  else nothing (the dark toolbar shows through the non-content-filled button). paint() stays
      *  BasicButtonUI's so the state-appropriate mono/dark glyph still draws. */
+    private static boolean isSilentBell(AbstractButton b) {
+        javax.swing.Action a = b.getAction();
+        return a != null && "SilentModeToggleAction".equals(a.getClass().getSimpleName());
+    }
     private static final class RoundFillUI extends javax.swing.plaf.basic.BasicButtonUI {
         @Override public void update(Graphics g, JComponent c) {
-            javax.swing.ButtonModel m = ((AbstractButton) c).getModel();
-            if (m.isSelected() || m.isPressed() || m.isRollover()) {
+            AbstractButton b = (AbstractButton) c;
+            javax.swing.ButtonModel m = b.getModel();
+            boolean toggle = b instanceof javax.swing.JToggleButton;
+            // For TOGGLE buttons the accent pill = the ON state, NOT hover: otherwise hovering an OFF toggle —
+            // or the moment you click to deactivate with the cursor still on it — kept the yellow fill so you
+            // couldn't tell it turned off. The SilentMode bell is INVERTED: sel=true means SILENT (notifications
+            // OFF = deactivated), so its "active/pill" state is !sel. Action buttons keep the hover fill.
+            boolean active = isSilentBell(b) ? !m.isSelected() : m.isSelected();
+            boolean hot = active || m.isPressed() || (!toggle && m.isRollover());
+            // JD's ExtJToggleButton paints its OWN accent selection background BEFORE ui.update, so an
+            // unselected toggle (clipboard monitoring OFF) kept showing a yellow box regardless of this UI
+            // -> the toggle state was invisible. Flood the surrounding toolbar colour first to erase it,
+            // then paint our rounded accent pill only when hot: OFF = clean dark (no pill), ON/hover/press
+            // = a real rounded pill. This is what makes the pill (not the glyph) carry the on/off state.
+            Color bg = (c.getParent() != null && c.getParent().getBackground() != null)
+                    ? c.getParent().getBackground() : PAL_BASE;
+            g.setColor(bg);
+            g.fillRect(0, 0, c.getWidth(), c.getHeight());
+            if (hot) {
                 Graphics2D g2 = (Graphics2D) g.create();
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                 g2.setColor(accentColor());
                 g2.fillRoundRect(0, 0, c.getWidth(), c.getHeight(), SB_BTN_ARC, SB_BTN_ARC);
                 g2.dispose();
             }
+            // Own the glyph paint for actions we map to a clean Tabler icon. JD's ExtJToggleButton re-derives
+            // its painted icon from the action's SMALL_ICON, an ExtMergedIcon whose state overlay (the
+            // clipboard toggle's white-page "monitoring" composite) JD re-sets faster than the 400ms tick can
+            // re-mono it — so the old composite kept flashing back. Drawing the mapped glyph here bypasses
+            // getIcon/SMALL_ICON/ExtMergedIcon entirely: the SAME clean clipboard shows in every state, dark on
+            // the accent fill, light on the dark strip. Unmapped buttons (play/pause/stop/arrows) fall through.
+            javax.swing.Icon own = ownedToolbarGlyph(b, hot);
+            if (own != null) {
+                int ix = (c.getWidth() - own.getIconWidth()) / 2, iy = (c.getHeight() - own.getIconHeight()) / 2;
+                own.paintIcon(c, g, ix, iy);
+                return;
+            }
             paint(g, c);
         }
+    }
+
+    private static final java.util.Map<String, javax.swing.Icon> OWNED_GLYPH = new java.util.concurrent.ConcurrentHashMap<String, javax.swing.Icon>();
+    /** The clean Tabler glyph a mapped toolbar button must always show (bypassing JD's churning state
+     *  composites), tinted dark on the accent fill / light on the dark strip; null if the button isn't a
+     *  mapped action or the glyph isn't shipped at that size -> caller falls back to the default icon paint. */
+    private static javax.swing.Icon ownedToolbarGlyph(AbstractButton b, boolean hot) {
+        javax.swing.Action a = b.getAction();
+        if (a == null) return null;
+        String sn = a.getClass().getSimpleName();
+        String key;
+        if ("SilentModeToggleAction".equals(sn)) {
+            // The bell FLIPS by state: silent (sel=true, notifications OFF) = crossed bell (Tabler bell-off,
+            // JD key "silentmode"); active (sel=false, notifications ON) = normal bell (Tabler bell, key "bubble").
+            key = b.isSelected() ? "silentmode" : "bubble";
+        } else {
+            key = ACTION_ICON.get(sn);
+        }
+        if (key == null) return null;
+        javax.swing.Icon cur = b.getIcon();
+        int sz = (cur != null && cur.getIconHeight() > 0) ? cur.getIconHeight() : 24;
+        Color tone = !b.isEnabled() ? DISABLED_TONE : (hot ? accentFg() : SIDEBAR_TEXT);
+        String ck = key + "@" + sz + "@" + tone.getRGB();
+        javax.swing.Icon cached = OWNED_GLYPH.get(ck);
+        if (cached != null) return cached;
+        javax.swing.Icon base = tablerBase(key, sz, sz);
+        if (base == null) return null;
+        javax.swing.Icon tinted = tintSolid(base, tone);
+        OWNED_GLYPH.put(ck, tinted);
+        return tinted;
     }
     private static void roundToolbarButtons() {
         for (Window w : Window.getWindows()) if (w.isShowing()) roundToolbarBtnsIn(w, false);
@@ -4850,7 +4971,7 @@ public class DialogConfirmAgent {
     private static final class MenuChipBorder implements javax.swing.border.Border {
         private final javax.swing.border.Border original;
         private static final Color CHIP = PAL_SURFACE;
-        private static final int GAP = 3, PAD_V = 2, PAD_H = 6, ARC = 10;
+        private static final int GAP = 3, PAD_V = 2, PAD_H = 6, ARC = UI_ARC;   // system standard
         MenuChipBorder(javax.swing.border.Border o) { this.original = o; }
         public boolean isBorderOpaque() { return false; }
         public java.awt.Insets getBorderInsets(Component c) {
@@ -4874,7 +4995,7 @@ public class DialogConfirmAgent {
     private static final class SectionCardBorder implements javax.swing.border.Border {
         private final javax.swing.border.Border original;
         private static final Color CARD = PAL_SURFACE;   // surface: base < field < card
-        private static final int MARGIN = 10, INNER = 12, ARC = 14;      // equal MARGIN gap on all sides
+        private static final int MARGIN = 10, INNER = 12, ARC = UI_ARC;      // equal MARGIN gap; system-standard arc
         SectionCardBorder(javax.swing.border.Border original) { this.original = original; }
 
         public boolean isBorderOpaque() { return false; }
@@ -4997,16 +5118,15 @@ public class DialogConfirmAgent {
                     if (isUpdater && rp instanceof JComponent) {
                         if (!bg.equals(rp.getBackground())) rp.setBackground(bg);
                         rp.setOpaque(true);
-                        // NO border line (never a line) AND no fat padding: the undecorated updater window is
-                        // sized by JD for its exact content, so a 10px root-pane border ate 20px vertically and
-                        // clipped the bottom button ("falsch beschnitten"). stripFramingBorder above already
-                        // removed any line; leave just a hair of horizontal breathing room, none vertical.
+                        // NO border line (never a line); JD sizes the window tightly to its content, so a fat
+                        // border squeezes/distorts it and a window-grow is reverted by JD. Only a hair of
+                        // horizontal breathing room, none vertical (proven safe).
                         if (!(rp.getBorder() instanceof javax.swing.border.EmptyBorder))
                             rp.setBorder(javax.swing.BorderFactory.createEmptyBorder(0, 8, 0, 8));
                     }
                 }
                 styleDialogContent(cp, bg);
-                if (isUpdater) roundUpdaterBar(cp);   // give the 100% progress bar rounded ends, not square
+                if (isUpdater) { roundUpdaterBar(cp); fitUpdaterWindow(w); }
             } catch (Throwable ignore) { }
         }
     }
@@ -5043,15 +5163,31 @@ public class DialogConfirmAgent {
                     javax.swing.AbstractButton ab = (javax.swing.AbstractButton) ch;
                     boolean hot = ab.getModel().isRollover() || ab.getModel().isPressed();   // S6: leave accent hover alone
                     if (!hot && !BTN_CFG_BG.equals(ab.getBackground())) ab.setBackground(BTN_CFG_BG);
+                    // Spenden/modal dialog button: installBtnHoverFg + installBtnHoverBg share ONE "jdp.savedFg"
+                    // client key, so the first hover stranded the foreground at the DARK accent-fg on the #2a2a2a
+                    // fill (dark-on-dark) — the Close/OK LABEL vanished and the dialog could not be closed. Pin a
+                    // LIGHT resting foreground each tick when not hovered so the button label stays visible+clickable.
+                    if (!hot && !SIDEBAR_TEXT.equals(ab.getForeground())) ab.setForeground(SIDEBAR_TEXT);
                     installBtnHoverFg(ab);
                     installBtnHoverBg(ab);
+                    // Updater buttons (e.g. the close/hide button) ship square, and this FlatLaf build ignores a
+                    // per-component arc (same as the progress bar). Round them the same way: mask the corners with
+                    // the updater surface colour (they sit directly on UPDATER_BG). Keep the ORIGINAL border as
+                    // the compound inner so the button keeps its padding (a zero-inset border shrank it and clipped
+                    // "Schließen"). Never a border line. Guard via a client property (re-wrapping would nest).
+                    if (bg == UPDATER_BG && ab.getClientProperty("jdp.updBtnMask") == null) {
+                        javax.swing.border.Border ob = ab.getBorder();
+                        ab.setBorder(ob == null ? new RoundCornerMaskBorder(UPDATER_BG, UI_RADIUS)
+                            : javax.swing.BorderFactory.createCompoundBorder(new RoundCornerMaskBorder(UPDATER_BG, UI_RADIUS), ob));
+                        ab.putClientProperty("jdp.updBtnMask", Boolean.TRUE);
+                    }
                 } else if (ch instanceof javax.swing.JLabel && ((javax.swing.JLabel) ch).getIcon() != null) {
                     javax.swing.JLabel l = (javax.swing.JLabel) ch;
-                    // JD's updater "ProgressLogo" custom-PAINTS its coloured HighDPI globe (ignores setIcon).
-                    // Reflectively replace whatever Image/Icon field it paints from with a clean mono Tabler
-                    // refresh glyph, so the updater keeps a logo that FITS the theme (not hidden, not coloured).
+                    // JD's updater "ProgressLogo" custom-paints its own blue globe from an internal field and
+                    // ignores the theme's updaterIcon SVG. tameProgressLogo reflectively swaps that field for
+                    // the JD Highlighter logo (embedded PNG) so the updater shows our brand.
                     if (l.getClass().getName().endsWith(".ProgressLogo")) {
-                        monoProgressLogo(l);
+                        tameProgressLogo(l);
                     } else {
                         javax.swing.Icon cur = l.getIcon();
                         if (l.getClientProperty("jdp.monoLbl") != cur) {
@@ -5071,35 +5207,35 @@ public class DialogConfirmAgent {
         }
     }
 
-    /** JD's updater ProgressLogo custom-paints a coloured HighDPI globe from an internal Image/Icon field
-     *  (setIcon has no effect). Render a clean mono Tabler refresh glyph to an image and reflectively push it
-     *  into every Image/Icon field of the ProgressLogo, so it keeps a logo that FITS the mono theme. Idempotent. */
-    private static void monoProgressLogo(javax.swing.JLabel l) {
+    /** JD's updater ProgressLogo custom-paints from an internal Image/Icon field (its own blue globe); it does
+     *  NOT read the theme's updaterIcon SVGs. So reflectively replace those fields with the JD Highlighter logo
+     *  (rasterised from icon.svg, embedded as a PNG) scaled to the label, and make the label non-opaque so no
+     *  box shows. Idempotent. */
+    private static void tameProgressLogo(javax.swing.JLabel l) {
         try {
             if (Boolean.TRUE.equals(l.getClientProperty("jdp.updLogo"))) return;
-            int sz = l.getWidth() > 0 ? l.getWidth() : 48;
-            if (sz < 40) sz = 48; if (sz > 64) sz = 64;
-            javax.swing.Icon tb = tablerBase("refresh", sz, sz);
-            if (tb == null) return;
-            javax.swing.Icon mono = tintIcon(tb, SIDEBAR_TEXT, l);
+            java.awt.image.BufferedImage logo = logoImage();
+            if (logo == null) return;
+            int sz = Math.max(l.getWidth(), l.getHeight());
+            if (sz < 32) sz = 64; if (sz > 96) sz = 96;
             java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(sz, sz, java.awt.image.BufferedImage.TYPE_INT_ARGB);
             java.awt.Graphics2D g = img.createGraphics();
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
             g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            mono.paintIcon(l, g, 0, 0);
+            g.drawImage(logo, 0, 0, sz, sz, null);
             g.dispose();
-            boolean done = false;
+            javax.swing.ImageIcon icon = new javax.swing.ImageIcon(img);
             for (Class<?> k = l.getClass(); k != null && k != javax.swing.JLabel.class; k = k.getSuperclass()) {
                 for (java.lang.reflect.Field f : k.getDeclaredFields()) {
                     try {
                         Class<?> ft = f.getType();
-                        if (java.awt.Image.class.isAssignableFrom(ft)) { f.setAccessible(true); f.set(l, img); done = true; }
-                        else if (javax.swing.Icon.class.isAssignableFrom(ft)) { f.setAccessible(true); f.set(l, mono); done = true; }
+                        if (java.awt.Image.class.isAssignableFrom(ft)) { f.setAccessible(true); f.set(l, img); }
+                        else if (javax.swing.Icon.class.isAssignableFrom(ft)) { f.setAccessible(true); f.set(l, icon); }
                     } catch (Throwable ig) { }
                 }
             }
-            l.setIcon(mono);
-            // The ProgressLogo paints an opaque BLACK box behind the glyph -> match it to the updater surface
-            // so no black square shows around the clean refresh icon.
+            l.setIcon(icon);
             l.setOpaque(false);
             if (!UPDATER_BG.equals(l.getBackground())) l.setBackground(UPDATER_BG);
             l.putClientProperty("jdp.updLogo", Boolean.TRUE);
@@ -5107,15 +5243,36 @@ public class DialogConfirmAgent {
         } catch (Throwable ig) { }
     }
 
-    /** Round the updater's progress bar ends (it painted square). Try FlatLaf's per-component style first
-     *  (works if the bar uses a FlatLaf UI); also set a big arc on its UI reflectively as a fallback. */
+    /** JD Highlighter logo as a decoded image, lazily built once from LOGO_PNG_B64. */
+    private static java.awt.image.BufferedImage LOGO_IMG;
+    private static boolean LOGO_TRIED;
+    private static java.awt.image.BufferedImage logoImage() {
+        if (LOGO_TRIED) return LOGO_IMG;
+        LOGO_TRIED = true;
+        try {
+            byte[] png = java.util.Base64.getDecoder().decode(LOGO_PNG_B64);
+            LOGO_IMG = javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(png));
+        } catch (Throwable ig) { LOGO_IMG = null; }
+        return LOGO_IMG;
+    }
+    // JD Highlighter logo, rasterised from jd-highlighter/.github/assets/icon.svg (128x128 ARGB, via jsvg) and
+    // base64-embedded so the agent can paint it without an SVG renderer. Regenerate this if icon.svg changes.
+    private static final String LOGO_PNG_B64 =
+        "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";
+
+    /** Round the updater's progress bar ends (JD ships it square-ended). Reset it to the active (FlatLaf) UI
+     *  so a JD custom UI can't keep the square paint, then ask FlatLaf for fully-rounded ends; also poke an
+     *  `arc` field reflectively as a fallback for any other UI. */
     private static void roundUpdaterBar(Container c) {
         for (Component ch : c.getComponents()) {
             if (ch instanceof javax.swing.JProgressBar) {
                 javax.swing.JProgressBar pb = (javax.swing.JProgressBar) ch;
                 if (!Boolean.TRUE.equals(pb.getClientProperty("jdp.updBar"))) {
-                    try { pb.putClientProperty("FlatLaf.style", "arc: 999"); } catch (Throwable ig) { }
-                    setUiIntField(pb.getUI(), "arc", 999);   // fallback for a Basic/other UI that keeps an arc field
+                    // JD's FlatProgressBarUI paints square ends here: its `arc` field IS set (verified 999) but
+                    // this FlatLaf build ignores it, and ProgressBar.arc must stay global for the download rows.
+                    // So round the ends by masking the four corners with the updater surface colour (the bar sits
+                    // directly on UPDATER_BG) -> a rounded pill, never a border line.
+                    pb.setBorder(new RoundCornerMaskBorder(UPDATER_BG, UI_RADIUS));   // system-standard rounding
                     pb.putClientProperty("jdp.updBar", Boolean.TRUE);
                     pb.repaint();
                 }
@@ -5123,14 +5280,59 @@ public class DialogConfirmAgent {
             if (ch instanceof Container) roundUpdaterBar((Container) ch);
         }
     }
-    private static void setUiIntField(Object ui, String name, int val) {
-        if (ui == null) return;
-        for (Class<?> k = ui.getClass(); k != null && k != Object.class; k = k.getSuperclass()) {
-            try { java.lang.reflect.Field f = k.getDeclaredField(name); f.setAccessible(true);
-                  if (f.getType() == int.class) f.setInt(ui, val); return; } catch (NoSuchFieldException ns) { } catch (Throwable t) { return; }
+
+    /** A zero-inset border that masks a component's four corners with a solid colour, so a square-painted
+     *  component (JD's updater progress bar) reads as a rounded pill against a known uniform surface. */
+    static final class RoundCornerMaskBorder implements javax.swing.border.Border {
+        private final Color mask; private final int radius;   // radius<=0 -> pill (min(w,h)/2)
+        RoundCornerMaskBorder(Color mask, int radius) { this.mask = mask; this.radius = radius; }
+        public java.awt.Insets getBorderInsets(Component c) { return new java.awt.Insets(0, 0, 0, 0); }
+        public boolean isBorderOpaque() { return false; }
+        public void paintBorder(Component c, Graphics g0, int x, int y, int w, int h) {
+            if (w <= 0 || h <= 0) return;
+            Graphics2D g = (Graphics2D) g0.create();
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            int r = radius > 0 ? Math.min(radius, Math.min(w, h) / 2) : Math.min(w, h) / 2;
+            java.awt.geom.Area a = new java.awt.geom.Area(new java.awt.Rectangle(x, y, w, h));
+            a.subtract(new java.awt.geom.Area(new java.awt.geom.RoundRectangle2D.Float(x, y, w, h, 2f * r, 2f * r)));
+            g.setColor(mask);
+            g.fill(a);
+            g.dispose();
         }
     }
 
+    /** THE actual "bar/button cut off on the right" fix. JD positions the updater centred on its (large) main
+     *  frame. Selkies resizes the X display to the viewer's BROWSER size, so a smaller browser leaves the
+     *  updater sitting at an x that runs past the display's right edge -> its right side (bar end + close
+     *  button) is clipped by the screen edge. This is NOT a rounding issue (rounding never caused it). Clamp
+     *  the window fully back onto the current screen so nothing is ever off-screen; paint the surface too. */
+    private static void fitUpdaterWindow(Window w) {
+        try {
+            java.awt.Color wb = w.getBackground();
+            if (wb == null || wb.getAlpha() < 255) { try { w.setBackground(UPDATER_BG); } catch (Throwable ig) { } }
+            // THE cut fix: clamp fully on-screen (right/bottom off the screen edge = clipped bar/button). Use the
+            // SMALLER of the GraphicsConfiguration bounds and the live DisplayMode: Selkies resizes the X display
+            // per browser and Java may keep a stale (larger) GC-bounds, so the DisplayMode reflects the real
+            // current resolution and min() clamps against whatever is actually visible.
+            // NOTE: the FRAME stays square on purpose. Rounding it needs setShape, which needs the frame flagged
+            // undecorated; flipping that on JD's DECORATED updater frame shifts its layout and pushes the close
+            // button off the bottom edge. So we do NOT round the frame; bar/button/logo are rounded by masks.
+            java.awt.GraphicsConfiguration gc = w.getGraphicsConfiguration();
+            java.awt.Rectangle sc = gc.getBounds();
+            int scW = sc.width, scH = sc.height;
+            try { java.awt.DisplayMode dm = gc.getDevice().getDisplayMode();
+                  if (dm.getWidth()  > 0) scW = Math.min(scW, dm.getWidth());
+                  if (dm.getHeight() > 0) scH = Math.min(scH, dm.getHeight()); } catch (Throwable t) { }
+            java.awt.Rectangle b = w.getBounds();
+            final int m = 8;   // keep a small margin from the screen edges
+            int nx = b.x, ny = b.y;
+            if (nx + b.width  > sc.x + scW - m) nx = sc.x + scW - b.width  - m;
+            if (ny + b.height > sc.y + scH - m) ny = sc.y + scH - b.height - m;
+            if (nx < sc.x + m) nx = sc.x + m;
+            if (ny < sc.y + m) ny = sc.y + m;
+            if (nx != b.x || ny != b.y) w.setLocation(nx, ny);
+        } catch (Throwable ig) { }
+    }
     /** Remove a decorative frame (Titled/Etched/Line/Bevel/Matte, or an AppWork dialog border that
      *  draws the grey rectangle around a pop-up) so the dialog reads by shade, not by lines; leave
      *  EmptyBorder/compound padding intact. */
