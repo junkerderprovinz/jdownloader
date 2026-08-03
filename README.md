@@ -58,7 +58,6 @@ This image packages [JDownloader 2](https://jdownloader.org) into a self-contain
 What's included beyond bare JDownloader:
 
 - **Selkies** instead of noVNC — a hybrid VNC/H.264 pipeline for a smooth 60fps web desktop, real bidirectional browser clipboard, native file upload and download, high-DPI ready
-- **Bottom taskbar** — a thin window list at the bottom; click any open window (JDownloader, its dialogs, the optional captcha browser) to bring it to the front (the minimal openbox desktop otherwise has no panel)
 - **Sleek, complete Dark Mode** pre-applied — a monochrome IBM Carbon (#161616) dark across the *entire* GUI (download list, link grabber **and** settings, not just the menu bar), in a clean maximised kiosk window; switch to a matching Light theme with one variable
 - **Ad-free by default** — JDownloader's built-in advertisements (the *"Become premium user"* banner, the premium-alert column nags, the special-deal popups) are switched off, so the GUI stays clean and the download speed graph keeps its **full height**
 - **Java 21 JRE** — full AWT/Swing support for the JDownloader GUI, not headless
@@ -239,12 +238,6 @@ The base image also supports `/config/custom-cont-init.d/` for your own init scr
 - Try `https://<ip>:3001/` — sometimes browsers block WebSockets over plain HTTP
 - **First start takes a few minutes** — JDownloader installs itself + its dark theme; the screen stays black until done. Watch the container log for the **`JDOWNLOADER IS READY`** banner, then refresh. Don't restart the container.
 - **First start only:** JDownloader may ask once to install its design + a few extensions — click **OK** / **Install now**. Afterwards it stays dark with no prompts.
-</details>
-
-<details>
-<summary><b>A window slipped behind another / I can't get it back</b></summary>
-
-- Click the window you want in the **taskbar** at the bottom of the desktop to bring it to the front. You can also press **Alt+Tab** to cycle windows (Alt+Shift+Tab goes backwards), or **middle-click the empty desktop background** for a full window list.
 </details>
 
 <details>
