@@ -103,7 +103,11 @@ RUN set -eux; \
         # Locale
         locales coreutils \
         # openbox-xdg-autostart braucht PyXDG
-        python3-xdg; \
+        python3-xdg \
+        # Taskleiste: openbox hat kein Panel, ein Fenster hinter einem anderen
+        # oder minimiert ist schwer zurueckzuholen. tint2 (~1 MB) zeichnet eine
+        # duenne Fensterliste; Start aus autostart (wie im krusader-Container).
+        tint2; \
     # Font-Cache aufbauen damit Java die Fonts beim ersten Start sofort findet
     fc-cache -f -v >/dev/null 2>&1 || true; \
     apt-get clean; \
