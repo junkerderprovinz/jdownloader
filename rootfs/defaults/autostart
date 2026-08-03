@@ -43,6 +43,16 @@ esac
 # the area outside JD's window is dark instead of the default grey/white.
 xsetroot -solid '#161616' 2>/dev/null || true
 
+# Taskbar (tint2): openbox has no panel, so JD's window, its dialogs and the
+# optional captcha browser that slip behind one another are hard to switch
+# between. tint2 draws a thin dark bottom bar listing every window (click to
+# switch/restore). Backgrounded; the JD launcher loop below stays the session's
+# main process. No systray (a window list makes minimize-to-tray unnecessary).
+if command -v tint2 >/dev/null 2>&1; then
+    tint2 -c /etc/xdg/tint2/tint2rc >/tmp/tint2.log 2>&1 &
+    echo "[jdownloader-autostart] tint2 taskbar started" >&2
+fi
+
 # (JD's "system tray isn't supported" popup — raised by the SystemTrayExtension in
 # Core.jar — is auto-dismissed by the dialog agent; see JAVA_TOOL_OPTIONS below.)
 
