@@ -2664,7 +2664,15 @@ public class DialogConfirmAgent {
                     : (c instanceof AbstractButton) ? ((AbstractButton) c).getIcon() : null;
             if (ic != null && iconKey(ic) == null && !isSiteLogo(ic) && c.getParent() != null) {
                 java.awt.Point pt = javax.swing.SwingUtilities.convertPoint(c.getParent(), c.getLocation(), win);
-                if (pt.x + c.getWidth() > winW - 90 && pt.y > winH - 40) {
+                boolean rightCol = pt.x + c.getWidth() > winW - 90;
+                // #1 (Kayn, 2026-08-04): the download OverviewPanel's corner SettingsButton (wrench) + CloseButton (X)
+                // are keyless ImageIcons on custom AbstractButtons that IGNORE setIcon (they re-derive their glyph each
+                // paint), so tintSolid+setIcon neither stuck nor stopped -> a re-tint spin. Own their paint with a tiny
+                // ButtonUI (OverviewCornerUI, same tactic as the tab CloseUI): flood the panel bg + draw the button's own
+                // glyph tinted light (accent on hover). Installed once (guarded) -> event-driven paint, no tick spin.
+                if (rightCol && (c instanceof AbstractButton) && c.getClass().getName().contains(".overviewpanel.")) {
+                    installOverviewCornerButton((AbstractButton) c);
+                } else if (rightCol && pt.y > winH - 40) {
                     if (c instanceof javax.swing.JLabel) {
                         javax.swing.JLabel l = (javax.swing.JLabel) c;
                         if (ic != l.getClientProperty("jdp.monoCorner")) {
@@ -3516,6 +3524,13 @@ public class DialogConfirmAgent {
             // keeps lo's alpha (which renders fine) and only darkens the tone, so the dark glyph always shows.
             javax.swing.Icon hi = (lo != cur) ? tintSolid(lo, accentFg()) : tablerIcon(cur, accentFg(), mi);
             if (lo == cur) return;                                     // nothing monod (defensive)
+            // Kayn #2 (2026-08-04): mark a CHECKED toggle with an accent check badge. FlatLaf's
+            // FlatMenuItemRenderer.getIconForPainting() returns getIcon() (never getSelectedIcon()), and the
+            // popup rebuilds its items on each open, so a state-swap via the hover listener raced. Instead WRAP
+            // the glyph in a paint-time state-aware icon: it draws the badge only when mi.isSelected() at paint
+            // time -> no race, and the existing light/dark swap below keeps hover correct. Exclude JMenu
+            // (a submenu is "selected" while its popup is open).
+            if (!(mi instanceof javax.swing.JMenu)) { lo = stateCheckIcon(lo, mi); hi = stateCheckIcon(hi, mi); }
             mi.putClientProperty("jdp.miLight", lo);
             mi.putClientProperty("jdp.miDark", hi);
             mi.setIcon(lo);
@@ -3528,6 +3543,37 @@ public class DialogConfirmAgent {
             mi.setVerticalAlignment(javax.swing.SwingConstants.CENTER);
             installMenuItemHoverIcon(mi);
         } catch (Throwable ignore) { }
+    }
+
+    /** Kayn #2: a menu-item icon that draws an accent check BADGE (filled disc + check, bottom-right) only while
+     *  the item is selected (toggle ON). Paint-time state check -> no listener/timing race. Colours flip with the
+     *  armed row so the badge stays visible on both the dark menu (yellow disc / dark check) and the accent hover
+     *  row (dark disc / light check). Same footprint as the base, so rows stay aligned. */
+    private static javax.swing.Icon stateCheckIcon(final javax.swing.Icon base, final javax.swing.JMenuItem mi) {
+        return new javax.swing.Icon() {
+            public int getIconWidth()  { return base.getIconWidth(); }
+            public int getIconHeight() { return base.getIconHeight(); }
+            public void paintIcon(java.awt.Component c, java.awt.Graphics g, int x, int y) {
+                base.paintIcon(c, g, x, y);
+                if (!mi.isSelected()) return;                          // badge only a CHECKED toggle
+                int w = base.getIconWidth(), h = base.getIconHeight();
+                int d = Math.max(9, Math.round(w * 0.66f));
+                int bx = x + w - d, by = y + h - d;
+                boolean armed = mi.getModel().isArmed();
+                java.awt.Color disc = armed ? accentFg() : accentColor();
+                java.awt.Color chk  = armed ? accentColor() : accentFg();
+                java.awt.Graphics2D g2 = (java.awt.Graphics2D) g.create();
+                g2.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(disc);
+                g2.fillOval(bx, by, d, d);
+                g2.setColor(chk);
+                g2.setStroke(new java.awt.BasicStroke(Math.max(1.3f, d / 6.5f), java.awt.BasicStroke.CAP_ROUND, java.awt.BasicStroke.JOIN_ROUND));
+                int[] xs = { bx + Math.round(d * 0.26f), bx + Math.round(d * 0.44f), bx + Math.round(d * 0.74f) };
+                int[] ys = { by + Math.round(d * 0.52f), by + Math.round(d * 0.68f), by + Math.round(d * 0.34f) };
+                g2.drawPolyline(xs, ys, 3);
+                g2.dispose();
+            }
+        };
     }
 
     // #3: the bottom-right "Bodenleiste anpassen" customize popup renders its armed row GREY (@selectionBackground)
@@ -4557,6 +4603,50 @@ public class DialogConfirmAgent {
             int ix = (c.getWidth() - x.getIconWidth()) / 2, iy = (c.getHeight() - x.getIconHeight()) / 2;
             x.paintIcon(c, g, ix, iy);
         }
+    }
+
+    /** #1 (Kayn, 2026-08-04): the download OverviewPanel corner SettingsButton (wrench) + CloseButton (X) ignore
+     *  setIcon and re-derive their dark, low-contrast glyph each paint, so tinting via setIcon both failed and
+     *  spun the tick. Own their paint with a tiny ButtonUI (same tactic as the tab CloseUI): flood the panel bg
+     *  so the button's own opaque fill can't box it, then draw the button's OWN glyph tinted light (accent on
+     *  hover). Installed once and re-installed if JD swaps the UI back; paint is event-driven -> no tick, no spin. */
+    private static void installOverviewCornerButton(final AbstractButton b) {
+        if (!(b.getUI() instanceof OverviewCornerUI)) {
+            try { b.setUI(new OverviewCornerUI()); b.setBorder(null); } catch (Throwable ignore) { }
+        }
+    }
+    private static final class OverviewCornerUI extends javax.swing.plaf.basic.BasicButtonUI {
+        @Override public void update(Graphics g, JComponent c) {
+            Color bg = (c.getParent() != null && c.getParent().getBackground() != null)
+                    ? c.getParent().getBackground() : PAL_BASE;
+            g.setColor(bg);
+            g.fillRect(0, 0, c.getWidth(), c.getHeight());
+            paint(g, c);
+        }
+        @Override public void paint(Graphics g, JComponent c) {
+            AbstractButton b = (AbstractButton) c;
+            javax.swing.Icon ic = b.getIcon();
+            if (ic == null) return;
+            boolean hot = b.getModel().isRollover() || b.getModel().isArmed();
+            javax.swing.Icon m = cornerGlyphTint(b, ic, hot);
+            if (m == null) return;
+            int ix = (c.getWidth() - m.getIconWidth()) / 2, iy = (c.getHeight() - m.getIconHeight()) / 2;
+            m.paintIcon(c, g, ix, iy);
+        }
+    }
+    /** Cache the light/accent tint of a corner button's glyph, keyed on the base-icon identity + hover state, so a
+     *  button that hands back a fresh ImageIcon each getIcon() still only re-tints when the glyph actually changes. */
+    private static javax.swing.Icon cornerGlyphTint(AbstractButton b, javax.swing.Icon ic, boolean hot) {
+        String pk = hot ? "jdp.ovcHot" : "jdp.ovcLit", bk = hot ? "jdp.ovcHotB" : "jdp.ovcLitB";
+        Object cached = b.getClientProperty(pk);
+        if (ic == b.getClientProperty(bk) && cached instanceof javax.swing.Icon) return (javax.swing.Icon) cached;
+        // SIDEBAR_TEXT (#f4f4f4), not EXPANDER_LIGHT (#b0b0b0): the corner glyph must read as bright as the light
+        // table-header gear Kayn pointed at; the dimmer expander tone left it looking as grey as before.
+        javax.swing.Icon m = tintSolid(ic, hot ? accentColor() : SIDEBAR_TEXT);
+        if (m == null) m = ic;
+        b.putClientProperty(bk, ic);
+        b.putClientProperty(pk, m);
+        return m;
     }
 
     /** #8: the main-toolbar buttons' accent fill (hover / selected toggle) was painted SQUARE — the AppWork
