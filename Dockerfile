@@ -12,7 +12,7 @@
 #   * Selectable theme via JD_THEME (Dark = Carbon #161616 monochrome, Light)
 #
 # Repository:  https://github.com/junkerderprovinz/jdownloader
-# License:     MIT (this wrapper) – JDownloader 2 has its own license
+# License:     AGPL-3.0-only (this wrapper) – JDownloader 2 has its own license
 #
 # Flavor-PINNED on purpose: the Selkies base makes deliberate breaking changes
 # between flavors; ubunturesolute = Ubuntu 25.10, same flavor as krusader.
@@ -53,7 +53,7 @@ LABEL maintainer="junkerderprovinz"
 LABEL org.opencontainers.image.title="jdownloader"
 LABEL org.opencontainers.image.description="JDownloader 2 für Unraid — schlanke, moderne Dark-Mode-GUI (komplettes monochromes Carbon #161616, nicht nur die Menüleiste) auf Selkies, Multi-Language"
 LABEL org.opencontainers.image.source="https://github.com/junkerderprovinz/jdownloader"
-LABEL org.opencontainers.image.licenses="MIT"
+LABEL org.opencontainers.image.licenses="AGPL-3.0-only"
 LABEL org.opencontainers.image.vendor="junkerderprovinz"
 
 # TITLE feeds the PWA manifest; SELKIES_UI_TITLE is the visible tab/sidebar
