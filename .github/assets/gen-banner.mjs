@@ -113,16 +113,17 @@ const bb = new Resvg(
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${Math.ceil(SRC_VB.w) + 40} ${Math.ceil(SRC_VB.h) + 40}"><path d="${wordmarkPath}${crossbarPath}"/></svg>`,
   { fitTo: { mode: "original" } },
 ).getBBox();
-const s2 = WM_TARGET / bb.height;
+const s2 = Math.min(WM_TARGET / bb.height, (W - textX - 80) / bb.width);   // height target, width-capped so JDOWNLOADER can't overflow
+const wmH = bb.height * s2;
 const wmWFit = bb.width * s2;
 const claimAsc = lato.ascender * claimSize / lato.unitsPerEm;
 const claimDesc = -lato.descender * claimSize / lato.unitsPerEm;
 const NAME_CLAIM_GAP = 8;
-const blockH = WM_TARGET + NAME_CLAIM_GAP + claimAsc + claimDesc;
+const blockH = wmH + NAME_CLAIM_GAP + claimAsc + claimDesc;
 const top = H / 2 - blockH / 2;
 const wmX = textX - bb.x * s2;                             // left-anchor the wordmark's ink at textX
 const wmTop = top - bb.y * s2;                             // wordmark visible top -> `top`
-const claimBaseline = top + WM_TARGET + NAME_CLAIM_GAP + claimAsc;
+const claimBaseline = top + wmH + NAME_CLAIM_GAP + claimAsc;
 const claimStartX = textX + (wmWFit - runWidth(lato, CLAIM, claimSize)) / 2; // claim centred on the wordmark
 const claimPath = runPath(lato, CLAIM, claimStartX, claimBaseline, claimSize);
 
