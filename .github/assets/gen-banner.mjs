@@ -32,18 +32,19 @@ import { execSync } from "node:child_process";
 const require = createRequire(import.meta.url);
 const gRoot = execSync("npm root -g").toString().trim();
 const opentype = require(`${gRoot}/opentype.js`);
+const { Resvg } = require(`${gRoot}/@resvg/resvg-js`); // needed early for the wordmark bbox
 const __dir = dirname(fileURLToPath(import.meta.url));
 
 // ---- content + styling -----------------------------------------------------
 const CLAIM = "Grab it. All of it. In the dark.";
 const THEMES = [
-  { suffix: "",      bg: "#ffffff", name: "#161616", claim: "#5a5d5e" },
+  { suffix: "",      bg: "#ffffff", name: "#1f2328", claim: "#5a5d5e" },
   { suffix: "-dark", bg: "#0d1117", name: "#e6edf3", claim: "#9aa4ad" },
 ];
 const W = 1600, H = 500;
-const LH = 386, LW = LH;      // globe on the left (square) — enlarged to match the refined theme banners
-const gap = 48, lineGap = 26;
-const claimSize = 40;
+const LH = 300, LW = LH;      // globe on the left (square) — house standard height
+const gap = 70, lineGap = 26;
+const claimSize = 44;
 const WM_H = 214;             // rendered wordmark height in the banner
 const MAX_GROUP = W - 150;
 // Source wordmark geometry (from the user's Element 1.svg; viewBox 1324.24 x 326.1) --------
@@ -102,14 +103,27 @@ if ((wordmarkPath + crossbarPath).includes("NaN")) throw new Error("NaN path");
 // its circle centre lands at (293, 242); the wordmark starts at a fixed x=522 (its crossbar aligns to
 // the user's x), 214px tall; the claim is centred under the wordmark. "JDOWNLOADER" is shorter than
 // "JD HIGHLIGHTER" so it leaves more room on the right — the same slightly left-weighted balance.
-const startX = 108, LY = 57;                    // globe box -> circle centre (293, 242)
-const textX = 522, wmTop = 138.7;               // crossbar top -> y=170.8, caps baseline -> y=273.7
-const claimBaseline = 350;                      // claim baseline, below the wordmark
-const s2 = Math.min(WM_H / SRC_VB.h, (W - textX - 60) / SRC_VB.w);   // 214px tall, capped so it can't overflow right
-const wmWFit = SRC_VB.w * s2;
+// House banner standard: logo left-anchored (165), wordmark to its right, the
+// [wordmark + claim] block vertically centred; claim left-aligned with the
+// wordmark and pulled close (gap 8). Sized + placed by the wordmark's real ink bbox.
+const startX = 165, LY = (H - LH) / 2;
+const textX = startX + LW + gap;
+const WM_TARGET = 150;                                     // visual wordmark height (~ the 132px text names)
+const bb = new Resvg(
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${Math.ceil(SRC_VB.w) + 40} ${Math.ceil(SRC_VB.h) + 40}"><path d="${wordmarkPath}${crossbarPath}"/></svg>`,
+  { fitTo: { mode: "original" } },
+).getBBox();
+const s2 = WM_TARGET / bb.height;
+const wmWFit = bb.width * s2;
 const claimAsc = lato.ascender * claimSize / lato.unitsPerEm;
-const claimW = runWidth(lato, CLAIM, claimSize);
-const claimStartX = textX + (wmWFit - claimW) / 2;   // centre the claim under the wordmark
+const claimDesc = -lato.descender * claimSize / lato.unitsPerEm;
+const NAME_CLAIM_GAP = 8;
+const blockH = WM_TARGET + NAME_CLAIM_GAP + claimAsc + claimDesc;
+const top = H / 2 - blockH / 2;
+const wmX = textX - bb.x * s2;                             // left-anchor the wordmark's ink at textX
+const wmTop = top - bb.y * s2;                             // wordmark visible top -> `top`
+const claimBaseline = top + WM_TARGET + NAME_CLAIM_GAP + claimAsc;
+const claimStartX = textX;                                 // claim left-aligned with the wordmark
 const claimPath = runPath(lato, CLAIM, claimStartX, claimBaseline, claimSize);
 
 // Globe: light card keeps the Carbon-dark body; dark card lightens it so it reads on #0d1117.
@@ -119,12 +133,11 @@ const placeLogo = (svgStr) => svgStr.replace(/<svg[\s\S]*?>/,
 const logoLight = placeLogo(iconRaw);
 const logoDark = placeLogo(iconRaw.replace(/#161616/gi, "#2d333b").replace(/#0b0b0b/gi, "#21262d"));
 
-const { Resvg } = require(`${gRoot}/@resvg/resvg-js`);
 for (const t of THEMES) {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="JDownloader">
   <rect width="${W}" height="${H}" fill="${t.bg}"/>
   ${t.suffix === "-dark" ? logoDark : logoLight}
-  <g transform="translate(${textX.toFixed(2)} ${wmTop.toFixed(2)}) scale(${s2.toFixed(5)})">
+  <g transform="translate(${wmX.toFixed(2)} ${wmTop.toFixed(2)}) scale(${s2.toFixed(5)})">
     <path d="${wordmarkPath}" fill="${t.name}"/>
     <path d="${crossbarPath}" fill="${t.name}"/>
   </g>
