@@ -42,7 +42,7 @@ const THEMES = [
   { suffix: "-dark", bg: "#0d1117", name: "#e6edf3", claim: "#9aa4ad" },
 ];
 const W = 1600, H = 500;
-const LH = 300, LW = LH;      // globe on the left (square) — house standard height
+const LH = 470, LW = LH;      // globe on the left (square) — jdp big-logo standard (~400px ink)
 const gap = 70, lineGap = 26;
 const claimSize = 44;
 const WM_H = 214;             // rendered wordmark height in the banner
@@ -123,7 +123,7 @@ const top = H / 2 - blockH / 2;
 const wmX = textX - bb.x * s2;                             // left-anchor the wordmark's ink at textX
 const wmTop = top - bb.y * s2;                             // wordmark visible top -> `top`
 const claimBaseline = top + WM_TARGET + NAME_CLAIM_GAP + claimAsc;
-const claimStartX = textX;                                 // claim left-aligned with the wordmark
+const claimStartX = textX + (wmWFit - runWidth(lato, CLAIM, claimSize)) / 2; // claim centred on the wordmark
 const claimPath = runPath(lato, CLAIM, claimStartX, claimBaseline, claimSize);
 
 // Globe: light card keeps the Carbon-dark body; dark card lightens it so it reads on #0d1117.
