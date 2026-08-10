@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.25
+# syntax=docker/dockerfile:1.26
 #
 # JDownloader 2 for Unraid – community edition (Selkies)
 # -------------------------------------------------------
