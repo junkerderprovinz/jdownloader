@@ -11,7 +11,15 @@
 #   Dark  = JD_Plain (flat) icons + IBM Carbon #161616 monochrome "colorfor*" colours
 #   Light = JD_Plain (flat) icons + JD's default light colours
 #
-# Always overwrites — env var wins over anything JD wrote on the previous run.
+# Always overwrites — env var wins over anything JD wrote on the previous run. The
+# written laf/*.json is then locked read-only (chmod 444, same pattern as the tray
+# extension cfg in autostart): JD's own bootstrap installer/first-run setup can reset
+# this exact file with its stock (light) colours during its OWN startup, which lands
+# AFTER this script already ran — a plain rewrite-before-launch loses that race on some
+# boots (reported: content areas stay JD's default light even with JD_THEME=Dark, a
+# fresh reinstall included — jdownloader#16). This script itself still runs as root
+# (root bypasses the 444), so the next boot's rewrite is unaffected; only JD's JVM,
+# which runs as the unprivileged PUID-mapped user, is blocked from overwriting it.
 
 THEME="${1:-Dark}"
 JD_DIR="${JD_INST_DIR:-/config/JDownloader}"
@@ -115,6 +123,10 @@ os.makedirs(os.path.dirname(path), exist_ok=True)
 json.dump(d, open(path, "w"), indent=2)
 print("[jdownloader-theme] Carbon #161616 colorfor* + iconsetid=flat -> %s" % path)
 PYEOF
+    # See the file-header note: block JD's own (unprivileged) process from
+    # resetting this file after we just wrote it; this script runs as root on
+    # its next invocation regardless, so re-applying the theme still works.
+    chmod 444 "${JD_CFG}/laf/FlatDarkLaf.json" 2>/dev/null || true
 else
     # Light: JD_Plain (flat) icons, JD's default light colours.
     python3 - "${JD_CFG}/laf/FlatLightLaf.json" <<'PYEOF'
@@ -126,6 +138,7 @@ os.makedirs(os.path.dirname(path), exist_ok=True)
 json.dump(d, open(path, "w"), indent=2)
 print("[jdownloader-theme] light: iconsetid=flat -> %s" % path)
 PYEOF
+    chmod 444 "${JD_CFG}/laf/FlatLightLaf.json" 2>/dev/null || true
 fi
 
 log "done"
