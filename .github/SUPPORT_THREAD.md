@@ -39,7 +39,7 @@ on the first start JDownloader installs and themes itself, so wait for the
 
 **Configuration (key variables)**
 - `JD_THEME` — `Dark` (monochrome Carbon `#161616`) or `Light`
-- WebUI ports — `3001` HTTPS (clipboard) and `3000` HTTP
+- WebUI ports — `3001` HTTPS (the one to open; needed for clipboard) and `3000` HTTP (for a TLS-terminating reverse proxy only; direct access needs HTTPS)
 - `CUSTOM_USER` / `PASSWORD` — optional WebUI login; leave empty for none
 - `PUID` / `PGID` — user / group IDs (default `99` / `100` on Unraid)
 - `TZ` — container timezone
