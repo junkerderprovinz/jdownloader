@@ -151,7 +151,7 @@ Click **Apply**.
 
 ### Step 3 — Open the WebUI
 
-Use **`https://<unraid-ip>:3001/`** (this is what the template's WebUI button opens). HTTPS is needed for **seamless clipboard** — copy on your PC and paste straight into JD; accept the self-signed cert warning once. Plain `http://<unraid-ip>:3000/` also works as a fallback, but without clipboard support (browsers block the clipboard API over plain HTTP).
+Use **`https://<unraid-ip>:3001/`** (this is what the template's WebUI button opens) and accept the self-signed certificate warning once. **HTTPS is required for direct access:** the Selkies web client needs a browser *secure context* — for the WebCodecs video decoder it streams through, and for **seamless clipboard** (copy on your PC, paste straight into JD). Opening `http://<unraid-ip>:3000/` therefore stops at a *"This application requires a secure connection (HTTPS)"* error and never loads the desktop. Port `3000` exists for a reverse proxy that terminates TLS in front of the container and forwards plain HTTP to it.
 
 The JDownloader GUI appears automatically once the install completes.
 
@@ -201,8 +201,10 @@ services:
 
 | Port | Purpose | | Volume | Purpose |
 |---|---|---|---|---|
-| `3000` | Selkies HTTP *(fallback)* | | `/config` | Persistent JDownloader config, links, session |
-| `3001` | Selkies HTTPS *(self-signed)* | | `/downloads` | Download destination |
+| `3001` | Selkies HTTPS *(self-signed)* — **default WebUI, needed for clipboard** | | `/config` | Persistent JDownloader config, links, session |
+| `3000` | Selkies HTTP *(reverse-proxy only — direct access needs HTTPS)* | | `/downloads` | Download destination |
+
+> **Web file transfers:** the Selkies sidebar's upload/download panel and the WebUI's `/files` browser both use the base image's `FILE_MANAGER_PATH`, which defaults to **`/config/Desktop`** — so anything you upload through the browser lands there, inside the persisted `/config` volume, and survives a container update. Point `FILE_MANAGER_PATH` somewhere else if you prefer (e.g. a folder under `/downloads`), but pick the directory deliberately: without `PASSWORD` set, `/files` serves it to anyone who can reach the WebUI.
 
 > **Language:** the UI is **English** by default. Change it any time in JDownloader's own language menu (top toolbar → the flag icon, or *Settings → Language*) — your choice is saved and persists across restarts.
 
@@ -235,7 +237,7 @@ The base image also supports `/config/custom-cont-init.d/` for your own init scr
 
 - Make sure `shm_size` is at least `512mb` (Unraid template sets `1gb`)
 - Check the container log for Selkies startup errors
-- Try `https://<ip>:3001/` — sometimes browsers block WebSockets over plain HTTP
+- Make sure you opened **`https://<ip>:3001/`** and not `http://<ip>:3000/` — over plain HTTP the Selkies client aborts with *"requires a secure connection (HTTPS)"* and the desktop never appears
 - **First start takes a few minutes** — JDownloader installs itself + its dark theme; the screen stays black until done. Watch the container log for the **`JDOWNLOADER IS READY`** banner, then refresh. Don't restart the container.
 - **First start only:** JDownloader may ask once to install its design + a few extensions — click **OK** / **Install now**. Afterwards it stays dark with no prompts.
 </details>
