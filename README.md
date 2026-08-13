@@ -30,6 +30,12 @@ download graph keeps its full height. Full GUI in your browser via Selkies, zero
 <br>
 
 <p align="center">
+A solo, free-time project. Bugs and ideas via <a href="https://github.com/junkerderprovinz/jdownloader/issues">GitHub issues</a>; if it's useful to you, a coffee is always welcome.
+</p>
+
+<br>
+
+<p align="center">
   <a href="https://buymeacoffee.com/junkerderprovinz">
     <img src=".github/assets/button-buy-me-a-coffee.svg" alt="Buy me a coffee" width="220">
   </a>
@@ -356,6 +362,10 @@ This repository packages JDownloader as a container for Unraid. The packaging in
 ## 10. Support this project
 
 If this image saves you time or a debug night, consider buying me a coffee:
+
+JDownloader 2 for Unraid is a one-person project. I write, test, and support it myself, in whatever free time is left after work. Found a bug or have an idea? Please [open a GitHub issue](https://github.com/junkerderprovinz/jdownloader/issues) so it doesn't get lost.
+
+If you'd like to support the time that goes into it, you're welcome to buy me a coffee. Genuinely appreciated either way.
 
 <p align="center">
   <a href="https://buymeacoffee.com/junkerderprovinz">
