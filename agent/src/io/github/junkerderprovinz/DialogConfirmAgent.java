@@ -1299,7 +1299,13 @@ public class DialogConfirmAgent {
     private static final Set<LayoutManager> GROWN_LAYOUTS =
             Collections.newSetFromMap(new WeakHashMap<LayoutManager, Boolean>());
 
+    // Opt-out of the 64px toolbar row (stock JD is 32px). Same env style as JD_DEBUG_GEO.
+    private static final boolean COMPACT_TOOLBAR =
+            "1".equals(System.getenv("JD_COMPACT_TOOLBAR"))
+            || "true".equalsIgnoreCase(System.getenv("JD_COMPACT_TOOLBAR"));
+
     private static void growSpeedMeter() {
+        if (COMPACT_TOOLBAR) return; // leave MainToolBar at JD's stock ~32px row
         for (Window w : Window.getWindows()) {
             if (w.isShowing()) growSpeedMeterIn(w);
         }
