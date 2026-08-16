@@ -2108,6 +2108,34 @@ public class DialogConfirmAgent {
                 }
             }
 
+            // After leaving JDDEFAULT, FlatLaf may be re-enabled on disk but JD still
+            // thinks FLATLAF_DARK/LIGHT is "not installed" and shows a one-shot install
+            // prompt. Auto-OK for FlatLaf themes only — never while classic is selected.
+            if (w instanceof Dialog && !wantClassicLaf()) {
+                String body = collectText(w).toLowerCase();
+                boolean isInfoDialog = title.toLowerCase().contains("about")
+                        || title.toLowerCase().contains("über");
+                boolean notInstalled = body.contains("not installed")
+                        || body.contains("nicht installiert")
+                        || body.contains("is not installed");
+                boolean wantsInstall = body.contains("install it now")
+                        || body.contains("installieren")
+                        || body.contains("do you want to install");
+                boolean mentionsLaf = body.contains("look&feel") || body.contains("look & feel")
+                        || body.contains("look and feel") || body.contains("look-and-feel")
+                        || body.contains("flatlaf") || body.contains("flatlaf_dark")
+                        || body.contains("flatlaf_light");
+                if (!isInfoDialog && notInstalled && wantsInstall && mentionsLaf) {
+                    JButton ok = findButtonByLabels(w, "OK", "Ok", "Yes", "Ja", "Install", "Installieren");
+                    if (ok != null && clickAllowed(w)) {
+                        ok.doClick();
+                        markClicked(w);
+                        System.out.println("[jd-dialog-agent] accepted Look&Feel install (switch back to FlatLaf)");
+                        continue;
+                    }
+                }
+            }
+
             // "Manage extensions" install prompt -> install now.
             if (title.contains("Erweiterungen verwalten") || title.contains("Manage Extensions")) {
                 JButton install = findButtonByLabels(w, "Jetzt installieren", "Install now", "Install");
