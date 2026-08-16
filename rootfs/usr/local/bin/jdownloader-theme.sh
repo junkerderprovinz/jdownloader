@@ -201,9 +201,6 @@ classic = {
     "windowopaque": True,
 }
 d.update(classic)
-# Always force progress colors (null / blank / rejected HexColorString causes NPE spam).
-for i in range(1, 6):
-    d["colorforprogressbarforeground%d" % i] = classic["colorforprogressbarforeground%d" % i]
 d.pop("iconsetid", None)  # classic stock icons, never flat
 os.makedirs(os.path.dirname(path), exist_ok=True)
 # root can rewrite even if previous boot locked the file read-only

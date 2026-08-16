@@ -253,15 +253,19 @@ public class DialogConfirmAgent {
         }
     }
 
-    /** getColor / getColorMouseOver: if LAFOptions not ready or colour null, return stock classic blues. */
-    private static byte[] patchCustomScrollbarPainter(byte[] original, final ClassLoader loader) {
-        ClassReader cr = new ClassReader(original);
-        ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES) {
+    private static ClassWriter lafClassWriter(ClassReader cr, final ClassLoader loader) {
+        return new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES) {
             @Override
             protected ClassLoader getClassLoader() {
                 return loader != null ? loader : super.getClassLoader();
             }
         };
+    }
+
+    /** getColor / getColorMouseOver: if LAFOptions not ready or colour null, return stock classic blues. */
+    private static byte[] patchCustomScrollbarPainter(byte[] original, final ClassLoader loader) {
+        ClassReader cr = new ClassReader(original);
+        ClassWriter cw = lafClassWriter(cr, loader);
         final int[] hits = { 0 };
         ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
             @Override
@@ -332,12 +336,7 @@ public class DialogConfirmAgent {
     /** getColorArray: never return null entries (LinearGradientPaint NPE). Use stock blues if LAFOptions missing. */
     private static byte[] patchCustomProgressbarPainter(byte[] original, final ClassLoader loader) {
         ClassReader cr = new ClassReader(original);
-        ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES) {
-            @Override
-            protected ClassLoader getClassLoader() {
-                return loader != null ? loader : super.getClassLoader();
-            }
-        };
+        ClassWriter cw = lafClassWriter(cr, loader);
         final boolean[] hit = { false };
         // Stock classic progress gradient (aRGB) matching Vinylwalk / LAFSettings docs.
         final int[] stock = { 0x5F70CCFF, 0x5F80C7F7, 0x8078C0EF, 0x5F80C7F7, 0x5F70CCFF };
@@ -438,12 +437,7 @@ public class DialogConfirmAgent {
                         + superName + " — skip getDisabledIcon patch (keep original bytes)"); }
             return null;
         }
-        ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES) {
-            @Override
-            protected ClassLoader getClassLoader() {
-                return loader != null ? loader : super.getClassLoader();
-            }
-        };
+        ClassWriter cw = lafClassWriter(cr, loader);
         final boolean[] hit = { false };
         ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
             @Override
@@ -492,12 +486,7 @@ public class DialogConfirmAgent {
      *  Returns patched bytes, or null (= use original) if none of the expected methods are present. */
     private static byte[] patchCircleBarUI(byte[] original, final ClassLoader loader) {
         ClassReader cr = new ClassReader(original);
-        ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES) {
-            @Override
-            protected ClassLoader getClassLoader() {
-                return loader != null ? loader : super.getClassLoader();
-            }
-        };
+        ClassWriter cw = lafClassWriter(cr, loader);
         final int[] patchedCount = { 0 };
         ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
             @Override
@@ -570,12 +559,7 @@ public class DialogConfirmAgent {
      *  or null (= use original) if the expected methods are absent (jsyntaxpane changed). */
     private static byte[] patchScriptAction(byte[] original, final ClassLoader loader) {
         ClassReader cr = new ClassReader(original);
-        ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES) {
-            @Override
-            protected ClassLoader getClassLoader() {
-                return loader != null ? loader : super.getClassLoader();
-            }
-        };
+        ClassWriter cw = lafClassWriter(cr, loader);
         final int[] patchedCount = { 0 };
         ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
             @Override
@@ -1790,14 +1774,12 @@ public class DialogConfirmAgent {
             if (inst == null) return;
             Object cfg = lafClz.getMethod("getCfg").invoke(inst);
             if (cfg == null) return;
-            Class<?> cfgClz = cfg.getClass();
+            // Progress keys: same guarded path as other colours (LAFSettings Foreground names).
             for (int i = 1; i <= 5; i++) {
-                String getter = "getColorForProgressbarForeground" + i;
-                String setter = "setColorForProgressbarForeground" + i;
-                Object cur = cfgClz.getMethod(getter).invoke(cfg);
-                if (cur == null || String.valueOf(cur).trim().isEmpty()) {
-                    cfgClz.getMethod(setter, String.class).invoke(cfg, CLASSIC_PROGRESS_COLORS[i - 1]);
-                }
+                putCfgStringIfBlank(cfg,
+                        "getColorForProgressbarForeground" + i,
+                        "setColorForProgressbarForeground" + i,
+                        CLASSIC_PROGRESS_COLORS[i - 1]);
             }
             // Readable config/dialog labels (avoids all-grey Update dialog text).
             putCfgStringIfBlank(cfg, "getConfigLabelEnabledTextColor", "setConfigLabelEnabledTextColor", "#FF202020");
@@ -1810,6 +1792,14 @@ public class DialogConfirmAgent {
             // Text only — do not force speed-meter graph colours (leave JD stock green).
             putCfgStringIfBlank(cfg, "getColorForSpeedMeterText", "setColorForSpeedMeterText", "#FF222222");
             putCfgStringIfBlank(cfg, "getColorForSpeedMeterAverageText", "setColorForSpeedMeterAverageText", "#FF222222");
+            // Latch only when all five progress colours are actually present — otherwise retry.
+            Class<?> cfgClz = cfg.getClass();
+            for (int i = 1; i <= 5; i++) {
+                Object cur = cfgClz.getMethod("getColorForProgressbarForeground" + i).invoke(cfg);
+                if (cur == null || String.valueOf(cur).trim().isEmpty()) {
+                    return;
+                }
+            }
             classicLafColorsSeeded = true;
             System.out.println("[jd-dialog-agent] seeded classic LAF progress/text/scrollbar colors (NPE/grey-text guard)");
         } catch (Throwable t) {

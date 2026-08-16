@@ -4,7 +4,7 @@
 CLI:
   resolve <theme>     -> prints KEY=VALUE lines (laf, expect_laf, expect_classic, is_classic)
   jar-valid <path> <entry>  -> exit 0 if zip readable and entry present
-  should-heal-classic --classic 0|1 --matches 0|1 --synthetica 0|1 --license 0|1 --flatlaf 0|1
+  should-heal-classic --classic 0|1 --matches 0|1 --synthetica 0|1 --license 0|1
 """
 from __future__ import annotations
 
@@ -144,14 +144,12 @@ def should_increment_classic_mismatch(
     laf_matches: bool,
     has_valid_synthetica: bool,
     has_license: bool,
-    flatlaf_present_or_parked: bool,
 ) -> bool:
     """Gate for autostart healer: never kill JD while waiting for first Synthetica download.
 
     Increment mismatch only when classic is ready to apply (valid jar + license) but LAF
     still wrong. Parked FlatLaf alone must NOT trigger heal.
     """
-    del flatlaf_present_or_parked  # intentional: parked jar alone must not heal
     if not expect_classic or laf_matches:
         return False
     return bool(has_valid_synthetica and has_license)
@@ -208,14 +206,14 @@ def _cmd_should_heal(argv: list[str]) -> int:
         "matches": False,
         "synthetica": False,
         "license": False,
-        "flatlaf": False,
     }
     i = 0
     while i < len(argv):
         a = argv[i]
         if a.startswith("--") and i + 1 < len(argv):
             key = a[2:]
-            flags[key] = argv[i + 1] in ("1", "true", "True", "yes")
+            if key in flags:
+                flags[key] = argv[i + 1] in ("1", "true", "True", "yes")
             i += 2
         else:
             i += 1
@@ -224,7 +222,6 @@ def _cmd_should_heal(argv: list[str]) -> int:
         laf_matches=flags["matches"],
         has_valid_synthetica=flags["synthetica"],
         has_license=flags["license"],
-        flatlaf_present_or_parked=flags["flatlaf"],
     )
     return 0 if ok else 1
 
