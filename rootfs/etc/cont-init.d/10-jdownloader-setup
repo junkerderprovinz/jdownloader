@@ -26,12 +26,16 @@ mkdir -p "${JD_CFG}"
 # iconsetid=flat resolves from the very first start. JD ships this set but only
 # provisions it on GUI selection, so a fresh /config would otherwise fall back to
 # wrong icons. (icons8 CC BY-ND 3.0 — bundled verbatim, see flat/.../icons8.license.)
+# Skip when JDDEFAULT: classic look uses JD's stock glossy icons, not flat.
 THEMES_SRC="/opt/JDownloader/themes-default"
 THEMES_DST="${JD_DIR}/themes"
-if [[ -d "${THEMES_SRC}" ]]; then
+_theme_lc="$(printf '%s' "${JD_THEME:-Dark}" | tr '[:upper:]' '[:lower:]')"
+if [[ "${_theme_lc}" != "jddefault" && -d "${THEMES_SRC}" ]]; then
     mkdir -p "${THEMES_DST}"
     cp -rf "${THEMES_SRC}/." "${THEMES_DST}/"
     log "bundled flat icon set seeded → ${THEMES_DST}/flat"
+elif [[ "${_theme_lc}" == "jddefault" ]]; then
+    log "JDDEFAULT: skipping flat icon seed (classic stock icons)"
 fi
 
 # NOTE: FlatLaf is intentionally NOT pre-seeded into libs/laf. JD installs and

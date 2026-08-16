@@ -52,8 +52,8 @@ Upstream: https://github.com/junkerderprovinz/jdownloader&#xD;
        UI PREFERENCES
        ======================================================== -->
   <Config Name="Theme (JD_THEME)" Target="JD_THEME"
-          Default="Dark|Light|jd-highlighter" Mode=""
-          Description="Dark = monochrome Carbon #161616, Light = JD's light theme, jd-highlighter = borderless, freely-accented dark (pick the accent with JD_ACCENT below)."
+          Default="Dark|Light|JDDEFAULT|jd-highlighter" Mode=""
+          Description="Dark = monochrome Carbon #161616 (default). Light = FlatLaf light. JDDEFAULT = classic official JDownloader look (Synthetica). jd-highlighter = borderless, freely-accented dark (pick the accent with JD_ACCENT below)."
           Type="Variable" Display="always" Required="false" Mask="false">Dark</Config>
 
   <Config Name="Compact Toolbar (JD_COMPACT_TOOLBAR)" Target="JD_COMPACT_TOOLBAR"
