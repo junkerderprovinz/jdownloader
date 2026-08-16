@@ -1807,14 +1807,9 @@ public class DialogConfirmAgent {
             putCfgStringIfBlank(cfg, "getColorForPanelHeaderForeground", "setColorForPanelHeaderForeground", "#FF000000");
             putCfgStringIfBlank(cfg, "getColorForScrollbarsNormalState", "setColorForScrollbarsNormalState", "#ffD7E7F0");
             putCfgStringIfBlank(cfg, "getColorForScrollbarsMouseOverState", "setColorForScrollbarsMouseOverState", "#ffABC7D8");
+            // Text only — do not force speed-meter graph colours (leave JD stock green).
             putCfgStringIfBlank(cfg, "getColorForSpeedMeterText", "setColorForSpeedMeterText", "#FF222222");
             putCfgStringIfBlank(cfg, "getColorForSpeedMeterAverageText", "setColorForSpeedMeterAverageText", "#FF222222");
-            // Note: Current/Limiter use "Speedmeter" (lowercase m) in LAFSettings method names.
-            putCfgStringIfBlank(cfg, "getColorForSpeedMeterAverage", "setColorForSpeedMeterAverage", "#FF359E35");
-            putCfgStringIfBlank(cfg, "getColorForSpeedmeterCurrentBottom", "setColorForSpeedmeterCurrentBottom", "#ff3EB8FC");
-            putCfgStringIfBlank(cfg, "getColorForSpeedmeterCurrentTop", "setColorForSpeedmeterCurrentTop", "#ff3EB8FC");
-            putCfgStringIfBlank(cfg, "getColorForSpeedmeterLimiterBottom", "setColorForSpeedmeterLimiterBottom", "#ffff0000");
-            putCfgStringIfBlank(cfg, "getColorForSpeedmeterLimiterTop", "setColorForSpeedmeterLimiterTop", "#ffff0000");
             classicLafColorsSeeded = true;
             System.out.println("[jd-dialog-agent] seeded classic LAF progress/text/scrollbar colors (NPE/grey-text guard)");
         } catch (Throwable t) {

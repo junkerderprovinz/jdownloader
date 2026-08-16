@@ -194,12 +194,8 @@ classic = {
     "colorfortooltipforeground": "#ffF5FCFF",
     "colorforspeedmetertext": "#FF222222",
     "colorforspeedmeteraveragetext": "#FF222222",
-    # Vinylwalk / LAFSettings classic speed-meter graph (HexColorString keys).
-    "colorforspeedmeteraverage": "#FF359E35",
-    "colorforspeedmetercurrentbottom": "#ff3EB8FC",
-    "colorforspeedmetercurrenttop": "#ff3EB8FC",
-    "colorforspeedmeterlimiterbottom": "#ffff0000",
-    "colorforspeedmeterlimitertop": "#ffff0000",
+    # Speed-meter GRAPH colours intentionally unset — same as upstream Dark: omit
+    # current/average/limiter keys so JD keeps its stock green graph.
     "animationenabled": True,
     "paintstatusbartopborder": True,
     "windowopaque": True,
