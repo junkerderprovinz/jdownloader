@@ -30,7 +30,7 @@ download graph keeps its full height. Full GUI in your browser via Selkies, zero
 <br>
 
 <p align="center">
-A solo, free-time project. Bugs and ideas via <a href="https://github.com/junkerderprovinz/jdownloader/issues">GitHub issues</a>; if it's useful to you, a coffee is always welcome.
+Maintained solo, in whatever spare time there is. Questions via the <a href="https://forums.unraid.net/topic/199305-support-junkerderprovinz-jdownloader-2/">support thread</a>, bugs, ideas and feature requests via <a href="https://github.com/junkerderprovinz/jdownloader/issues">GitHub issues</a>. If it's useful to you, a coffee is always welcome.
 </p>
 
 <br>
@@ -134,7 +134,7 @@ The defaults work out of the box, but you may want to tweak:
 
 - **Config (`/config`)** — defaults to `/mnt/user/appdata/jdownloader`
 - **Downloads (`/downloads`)** — defaults to `/mnt/user/downloads`; this is where JDownloader saves files
-- **Theme** — default `Dark` (JD Plain Dark, Carbon #161616 palette); switch to `Light` any time
+- **Theme** — default `Dark` (JD Plain Dark, Carbon #161616 palette); switch to `Light`, or `JDDEFAULT` for the classic official JDownloader look, any time
 - **WebUI Password** — leave empty for LAN-only, set anything for exposure beyond the LAN
 
 Click **Apply**.
@@ -194,7 +194,7 @@ services:
 
 | Variable | Default | Description |
 |---|---|---|
-| `JD_THEME` | `Dark` | UI theme — `Dark` = monochrome Carbon `#161616`, `Light` = JD's light theme |
+| `JD_THEME` | `Dark` | UI theme — `Dark` = monochrome Carbon `#161616`, `Light` = FlatLaf light, `JDDEFAULT` = classic official JDownloader look (Synthetica). Default stays `Dark`; existing themes are unchanged. |
 | `JD_SELFUPDATE` | `true` | `false` disables JD's periodic self-update checks (opt-in "frozen appliance"). **Note:** the same update channel delivers the hoster plugins, which go stale within weeks — downloads may start failing. First install always uses the updater. |
 | `JD_ENABLE_BROWSER` | `false` | `true` enables JD's "solve captcha in browser" flow: reCAPTCHA/hCaptcha/Turnstile open in a bundled **Firefox** (with **uBlock Origin**) on the web desktop, solved with one click from the container's own IP (tokens are IP-bound); the profile persists in `/config/.config/mozilla`. Off by default — no browser process runs. Only enable it if a hoster you use needs browser captchas (classic image captchas are auto-solved either way); enabling it runs a full browser (more resources + attack surface). |
 | `JD_UI_SCALE` | _(empty)_ | Optional HiDPI scaling for the whole JDownloader UI, e.g. `1.5` or `2`; empty keeps 1x. Renders the UI crisp and large at the desktop's native resolution so you do not need browser zoom (browser zoom upscales the Selkies video stream and blurs it). See Troubleshooting if text looks tiny or blurry. |
@@ -362,11 +362,9 @@ This repository packages JDownloader as a container for Unraid. The packaging in
 
 ## 10. Support this project
 
-If this image saves you time or a debug night, consider buying me a coffee:
+Questions? Check the [support thread](https://forums.unraid.net/topic/199305-support-junkerderprovinz-jdownloader-2/). Bugs, ideas or feature requests? Please [open a GitHub issue](https://github.com/junkerderprovinz/jdownloader/issues).
 
-JDownloader 2 for Unraid is a one-person project. I write, test, and support it myself, in whatever free time is left after work. Found a bug or have an idea? Please [open a GitHub issue](https://github.com/junkerderprovinz/jdownloader/issues) so it doesn't get lost.
-
-If you'd like to support the time that goes into it, you're welcome to buy me a coffee. Genuinely appreciated either way.
+This is a one-person project. I put a lot of time and effort into building and maintaining it, in whatever free time I have. If it's helped you, I'd genuinely appreciate the support: you're welcome to buy me a coffee.
 
 <p align="center">
   <a href="https://buymeacoffee.com/junkerderprovinz">

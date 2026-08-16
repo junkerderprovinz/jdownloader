@@ -50,15 +50,27 @@ JD_DIR="${JD_INST_DIR:-/config/JDownloader}"
 LAUNCHER="${JD_DIR}/JDownloader.jar"
 
 # Expected LAF class fragment, mirroring jdownloader-theme.sh's JD_THEME mapping.
-# Empty = any LAF counts (JDDEFAULT). Needed this early: the headless pre-install
-# and the extension seeding below depend on it; also shared by the READY poller
-# and the healer further down.
-case "${JD_THEME:-Dark}" in
-    Dark|JD_Plain_Dark|*[Dd][Aa][Rr][Kk]*) EXPECT_LAF="flatdark";  EXPECT_CLASSIC=0 ;;
-    Light|JD_Plain)                         EXPECT_LAF="flatlight"; EXPECT_CLASSIC=0 ;;
-    JDDEFAULT)                              EXPECT_LAF="";          EXPECT_CLASSIC=1 ;;
-    *)                                      EXPECT_LAF="flatdark";  EXPECT_CLASSIC=0 ;;
-esac
+# Empty expect_laf = classic JDDEFAULT. Canonical value is JDDEFAULT; any casing
+# must resolve the same (helpers) — lowercase-only classic paths previously
+# split-brain with this literal case arm and left Metal.
+HELPERS="/usr/local/bin/jdownloader-laf-helpers.py"
+EXPECT_LAF="flatdark"
+EXPECT_CLASSIC=0
+if [ -f "${HELPERS}" ]; then
+    _resolved=$(python3 "${HELPERS}" resolve "${JD_THEME:-Dark}")
+    EXPECT_LAF=$(printf '%s\n' "${_resolved}" | awk -F= '/^expect_laf=/{print $2; exit}')
+    EXPECT_CLASSIC=$(printf '%s\n' "${_resolved}" | awk -F= '/^expect_classic=/{print $2; exit}')
+    unset _resolved
+else
+    THEME_LC=$(printf '%s' "${JD_THEME:-Dark}" | tr '[:upper:]' '[:lower:]')
+    case "${THEME_LC}" in
+        jddefault) EXPECT_LAF=""; EXPECT_CLASSIC=1 ;;
+        light|jd_plain) EXPECT_LAF="flatlight"; EXPECT_CLASSIC=0 ;;
+        *dark*) EXPECT_LAF="flatdark"; EXPECT_CLASSIC=0 ;;
+        *) EXPECT_LAF="flatdark"; EXPECT_CLASSIC=0 ;;
+    esac
+fi
+: "${EXPECT_CLASSIC:=0}"
 
 # Request the FlatLaf themes extension in JD's update registry. The design-install
 # dialog only ever existed because the GUI installer requested this extension
@@ -93,13 +105,22 @@ PYEOF
 
 # Classic JDDEFAULT needs synthetica.jar (+ optional skins). License alone is not
 # enough: without the jars SyntheticaHelper/JDDefaultLookAndFeel fails and JD
-# falls back to MetalLookAndFeel. Request the same extension IDs JD uses for
-# LookAndFeelType synthetica themes. Idempotent once synthetica*.jar exists.
+# falls back to MetalLookAndFeel.
+#
+# Extension IDs (cited from upstream JD):
+#   - LookAndFeelType optional Synthetica skins -> extensionID "synthetica-themes"
+#   - LookAndFeelType.DEFAULT -> extensionID null (DEFAULT does not map to an install ID)
+#   - libs/laf/synthetica.dep.json -> package id "synthetica" for synthetica.jar itself
+# We request both so the updater fetches core jar + skins; DEFAULT's enum ID stays null.
 seed_synthetica_request() {
-    case "$(printf '%s' "${JD_THEME:-Dark}" | tr '[:upper:]' '[:lower:]')" in
-        jddefault) ;;
-        *) return 0 ;;
-    esac
+    [ "${EXPECT_CLASSIC}" = "1" ] || return 0
+    # Only skip seeding when a VALID jar exists — truncated leftovers must not block re-request.
+    if [ -f "${HELPERS}" ]; then
+        python3 "${HELPERS}" any-synthetica-valid "${JD_DIR}/libs/laf" && return 0
+        python3 "${HELPERS}" seed-synthetica \
+            "${JD_DIR}/update/versioninfo/JD/extensions.requestedinstalls.json" >&2 || true
+        return 0
+    fi
     ls "${JD_DIR}/libs/laf"/synthetica*.jar >/dev/null 2>&1 && return 0
     python3 - "${JD_DIR}/update/versioninfo/JD/extensions.requestedinstalls.json" <<'PYEOF' >&2 || true
 import json, os, sys
@@ -129,6 +150,10 @@ PYEOF
 # chain stopping the updater mid-download) leaves a jar that every boot fails
 # with ClassNotFoundException: com.formdev.flatlaf.FlatDarkLaf -> light GUI.
 flatlaf_jar_valid() {
+    if [ -f "${HELPERS}" ]; then
+        python3 "${HELPERS}" flatlaf-valid "$1"
+        return $?
+    fi
     python3 - "$1" <<'PYEOF'
 import sys, zipfile
 try:
@@ -138,6 +163,35 @@ try:
 except Exception:
     sys.exit(1)
 PYEOF
+}
+
+# Same integrity contract for synthetica*.jar (truncated mid-download → Metal forever).
+synthetica_jar_valid() {
+    if [ -f "${HELPERS}" ]; then
+        python3 "${HELPERS}" synthetica-valid "$1"
+        return $?
+    fi
+    python3 - "$1" <<'PYEOF'
+import sys, zipfile
+try:
+    z = zipfile.ZipFile(sys.argv[1])
+    z.getinfo("de/javasoft/plaf/synthetica/SyntheticaLookAndFeel.class")
+    sys.exit(1 if z.testzip() is not None else 0)
+except Exception:
+    sys.exit(1)
+PYEOF
+}
+
+any_synthetica_valid() {
+    if [ -f "${HELPERS}" ]; then
+        python3 "${HELPERS}" any-synthetica-valid "${JD_DIR}/libs/laf"
+        return $?
+    fi
+    for j in "${JD_DIR}/libs/laf"/synthetica*.jar; do
+        [ -f "${j}" ] || continue
+        synthetica_jar_valid "${j}" && return 0
+    done
+    return 1
 }
 
 # Remove a corrupt flatlaf.jar and deregister the extension so seeding re-arms
@@ -166,22 +220,44 @@ if os.path.exists(path):
 PYEOF
 }
 
+# Mirror FlatLaf heal for classic: drop truncated synthetica*.jar + deregister
+# synthetica / synthetica-themes so seed_synthetica_request re-arms.
+heal_invalid_synthetica() {
+    [ "${EXPECT_CLASSIC}" = "1" ] || return 0
+    bad=0
+    for j in "${JD_DIR}/libs/laf"/synthetica*.jar; do
+        [ -f "${j}" ] || continue
+        if ! synthetica_jar_valid "${j}"; then
+            echo "[jdownloader-autostart] INVALID ${j##*/} detected (truncated install?) — removing" >&2
+            rm -f "${j}"
+            bad=1
+        fi
+    done
+    [ "${bad}" = "1" ] || return 0
+    python3 "${HELPERS}" deregister-synthetica \
+        "${JD_DIR}/update/versioninfo/JD/extensions.installed.json" >&2 || true
+    echo "[jdownloader-autostart] deregistered broken synthetica extension(s); re-requesting" >&2
+    seed_synthetica_request
+}
+
 # Official JD ships cfg/synthetica-license.key inside JDownloader.jar. SyntheticaHelper
 # REQUIRES that resource (or the same path on disk under JD home). Without it, classic
 # LookAndFeelType.DEFAULT (JD_THEME=JDDEFAULT) throws and LookAndFeelController falls
 # back to the system LAF — on Linux that is javax.swing.plaf.metal.MetalLookAndFeel.
-# FlatLaf themes do not need this key, so we only extract when JDDEFAULT is selected.
-# Application.getRessourceURL finds the file on disk (AppWork checks classpath THEN home).
+# FlatLaf themes do not need this key, so we only extract when classic is selected.
+# Application.getRessourceURL / JarEntry: cfg/synthetica-license.key in JDownloader.jar.
 ensure_synthetica_license() {
-    case "$(printf '%s' "${JD_THEME:-Dark}" | tr '[:upper:]' '[:lower:]')" in
-        jddefault) ;;
-        *) return 0 ;;
-    esac
+    [ "${EXPECT_CLASSIC}" = "1" ] || return 0
     dest="${JD_DIR}/cfg/synthetica-license.key"
+    rm -f /tmp/.jd-synthetica-license-missing
     if [ -s "${dest}" ]; then
         return 0
     fi
-    [ -f "${LAUNCHER}" ] || return 0
+    [ -f "${LAUNCHER}" ] || {
+        echo "[jdownloader-autostart] ERROR: classic JDDEFAULT needs synthetica-license.key but JDownloader.jar is missing" >&2
+        : > /tmp/.jd-synthetica-license-missing
+        return 1
+    }
     mkdir -p "${JD_DIR}/cfg"
     python3 - "${dest}" "${LAUNCHER}" "${JD_DIR}/Core.jar" <<'PYEOF' >&2 || true
 import os, sys, zipfile
@@ -203,9 +279,15 @@ for jar in sys.argv[2:]:
         sys.exit(0)
     except Exception as e:
         print("[jdownloader-autostart] license extract failed from %s: %s" % (os.path.basename(jar), e))
-print("[jdownloader-autostart] WARNING: cfg/synthetica-license.key missing — JDDEFAULT will fall back to Java Metal")
+print("[jdownloader-autostart] ERROR: cfg/synthetica-license.key missing after extract — classic JDDEFAULT will fall back to Java Metal (marker: /tmp/.jd-synthetica-license-missing)")
 sys.exit(1)
 PYEOF
+    if [ -s "${dest}" ]; then
+        rm -f /tmp/.jd-synthetica-license-missing
+        return 0
+    fi
+    : > /tmp/.jd-synthetica-license-missing
+    return 1
 }
 
 # Download bootstrap JAR if not yet present in config volume. Retried + zip-validated
@@ -237,7 +319,10 @@ if [ ! -f "${LAUNCHER}" ]; then
         done
     fi
 fi
-ensure_synthetica_license || true
+ensure_synthetica_license
+if [ "${EXPECT_CLASSIC}" = "1" ] && [ ! -s "${JD_DIR}/cfg/synthetica-license.key" ]; then
+    echo "[jdownloader-autostart] ERROR: classic theme selected but synthetica license is missing — continuing boot (Dark/Light unaffected)" >&2
+fi
 
 # ---------------------------------------------------------------------------
 # v3 Architecture A ("headless pre-install"). On a FRESH install, run JD's whole
@@ -274,7 +359,7 @@ if [ ! -f "${JD_DIR}/Core.jar" ]; then
         if [ -n "${EXPECT_LAF}" ]; then
             flatlaf_jar_valid "${JD_DIR}/libs/laf/flatlaf.jar" && theme_ok=1
         elif [ "${EXPECT_CLASSIC}" = "1" ]; then
-            [ -f "${JD_DIR}/libs/laf/synthetica.jar" ] && theme_ok=1
+            any_synthetica_valid && theme_ok=1
         else
             theme_ok=1
         fi
@@ -330,14 +415,12 @@ agent_alive() {
 laf_matches() {
     [ -f /tmp/.jd-laf-applied ] || return 1
     # Classic JDDEFAULT: only Synthetica/JDDefault counts. Metal = failed fallback.
-    case "$(printf '%s' "${JD_THEME:-Dark}" | tr '[:upper:]' '[:lower:]')" in
-        jddefault)
-            if grep -qiE 'synthetica|jddefault' /tmp/.jd-laf-applied 2>/dev/null; then
-                return 0
-            fi
-            return 1
-            ;;
-    esac
+    if [ "${EXPECT_CLASSIC}" = "1" ]; then
+        if grep -qiE 'synthetica|jddefault' /tmp/.jd-laf-applied 2>/dev/null; then
+            return 0
+        fi
+        return 1
+    fi
     [ -z "${EXPECT_LAF}" ] && return 0
     grep -qi "${EXPECT_LAF}" /tmp/.jd-laf-applied 2>/dev/null
 }
@@ -466,20 +549,35 @@ heal_restart() {
             continue
         fi
         # LAF mismatch: agent reports a different LAF than expected. FlatLaf themes
-        # require flatlaf.jar present; classic JDDEFAULT requires synthetica*.jar
-        # (license alone is not enough — without jars JD stays on Metal).
+        # require flatlaf.jar present; classic JDDEFAULT requires a VALID synthetica*.jar
+        # + license before we may heal — never TERM while the updater is still
+        # downloading Synthetica (parked FlatLaf alone must not increment mismatch).
         if [ "${pid_age}" -ge 15 ] && [ -f /tmp/.jd-ready ] && agent_alive && ! laf_matches; then
             if [ -n "${EXPECT_LAF}" ] && [ -f "${JD_DIR}/libs/laf/flatlaf.jar" ]; then
                 mismatch=$((mismatch + 1))
-            elif [ "${EXPECT_CLASSIC}" = "1" ] \
-                 && ls "${JD_DIR}/libs/laf"/synthetica*.jar >/dev/null 2>&1 \
-                 && [ -s "${JD_DIR}/cfg/synthetica-license.key" ]; then
-                mismatch=$((mismatch + 1))
-            elif [ "${EXPECT_CLASSIC}" = "1" ] \
-                 && { [ -f "${JD_DIR}/libs/laf/flatlaf.jar" ] \
-                      || [ -f "${JD_DIR}/libs/laf/flatlaf.jar.disabled-for-classic" ]; }; then
-                # FlatLaf still present/parked but LAF is wrong — restart to apply classic.
-                mismatch=$((mismatch + 1))
+            elif [ "${EXPECT_CLASSIC}" = "1" ]; then
+                syn_ok=0
+                lic_ok=0
+                any_synthetica_valid && syn_ok=1
+                [ -s "${JD_DIR}/cfg/synthetica-license.key" ] && lic_ok=1
+                flat_parked=0
+                { [ -f "${JD_DIR}/libs/laf/flatlaf.jar" ] \
+                    || [ -f "${JD_DIR}/libs/laf/flatlaf.jar.disabled-for-classic" ]; } && flat_parked=1
+                if [ -f "${HELPERS}" ] && python3 "${HELPERS}" should-heal-classic \
+                        --classic 1 --matches 0 --synthetica "${syn_ok}" \
+                        --license "${lic_ok}" --flatlaf "${flat_parked}"; then
+                    mismatch=$((mismatch + 1))
+                else
+                    # Waiting for first Synthetica install / license — do not kill.
+                    # Log at most once per JVM pid (avoid spamming every 8s).
+                    if [ "${syn_ok}" != "1" ] || [ "${lic_ok}" != "1" ]; then
+                        if [ "${_classic_wait_logged:-}" != "${cur_pid}" ]; then
+                            _classic_wait_logged="${cur_pid}"
+                            echo "[jdownloader-autostart] classic LAF not ready yet (waiting for valid synthetica*.jar and/or license); not healing" >&2
+                        fi
+                    fi
+                    mismatch=0
+                fi
             else
                 mismatch=0
             fi
@@ -503,7 +601,8 @@ while true; do
     # uses JD's stock glossy icons — do not seed iconsetid=flat material there.
     case "$(printf '%s' "${JD_THEME:-Dark}" | tr '[:upper:]' '[:lower:]')" in
         jddefault)
-            ensure_synthetica_license || true
+            ensure_synthetica_license
+            heal_invalid_synthetica
             seed_synthetica_request
             # Park flatlaf.jar so JD cannot keep applying FlatLaf Light/Dark over classic.
             if [ -f "${JD_DIR}/libs/laf/flatlaf.jar" ]; then

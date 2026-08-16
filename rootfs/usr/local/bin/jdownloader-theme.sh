@@ -27,12 +27,22 @@ JD_CFG="${JD_DIR}/cfg"
 log() { echo "[jdownloader-theme] $*"; }
 mkdir -p "${JD_CFG}/laf"
 
-case "${THEME}" in
-    Dark|JD_Plain_Dark|*[Dd][Aa][Rr][Kk]*) LAF="FLATLAF_DARK"  ;;
-    Light|JD_Plain)                         LAF="FLATLAF_LIGHT" ;;
-    JDDEFAULT)                              LAF="DEFAULT"       ;;
-    *)                                      LAF="FLATLAF_DARK"  ;;
-esac
+# Canonical value is JDDEFAULT; any casing (jddefault, JdDefault, …) must resolve the
+# same — split-brain with lowercase-only classic paths left Metal. Shared with autostart.
+HELPERS="/usr/local/bin/jdownloader-laf-helpers.py"
+if [ -f "${HELPERS}" ]; then
+    LAF=$(python3 "${HELPERS}" resolve "${THEME}" | awk -F= '/^laf=/{print $2; exit}')
+else
+    # Fallback if helpers missing (should not happen in the image).
+    THEME_LC=$(printf '%s' "${THEME}" | tr '[:upper:]' '[:lower:]')
+    case "${THEME_LC}" in
+        jddefault) LAF="DEFAULT" ;;
+        light|jd_plain) LAF="FLATLAF_LIGHT" ;;
+        *dark*) LAF="FLATLAF_DARK" ;;
+        *) LAF="FLATLAF_DARK" ;;
+    esac
+fi
+: "${LAF:=FLATLAF_DARK}"
 log "Theme=${THEME} -> lookandfeeltheme=${LAF}"
 
 # 1) Look-and-Feel (window chrome / Swing) — GraphicalUserInterfaceSettings
@@ -161,29 +171,31 @@ if os.path.exists(path):
     except Exception:
         pass
 classic = {
-    "configlabelenabledtextcolor": "FF202020",
-    "configlabeldisabledtextcolor": "FFA0A0A0",
-    "colorforconfigheadertextcolor": "FF202020",
-    "colorforconfigpaneldescriptiontext": "FF808080",
-    "colorforpanelheaderforeground": "FF000000",
-    "colorforpanelheaderbackground": "ffD7E7F0",
-    "colorforpanelbackground": "ffF5FCFF",
+    "configlabelenabledtextcolor": "#FF202020",
+    "configlabeldisabledtextcolor": "#FFA0A0A0",
+    "colorforconfigheadertextcolor": "#FF202020",
+    "colorforconfigpaneldescriptiontext": "#FF808080",
+    "colorforpanelheaderforeground": "#FF000000",
+    "colorforpanelheaderbackground": "#ffD7E7F0",
+    "colorforpanelbackground": "#ffF5FCFF",
     # Prefer #aRGB like FlatDark / LAFSettings docs (#ffFF0000) so HexColorString accepts them.
     "colorforprogressbarforeground1": "#5F70CCFF",
     "colorforprogressbarforeground2": "#5F80C7F7",
     "colorforprogressbarforeground3": "#8078C0EF",
     "colorforprogressbarforeground4": "#5F80C7F7",
     "colorforprogressbarforeground5": "#5F70CCFF",
-    "colorfortableselectedrowsbackground": "ffCAE8FA",
-    "colorfortablemouseoverrowbackground": "ffC9E0ED",
-    "colorfortablepackagerowbackground": "FFDEE7ED",
-    "colorforscrollbarsnormalstate": "ffD7E7F0",
-    "colorforscrollbarsmouseoverstate": "ffABC7D8",
-    "colorforpanelborders": "ffC0C0C0",
-    "colorforpanelheaderline": "ffC0C0C0",
-    "colorfortooltipforeground": "ffF5FCFF",
-    "colorforspeedmetertext": "FF222222",
-    "colorforspeedmeteraveragetext": "FF222222",
+    "colorfortableselectedrowsbackground": "#ffCAE8FA",
+    "colorfortablemouseoverrowbackground": "#ffC9E0ED",
+    "colorfortablepackagerowbackground": "#FFDEE7ED",
+    "colorforscrollbarsnormalstate": "#ffD7E7F0",
+    "colorforscrollbarsmouseoverstate": "#ffABC7D8",
+    "colorforpanelborders": "#ffC0C0C0",
+    "colorforpanelheaderline": "#ffC0C0C0",
+    "colorfortooltipforeground": "#ffF5FCFF",
+    "colorforspeedmetertext": "#FF222222",
+    "colorforspeedmeteraveragetext": "#FF222222",
+    # Speed-meter GRAPH colours intentionally unset — same as upstream Dark: omit
+    # current/average/limiter keys so JD keeps its stock green graph.
     "animationenabled": True,
     "paintstatusbartopborder": True,
     "windowopaque": True,

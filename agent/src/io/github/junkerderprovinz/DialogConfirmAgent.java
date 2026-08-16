@@ -377,13 +377,19 @@ public class DialogConfirmAgent {
                 mv.visitLabel(catchH);
                 mv.visitVarInsn(Opcodes.ASTORE, 2); // ignore
                 mv.visitLabel(ensure);
-                // Replace any null slot with stock colour
+                // Replace any null slot with stock colour; track whether any fallback was used
+                // (local 2 = usedFallback int 0/1). Only cache colorArray when ALL slots came
+                // from LAFOptions — same fail-open retry as scrollbar painters.
+                mv.visitInsn(Opcodes.ICONST_0);
+                mv.visitVarInsn(Opcodes.ISTORE, 2);
                 for (int i = 0; i < 5; i++) {
                     Label ok = new Label();
                     mv.visitVarInsn(Opcodes.ALOAD, 1);
                     mv.visitLdcInsn(Integer.valueOf(i));
                     mv.visitInsn(Opcodes.AALOAD);
                     mv.visitJumpInsn(Opcodes.IFNONNULL, ok);
+                    mv.visitInsn(Opcodes.ICONST_1);
+                    mv.visitVarInsn(Opcodes.ISTORE, 2);
                     mv.visitVarInsn(Opcodes.ALOAD, 1);
                     mv.visitLdcInsn(Integer.valueOf(i));
                     mv.visitTypeInsn(Opcodes.NEW, "java/awt/Color");
@@ -394,9 +400,13 @@ public class DialogConfirmAgent {
                     mv.visitInsn(Opcodes.AASTORE);
                     mv.visitLabel(ok);
                 }
+                Label skipCache = new Label();
+                mv.visitVarInsn(Opcodes.ILOAD, 2);
+                mv.visitJumpInsn(Opcodes.IFNE, skipCache);
                 mv.visitVarInsn(Opcodes.ALOAD, 0);
                 mv.visitVarInsn(Opcodes.ALOAD, 1);
                 mv.visitFieldInsn(Opcodes.PUTFIELD, JD_PROGRESS_PAINTER, "colorArray", "[Ljava/awt/Color;");
+                mv.visitLabel(skipCache);
                 mv.visitVarInsn(Opcodes.ALOAD, 1);
                 mv.visitInsn(Opcodes.ARETURN);
                 mv.visitMaxs(6, 3);
@@ -416,9 +426,18 @@ public class DialogConfirmAgent {
     }
 
     /** Replace getDisabledIcon with: return super.getDisabledIcon(component, icon);
-     *  Avoids Class.forName/loadClass(NewTheme) + printStackTrace spam when JDCustom is on App CL. */
+     *  Avoids Class.forName/loadClass(NewTheme) + printStackTrace spam when JDCustom is on App CL.
+     *  INVOKESPECIAL must target the real superclass from the class bytes (getSuperName),
+     *  not a hard-coded SyntheticaLookAndFeel — a wrong owner fails verification. */
     private static byte[] patchJdDefaultGetDisabledIcon(byte[] original, final ClassLoader loader) {
         ClassReader cr = new ClassReader(original);
+        final String superName = cr.getSuperName();
+        if (superName == null || superName.isEmpty() || "java/lang/Object".equals(superName)) {
+            if (!jdDefaultLafPatchLogged) { jdDefaultLafPatchLogged = true;
+                System.out.println("[jd-dialog-agent] JDDefaultLookAndFeel: unexpected superName="
+                        + superName + " — skip getDisabledIcon patch (keep original bytes)"); }
+            return null;
+        }
         ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES) {
             @Override
             protected ClassLoader getClassLoader() {
@@ -441,7 +460,7 @@ public class DialogConfirmAgent {
                 mv.visitVarInsn(Opcodes.ALOAD, 1);
                 mv.visitVarInsn(Opcodes.ALOAD, 2);
                 mv.visitMethodInsn(Opcodes.INVOKESPECIAL,
-                        "de/javasoft/plaf/synthetica/SyntheticaLookAndFeel",
+                        superName,
                         "getDisabledIcon",
                         "(Ljavax/swing/JComponent;Ljavax/swing/Icon;)Ljavax/swing/Icon;",
                         false);
@@ -458,7 +477,8 @@ public class DialogConfirmAgent {
             return null;
         }
         if (!jdDefaultLafPatchLogged) { jdDefaultLafPatchLogged = true;
-            System.out.println("[jd-dialog-agent] patched JDDefaultLookAndFeel.getDisabledIcon → super (no NewTheme CNFE spam)"); }
+            System.out.println("[jd-dialog-agent] patched JDDefaultLookAndFeel.getDisabledIcon → super "
+                    + superName + " (no NewTheme CNFE spam)"); }
         return cw.toByteArray();
     }
 
@@ -1787,6 +1807,9 @@ public class DialogConfirmAgent {
             putCfgStringIfBlank(cfg, "getColorForPanelHeaderForeground", "setColorForPanelHeaderForeground", "#FF000000");
             putCfgStringIfBlank(cfg, "getColorForScrollbarsNormalState", "setColorForScrollbarsNormalState", "#ffD7E7F0");
             putCfgStringIfBlank(cfg, "getColorForScrollbarsMouseOverState", "setColorForScrollbarsMouseOverState", "#ffABC7D8");
+            // Text only — do not force speed-meter graph colours (leave JD stock green).
+            putCfgStringIfBlank(cfg, "getColorForSpeedMeterText", "setColorForSpeedMeterText", "#FF222222");
+            putCfgStringIfBlank(cfg, "getColorForSpeedMeterAverageText", "setColorForSpeedMeterAverageText", "#FF222222");
             classicLafColorsSeeded = true;
             System.out.println("[jd-dialog-agent] seeded classic LAF progress/text/scrollbar colors (NPE/grey-text guard)");
         } catch (Throwable t) {
@@ -2110,7 +2133,8 @@ public class DialogConfirmAgent {
 
             // After leaving JDDEFAULT, FlatLaf may be re-enabled on disk but JD still
             // thinks FLATLAF_DARK/LIGHT is "not installed" and shows a one-shot install
-            // prompt. Auto-OK for FlatLaf themes only — never while classic is selected.
+            // prompt. Auto-OK only when the body names FlatLaf Dark/Light specifically —
+            // never while classic is selected, never on About / generic Look&Feel text.
             if (w instanceof Dialog && !wantClassicLaf()) {
                 String body = collectText(w).toLowerCase();
                 boolean isInfoDialog = title.toLowerCase().contains("about")
@@ -2121,11 +2145,11 @@ public class DialogConfirmAgent {
                 boolean wantsInstall = body.contains("install it now")
                         || body.contains("installieren")
                         || body.contains("do you want to install");
-                boolean mentionsLaf = body.contains("look&feel") || body.contains("look & feel")
-                        || body.contains("look and feel") || body.contains("look-and-feel")
-                        || body.contains("flatlaf") || body.contains("flatlaf_dark")
-                        || body.contains("flatlaf_light");
-                if (!isInfoDialog && notInstalled && wantsInstall && mentionsLaf) {
+                boolean mentionsFlatLafTheme = body.contains("flatlaf_dark")
+                        || body.contains("flatlaf_light")
+                        || body.contains("flatlaf dark")
+                        || body.contains("flatlaf light");
+                if (!isInfoDialog && notInstalled && wantsInstall && mentionsFlatLafTheme) {
                     JButton ok = findButtonByLabels(w, "OK", "Ok", "Yes", "Ja", "Install", "Installieren");
                     if (ok != null && clickAllowed(w)) {
                         ok.doClick();

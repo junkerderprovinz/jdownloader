@@ -1,28 +1,36 @@
 <?xml version="1.0"?>
 <Container version="2">
-  <Name>JDownloader-Compact</Name>
+  <Name>JDownloader</Name>
   <Beta>false</Beta>
-  <Repository>ghcr.io/milfer322/jdownloader:latest</Repository>
-  <Registry>https://github.com/milfer322/jdownloader/pkgs/container/jdownloader</Registry>
+  <Repository>junkerderprovinz/jdownloader:latest</Repository>
+  <Registry>https://hub.docker.com/r/junkerderprovinz/jdownloader</Registry>
   <Network>bridge</Network>
   <Shell>bash</Shell>
   <Privileged>false</Privileged>
-  <ReadMe>https://github.com/milfer322/jdownloader/blob/feat/compact-toolbar/README.md</ReadMe>
-  <Support>https://github.com/milfer322/jdownloader/issues</Support>
+  <ReadMe>https://github.com/junkerderprovinz/jdownloader/blob/main/README.md</ReadMe>
+  <Support>https://forums.unraid.net/topic/199305-support-junkerderprovinz-jdownloader-2/</Support>
   <Project>https://jdownloader.org</Project>
   <Overview>
-Fork of junkerderprovinz/jdownloader with an optional compact toolbar.&#xD;
+JDownloader 2 with a sleek, modern dark mode GUI and full clipboard support out of the box — a complete dark interface where the download list, link grabber and settings are all dark, on a smooth, hardware-accelerated Selkies web desktop. No tweaking, no add-ons — it just looks great from the first start.&#xD;
 &#xD;
-Set Compact Toolbar (JD_COMPACT_TOOLBAR) to true to keep JDownloader's stock ~32px toolbar row (less vertical padding around the icons). Leave it false/empty for the upstream default 64px speed-graph row.&#xD;
+What's pre-configured:&#xD;
+• Full dark mode by default — JD Plain Dark (monochrome Carbon #161616) in a clean maximised kiosk window; switch to a matching Light theme via the Theme variable.&#xD;
+• Auto-installs and self-updates JDownloader — first-run install prompts are auto-confirmed, nothing to click.&#xD;
+• Seamless clipboard over HTTPS: copy on your PC, paste straight into JD.&#xD;
+• Persistent config and downloads in /config and /downloads; hidden columns / layout survive a restart.&#xD;
 &#xD;
-Everything else matches the upstream image: dark/light theme, Selkies WebUI, auto-install, clipboard over HTTPS.&#xD;
+Notes:&#xD;
+• FIRST START takes a few minutes: JDownloader installs itself and its dark theme, so the WebUI stays black until done — do NOT restart. Wait for the "JDOWNLOADER IS READY" banner in the container log, then open the WebUI.&#xD;
+• WebUI opens via HTTPS (port 3001, self-signed cert — accept once); clipboard needs HTTPS. Plain HTTP (3000) is also exposed.&#xD;
+• Map /downloads to your download share. PUID/PGID default to 99/100 (nobody/users on Unraid).&#xD;
+• Language: English by default — change it any time in JDownloader's own language menu (Settings, the flag icon); your choice persists across restarts.&#xD;
+• Auth: leave WebUI Username and Password EMPTY for no login.&#xD;
 &#xD;
-Source: https://github.com/milfer322/jdownloader&#xD;
-Upstream: https://github.com/junkerderprovinz/jdownloader&#xD;
+Source on GitHub: https://github.com/junkerderprovinz/jdownloader&#xD;
   </Overview>
   <Category>Downloaders:</Category>
   <WebUI>https://[IP]:[PORT:3001]/</WebUI>
-  <TemplateURL>https://raw.githubusercontent.com/milfer322/jdownloader/main/unraid/jdownloader.xml</TemplateURL>
+  <TemplateURL>https://raw.githubusercontent.com/junkerderprovinz/unraid-apps/main/jdownloader/jdownloader.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/junkerderprovinz/unraid-apps/main/jdownloader/icon.png</Icon>
   <ExtraParams>--restart=unless-stopped --shm-size=1gb</ExtraParams>
 
@@ -55,11 +63,6 @@ Upstream: https://github.com/junkerderprovinz/jdownloader&#xD;
           Default="Dark|Light|JDDEFAULT|jd-highlighter" Mode=""
           Description="Dark = monochrome Carbon #161616 (default). Light = FlatLaf light. JDDEFAULT = classic official JDownloader look (Synthetica). jd-highlighter = borderless, freely-accented dark (pick the accent with JD_ACCENT below)."
           Type="Variable" Display="always" Required="false" Mask="false">Dark</Config>
-
-  <Config Name="Compact Toolbar (JD_COMPACT_TOOLBAR)" Target="JD_COMPACT_TOOLBAR"
-          Default="true|false" Mode=""
-          Description="true = keep JDownloader's stock ~32px toolbar row (less padding around icons). false = upstream default: grow the speed-graph toolbar row to 64px. Restart the container after changing it."
-          Type="Variable" Display="always" Required="false" Mask="false">true</Config>
 
   <Config Name="Accent (JD_ACCENT)" Target="JD_ACCENT"
           Default="#ffee00" Mode=""
