@@ -1809,12 +1809,12 @@ public class DialogConfirmAgent {
             putCfgStringIfBlank(cfg, "getColorForScrollbarsMouseOverState", "setColorForScrollbarsMouseOverState", "#ffABC7D8");
             putCfgStringIfBlank(cfg, "getColorForSpeedMeterText", "setColorForSpeedMeterText", "#FF222222");
             putCfgStringIfBlank(cfg, "getColorForSpeedMeterAverageText", "setColorForSpeedMeterAverageText", "#FF222222");
-            putCfgStringIfBlank(cfg, "getColorForSpeedMeterCurrentBottom", "setColorForSpeedMeterCurrentBottom", "#ff3EB8FC");
-            putCfgStringIfBlank(cfg, "getColorForSpeedMeterCurrentTop", "setColorForSpeedMeterCurrentTop", "#ff3EB8FC");
-            putCfgStringIfBlank(cfg, "getColorForSpeedMeterLimitBottom", "setColorForSpeedMeterLimitBottom", "#ffff0000");
-            putCfgStringIfBlank(cfg, "getColorForSpeedMeterLimitTop", "setColorForSpeedMeterLimitTop", "#ffff0000");
-            putCfgStringIfBlank(cfg, "getColorForSpeedMeterAverageBottom", "setColorForSpeedMeterAverageBottom", "#ff222222");
-            putCfgStringIfBlank(cfg, "getColorForSpeedMeterAverageTop", "setColorForSpeedMeterAverageTop", "#ff222222");
+            // Note: Current/Limiter use "Speedmeter" (lowercase m) in LAFSettings method names.
+            putCfgStringIfBlank(cfg, "getColorForSpeedMeterAverage", "setColorForSpeedMeterAverage", "#FF359E35");
+            putCfgStringIfBlank(cfg, "getColorForSpeedmeterCurrentBottom", "setColorForSpeedmeterCurrentBottom", "#ff3EB8FC");
+            putCfgStringIfBlank(cfg, "getColorForSpeedmeterCurrentTop", "setColorForSpeedmeterCurrentTop", "#ff3EB8FC");
+            putCfgStringIfBlank(cfg, "getColorForSpeedmeterLimiterBottom", "setColorForSpeedmeterLimiterBottom", "#ffff0000");
+            putCfgStringIfBlank(cfg, "getColorForSpeedmeterLimiterTop", "setColorForSpeedmeterLimiterTop", "#ffff0000");
             classicLafColorsSeeded = true;
             System.out.println("[jd-dialog-agent] seeded classic LAF progress/text/scrollbar colors (NPE/grey-text guard)");
         } catch (Throwable t) {

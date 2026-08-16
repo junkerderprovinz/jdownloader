@@ -194,13 +194,12 @@ classic = {
     "colorfortooltipforeground": "#ffF5FCFF",
     "colorforspeedmetertext": "#FF222222",
     "colorforspeedmeteraveragetext": "#FF222222",
-    # Vinylwalk / board classic speed-meter graph (LAFSettings defaults were null).
+    # Vinylwalk / LAFSettings classic speed-meter graph (HexColorString keys).
+    "colorforspeedmeteraverage": "#FF359E35",
     "colorforspeedmetercurrentbottom": "#ff3EB8FC",
     "colorforspeedmetercurrenttop": "#ff3EB8FC",
-    "colorforspeedmeterlimitbottom": "#ffff0000",
-    "colorforspeedmeterlimittop": "#ffff0000",
-    "colorforspeedmeteraveragebottom": "#ff222222",
-    "colorforspeedmeteraveragetop": "#ff222222",
+    "colorforspeedmeterlimiterbottom": "#ffff0000",
+    "colorforspeedmeterlimitertop": "#ffff0000",
     "animationenabled": True,
     "paintstatusbartopborder": True,
     "windowopaque": True,

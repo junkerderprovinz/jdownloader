@@ -57,8 +57,10 @@ HELPERS="/usr/local/bin/jdownloader-laf-helpers.py"
 EXPECT_LAF="flatdark"
 EXPECT_CLASSIC=0
 if [ -f "${HELPERS}" ]; then
-    EXPECT_LAF=$(python3 "${HELPERS}" resolve "${JD_THEME:-Dark}" | awk -F= '/^expect_laf=/{print $2; exit}')
-    EXPECT_CLASSIC=$(python3 "${HELPERS}" resolve "${JD_THEME:-Dark}" | awk -F= '/^expect_classic=/{print $2; exit}')
+    _resolved=$(python3 "${HELPERS}" resolve "${JD_THEME:-Dark}")
+    EXPECT_LAF=$(printf '%s\n' "${_resolved}" | awk -F= '/^expect_laf=/{print $2; exit}')
+    EXPECT_CLASSIC=$(printf '%s\n' "${_resolved}" | awk -F= '/^expect_classic=/{print $2; exit}')
+    unset _resolved
 else
     THEME_LC=$(printf '%s' "${JD_THEME:-Dark}" | tr '[:upper:]' '[:lower:]')
     case "${THEME_LC}" in
@@ -112,12 +114,35 @@ PYEOF
 # We request both so the updater fetches core jar + skins; DEFAULT's enum ID stays null.
 seed_synthetica_request() {
     [ "${EXPECT_CLASSIC}" = "1" ] || return 0
-    if [ -f "${HELPERS}" ] && python3 "${HELPERS}" any-synthetica-valid "${JD_DIR}/libs/laf"; then
+    # Only skip seeding when a VALID jar exists — truncated leftovers must not block re-request.
+    if [ -f "${HELPERS}" ]; then
+        python3 "${HELPERS}" any-synthetica-valid "${JD_DIR}/libs/laf" && return 0
+        python3 "${HELPERS}" seed-synthetica \
+            "${JD_DIR}/update/versioninfo/JD/extensions.requestedinstalls.json" >&2 || true
         return 0
     fi
     ls "${JD_DIR}/libs/laf"/synthetica*.jar >/dev/null 2>&1 && return 0
-    python3 "${HELPERS}" seed-synthetica \
-        "${JD_DIR}/update/versioninfo/JD/extensions.requestedinstalls.json" >&2 || true
+    python3 - "${JD_DIR}/update/versioninfo/JD/extensions.requestedinstalls.json" <<'PYEOF' >&2 || true
+import json, os, sys
+path = sys.argv[1]
+ids = []
+if os.path.exists(path):
+    try:
+        ids = json.load(open(path))
+        if not isinstance(ids, list):
+            ids = []
+    except Exception:
+        ids = []
+changed = False
+for ext in ("synthetica", "synthetica-themes"):
+    if ext not in ids:
+        ids.append(ext)
+        changed = True
+if changed:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    json.dump(ids, open(path, "w"))
+    print("[jdownloader-autostart] requested synthetica extension(s) for classic JDDEFAULT")
+PYEOF
 }
 
 # True when flatlaf.jar is a readable zip that actually CONTAINS the FlatLaf
@@ -542,11 +567,15 @@ heal_restart() {
                         --classic 1 --matches 0 --synthetica "${syn_ok}" \
                         --license "${lic_ok}" --flatlaf "${flat_parked}"; then
                     mismatch=$((mismatch + 1))
-                elif [ "${syn_ok}" = "1" ] && [ "${lic_ok}" = "1" ]; then
-                    mismatch=$((mismatch + 1))
                 else
                     # Waiting for first Synthetica install / license — do not kill.
-                    echo "[jdownloader-autostart] classic LAF not ready yet (waiting for valid synthetica*.jar and/or license); not healing" >&2
+                    # Log at most once per JVM pid (avoid spamming every 8s).
+                    if [ "${syn_ok}" != "1" ] || [ "${lic_ok}" != "1" ]; then
+                        if [ "${_classic_wait_logged:-}" != "${cur_pid}" ]; then
+                            _classic_wait_logged="${cur_pid}"
+                            echo "[jdownloader-autostart] classic LAF not ready yet (waiting for valid synthetica*.jar and/or license); not healing" >&2
+                        fi
+                    fi
                     mismatch=0
                 fi
             else
