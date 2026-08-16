@@ -83,6 +83,7 @@ fi
 # path other JD Docker images use). Idempotent; no-op once flatlaf.jar exists.
 seed_flatlaf_request() {
     [ -z "${EXPECT_LAF}" ] && return 0
+    # Parked-for-classic does not count — we still need a live flatlaf.jar for Dark/Light.
     [ -f "${JD_DIR}/libs/laf/flatlaf.jar" ] && return 0
     python3 - "${JD_DIR}/update/versioninfo/JD/extensions.requestedinstalls.json" <<'PYEOF' >&2 || true
 import json, os, sys
@@ -100,6 +101,11 @@ if "flatlaf-themes" not in ids:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     json.dump(ids, open(path, "w"))
     print("[jdownloader-autostart] requested flatlaf-themes extension install (the updater will fetch it)")
+else:
+    # Already requested but jar still missing (e.g. switch JDDEFAULT→Light on a
+    # classic-only install). Re-touch the file mtime so operators see activity;
+    # the updater already has the id.
+    print("[jdownloader-autostart] flatlaf-themes already requested — waiting for flatlaf.jar (avoids Metal until it arrives)")
 PYEOF
 }
 
@@ -549,12 +555,21 @@ heal_restart() {
             continue
         fi
         # LAF mismatch: agent reports a different LAF than expected. FlatLaf themes
-        # require flatlaf.jar present; classic JDDEFAULT requires a VALID synthetica*.jar
-        # + license before we may heal — never TERM while the updater is still
-        # downloading Synthetica (parked FlatLaf alone must not increment mismatch).
+        # require a VALID flatlaf.jar; classic JDDEFAULT requires valid synthetica +
+        # license. Never TERM while waiting for the first jar download (Metal would
+        # otherwise stick forever after JDDEFAULT→Dark/Light with no FlatLaf yet).
         if [ "${pid_age}" -ge 15 ] && [ -f /tmp/.jd-ready ] && agent_alive && ! laf_matches; then
-            if [ -n "${EXPECT_LAF}" ] && [ -f "${JD_DIR}/libs/laf/flatlaf.jar" ]; then
-                mismatch=$((mismatch + 1))
+            if [ -n "${EXPECT_LAF}" ]; then
+                if flatlaf_jar_valid "${JD_DIR}/libs/laf/flatlaf.jar"; then
+                    mismatch=$((mismatch + 1))
+                else
+                    seed_flatlaf_request
+                    if [ "${_flatlaf_wait_logged:-}" != "${cur_pid}" ]; then
+                        _flatlaf_wait_logged="${cur_pid}"
+                        echo "[jdownloader-autostart] FlatLaf theme selected but flatlaf.jar not ready yet — waiting (not healing; avoids Metal↔restart loop)" >&2
+                    fi
+                    mismatch=0
+                fi
             elif [ "${EXPECT_CLASSIC}" = "1" ]; then
                 syn_ok=0
                 lic_ok=0
@@ -631,9 +646,27 @@ while true; do
             cp -rf /opt/JDownloader/themes-default/. "${JD_DIR}/themes/" 2>/dev/null || true
             ;;
     esac
+
+    # Apply theme AFTER FlatLaf heal/seed. Fresh JDDEFAULT installs never fetch
+    # flatlaf.jar; switching env to Light/Dark would otherwise write FLATLAF_* with
+    # no jar → LookAndFeelController falls back to Metal. Hold classic DEFAULT
+    # (Synthetica still on disk) until FlatLaf is valid, then heal restarts into it.
+    THEME_APPLY="${JD_THEME:-Dark}"
+    if [ -n "${EXPECT_LAF}" ]; then
+        heal_invalid_flatlaf
+        seed_flatlaf_request
+        if ! flatlaf_jar_valid "${JD_DIR}/libs/laf/flatlaf.jar"; then
+            if any_synthetica_valid; then
+                THEME_APPLY="JDDEFAULT"
+                echo "[jdownloader-autostart] JD_THEME=${JD_THEME:-Dark} but flatlaf.jar missing — holding classic DEFAULT until FlatLaf installs (avoids Metal)" >&2
+            else
+                echo "[jdownloader-autostart] WARNING: FlatLaf theme selected and neither flatlaf.jar nor Synthetica is ready — UI may show Metal until the updater finishes" >&2
+            fi
+        fi
+    fi
     # Re-apply theme before each launch — JD's self-update can reset cfg/laf/*.json,
     # and cont-init alone would lose that race on some boots.
-    /usr/local/bin/jdownloader-theme.sh "${JD_THEME:-Dark}" >/dev/null 2>&1 || true
+    /usr/local/bin/jdownloader-theme.sh "${THEME_APPLY}" >/dev/null 2>&1 || true
 
     # Remove SystemTrayExtension JAR if JD's bootstrap installed it. The popup
     # 'tray isn't supported' is triggered by the extension's startup probe; if
@@ -660,12 +693,7 @@ while true; do
     # rewriting — so JD's integrity check is always satisfied and a self-update cannot
     # reset the chrome theme (our colour source is our own file, not JD's artifact).
 
-    # FlatLaf jar heal/seed only when a FlatLaf theme is expected. Classic must not
-    # keep requesting flatlaf-themes (that fought Synthetica and left Metal).
-    if [ -n "${EXPECT_LAF}" ]; then
-        heal_invalid_flatlaf
-        seed_flatlaf_request
-    fi
+    # FlatLaf heal/seed already ran above when EXPECT_LAF is set (before theme apply).
 
     # Optional frozen-appliance mode: JD_SELFUPDATE=false disables JD's periodic
     # self-update checks. OPT-IN only — the same updater channel also delivers the

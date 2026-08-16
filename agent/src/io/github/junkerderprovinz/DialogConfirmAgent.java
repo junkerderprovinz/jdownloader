@@ -2133,8 +2133,8 @@ public class DialogConfirmAgent {
 
             // After leaving JDDEFAULT, FlatLaf may be re-enabled on disk but JD still
             // thinks FLATLAF_DARK/LIGHT is "not installed" and shows a one-shot install
-            // prompt. Auto-OK only when the body names FlatLaf Dark/Light specifically —
-            // never while classic is selected, never on About / generic Look&Feel text.
+            // prompt. Accept FlatLaf install prompts (any FlatLaf wording); never while
+            // classic is selected, never on About.
             if (w instanceof Dialog && !wantClassicLaf()) {
                 String body = collectText(w).toLowerCase();
                 boolean isInfoDialog = title.toLowerCase().contains("about")
@@ -2148,7 +2148,8 @@ public class DialogConfirmAgent {
                 boolean mentionsFlatLafTheme = body.contains("flatlaf_dark")
                         || body.contains("flatlaf_light")
                         || body.contains("flatlaf dark")
-                        || body.contains("flatlaf light");
+                        || body.contains("flatlaf light")
+                        || body.contains("flatlaf");
                 if (!isInfoDialog && notInstalled && wantsInstall && mentionsFlatLafTheme) {
                     JButton ok = findButtonByLabels(w, "OK", "Ok", "Yes", "Ja", "Install", "Installieren");
                     if (ok != null && clickAllowed(w)) {
