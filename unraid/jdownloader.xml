@@ -22,7 +22,7 @@ Upstream: https://github.com/junkerderprovinz/jdownloader&#xD;
   </Overview>
   <Category>Downloaders:</Category>
   <WebUI>https://[IP]:[PORT:3001]/</WebUI>
-  <TemplateURL>https://raw.githubusercontent.com/milfer322/jdownloader/feat/compact-toolbar/unraid/jdownloader.xml</TemplateURL>
+  <TemplateURL>https://raw.githubusercontent.com/milfer322/jdownloader/main/unraid/jdownloader.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/junkerderprovinz/unraid-apps/main/jdownloader/icon.png</Icon>
   <ExtraParams>--restart=unless-stopped --shm-size=1gb</ExtraParams>
 
