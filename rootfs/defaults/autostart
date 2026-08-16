@@ -39,9 +39,15 @@ case "${JD_UI_SCALE:-}" in
        echo "[jdownloader-autostart] JD_UI_SCALE=${JD_UI_SCALE} -> HiDPI Swing scaling enabled (crisp text without browser zoom)" >&2 ;;
 esac
 
-# Set X11 root window (desktop background) to the theme's #161616 base so
-# the area outside JD's window is dark instead of the default grey/white.
-xsetroot -solid '#161616' 2>/dev/null || true
+# Desktop background follows theme: Carbon #161616 for Dark, light grey for Light,
+# soft blue-grey for classic JDDEFAULT (matches typical Synthetica desktop feel).
+_case_theme=$(printf '%s' "${JD_THEME:-Dark}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr '[:upper:]' '[:lower:]')
+case "${_case_theme}" in
+    light|jd_plain) xsetroot -solid '#f2f2f2' 2>/dev/null || true ;;
+    jddefault)      xsetroot -solid '#d7e7f0' 2>/dev/null || true ;;
+    *)              xsetroot -solid '#161616' 2>/dev/null || true ;;
+esac
+unset _case_theme
 
 # (JD's "system tray isn't supported" popup — raised by the SystemTrayExtension in
 # Core.jar — is auto-dismissed by the dialog agent; see JAVA_TOOL_OPTIONS below.)

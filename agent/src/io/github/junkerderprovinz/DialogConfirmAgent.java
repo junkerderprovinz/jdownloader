@@ -145,8 +145,10 @@ public class DialogConfirmAgent {
     public static void premain(String agentArgs, Instrumentation inst) {
         if (wantClassicLaf()) {
             System.out.println("[jd-dialog-agent] watching for installer dialogs (classic JDDEFAULT — no FlatLaf dark chrome)");
-        } else {
+        } else if (wantDarkLaf()) {
             System.out.println("[jd-dialog-agent] watching for installer dialogs + enforcing dark chrome");
+        } else {
+            System.out.println("[jd-dialog-agent] watching for installer dialogs (Flat Light — no dark chrome remap)");
         }
         INSTRUMENTATION = inst;
         // BUG 4: arm the load-time bytecode guards (AppWork CircledProgressBar UI + jsyntaxpane
@@ -159,9 +161,11 @@ public class DialogConfirmAgent {
             restoreExpanderIcons();
             // BUG 3: seed the progress-bar developer overrides + a LAF-change listener before JD
             // installs its LAF, so the light fill is the render-time fallback from the first paint
-            // and is re-asserted on every reinstall (no scroll grey-flash).
+            // and is re-asserted on every reinstall (no scroll grey-flash). Dark fills only.
             ensureLafChangeListener();
-            installProgressBarDefaults();
+            if (wantDarkLaf()) {
+                installProgressBarDefaults();
+            }
         } else {
             exposeSyntheticaToSystemLoader();
         }
@@ -793,6 +797,17 @@ public class DialogConfirmAgent {
         return "jddefault".equals(t.trim().toLowerCase());
     }
 
+    /** Carbon #161616 chrome / dark progress retints are Dark-only. Light keeps FlatLight. */
+    private static boolean wantDarkLaf() {
+        if (wantClassicLaf()) return false;
+        String t = System.getenv("JD_THEME");
+        if (t == null || t.trim().isEmpty()) return true; // container default = Dark
+        String n = t.trim().toLowerCase();
+        if ("light".equals(n) || "jd_plain".equals(n)) return false;
+        if (n.contains("dark")) return true;
+        return true;
+    }
+
     private static void exposeFlatlafToSystemLoader() {
         if (wantClassicLaf() || flatlafExposed || INSTRUMENTATION == null || !FLATLAF_JAR.isFile()) return;
         try {
@@ -893,11 +908,14 @@ public class DialogConfirmAgent {
             restoreExpanderIcons();
             healPackageToggle();          // BUG 2: rebuild FileColumn's cached [+]/[-] toggle icons
             handleDialogs();
-            registerDefaultsSource();
+            registerDefaultsSource();     // FlatDarkLaf.properties OR FlatLightLaf.properties
             applyCustomDefaults();
-            enforceDarkChrome();
-            themeKaynExtras();            // Kayn: menu-toggle check state + light overview corner icons
-            retintProgressBars();
+            // Dark chrome MUST NOT run on FlatLightLaf — left black panels on Light installs.
+            if (wantDarkLaf()) {
+                enforceDarkChrome();
+                themeKaynExtras();        // Kayn: menu-toggle check + overview corner icons
+                retintProgressBars();
+            }
             widenSpeedEditors();
             growSpeedMeter();
             replaceSpeedGraph();
@@ -1234,7 +1252,8 @@ public class DialogConfirmAgent {
 
         if (defaultsRegistered) {
             Color bg = UIManager.getColor("Panel.background");
-            if (bg != null && (bg.getRGB() & 0xFFFFFF) == 0x161616) {
+            // Dark sentinel: Carbon #161616. Light: skip this check (FlatLight is never #161616).
+            if (wantDarkLaf() && bg != null && (bg.getRGB() & 0xFFFFFF) == 0x161616) {
                 // Registration beat JD's LAF apply — defaults are already live.
                 lafRefreshDone = true;
                 System.out.println("[jd-dialog-agent] custom defaults active from first paint (no re-apply needed)");
@@ -1915,7 +1934,12 @@ public class DialogConfirmAgent {
         lafListenerAdded = true;
         UIManager.addPropertyChangeListener(evt -> {
             if ("lookAndFeel".equals(evt.getPropertyName())) {
-                SwingUtilities.invokeLater(() -> { installProgressBarDefaults(); retintProgressBars(); });
+                SwingUtilities.invokeLater(() -> {
+                    if (wantDarkLaf()) {
+                        installProgressBarDefaults();
+                        retintProgressBars();
+                    }
+                });
             }
         });
     }
@@ -1934,6 +1958,7 @@ public class DialogConfirmAgent {
      * early startup; a self-update restarts the JVM, which re-runs this from scratch.)
      */
     private static void enforceDarkChrome() {
+        if (!wantDarkLaf()) return;
         if (chromeDone) return;
         if (!lafRefreshDone) return;   // ORDER: run only after the one-shot LAF re-apply
                                         // (a later setLookAndFeel would wipe this remap)
