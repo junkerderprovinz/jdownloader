@@ -134,7 +134,7 @@ The defaults work out of the box, but you may want to tweak:
 
 - **Config (`/config`)** — defaults to `/mnt/user/appdata/jdownloader`
 - **Downloads (`/downloads`)** — defaults to `/mnt/user/downloads`; this is where JDownloader saves files
-- **Theme** — default `Dark` (JD Plain Dark, Carbon #161616 palette); switch to `Light` any time
+- **Theme** — default `Dark` (JD Plain Dark, Carbon #161616 palette); switch to `Light`, or `JDDEFAULT` for the classic official JDownloader look, any time
 - **WebUI Password** — leave empty for LAN-only, set anything for exposure beyond the LAN
 
 Click **Apply**.
@@ -194,7 +194,7 @@ services:
 
 | Variable | Default | Description |
 |---|---|---|
-| `JD_THEME` | `Dark` | UI theme — `Dark` = monochrome Carbon `#161616`, `Light` = JD's light theme |
+| `JD_THEME` | `Dark` | UI theme — `Dark` = monochrome Carbon `#161616`, `Light` = FlatLaf light, `JDDEFAULT` = classic official JDownloader look (Synthetica). Default stays `Dark`; existing themes are unchanged. |
 | `JD_SELFUPDATE` | `true` | `false` disables JD's periodic self-update checks (opt-in "frozen appliance"). **Note:** the same update channel delivers the hoster plugins, which go stale within weeks — downloads may start failing. First install always uses the updater. |
 | `JD_ENABLE_BROWSER` | `false` | `true` enables JD's "solve captcha in browser" flow: reCAPTCHA/hCaptcha/Turnstile open in a bundled **Firefox** (with **uBlock Origin**) on the web desktop, solved with one click from the container's own IP (tokens are IP-bound); the profile persists in `/config/.config/mozilla`. Off by default — no browser process runs. Only enable it if a hoster you use needs browser captchas (classic image captchas are auto-solved either way); enabling it runs a full browser (more resources + attack surface). |
 | `JD_UI_SCALE` | _(empty)_ | Optional HiDPI scaling for the whole JDownloader UI, e.g. `1.5` or `2`; empty keeps 1x. Renders the UI crisp and large at the desktop's native resolution so you do not need browser zoom (browser zoom upscales the Selkies video stream and blurs it). See Troubleshooting if text looks tiny or blurry. |
