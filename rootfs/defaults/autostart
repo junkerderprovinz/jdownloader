@@ -298,8 +298,15 @@ heal_restart() {
                 "JDownloader for Unraid" \
                 "Modern dark UI · Selkies · Java 21" \
                 >&2 2>/dev/null || true
-            # Clean two-line status (house look: no rule/box walls).
-            echo "  ✓ JDOWNLOADER IS READY" >&2
+            # Clean two-line status (house look: no rule/box walls). Colored via
+            # plain ANSI SGR codes, not tput (no terminfo db in a minimal
+            # container): 32 green / 33 yellow, reset with 0. docker logs passes
+            # stdout bytes through untouched, so any ANSI-aware viewer (a real
+            # terminal, Unraid's log panel) renders the color; a viewer that does
+            # not understand SGR codes just shows them as inert text. printf '%b',
+            # not "echo -e": this script runs under /bin/sh, where -e is not
+            # portable.
+            printf '  \033[0;32m✓ JDOWNLOADER IS READY\033[0m\n' >&2
             echo "    Open the WebUI via HTTPS on port 3001" >&2
             echo "" >&2
         elif [ ! -f /tmp/.jd-ready ] && [ "${waited}" -ge 120 ]; then
@@ -308,7 +315,7 @@ heal_restart() {
             # bug from the log).
             : > /tmp/.jd-ready
             echo "" >&2
-            echo "  ! JDOWNLOADER IS UP (theme NOT verified)" >&2
+            printf '  \033[0;33m! JDOWNLOADER IS UP (theme NOT verified)\033[0m\n' >&2
             echo "    Open the WebUI via HTTPS on port 3001. If the UI looks wrong," >&2
             echo "    check the log above for [jd-dialog-agent] lines and restart" >&2
             echo "    the container once." >&2
