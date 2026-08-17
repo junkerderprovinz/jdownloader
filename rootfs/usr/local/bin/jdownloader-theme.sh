@@ -27,6 +27,10 @@ JD_CFG="${JD_DIR}/cfg"
 log() { echo "[jdownloader-theme] $*"; }
 mkdir -p "${JD_CFG}/laf"
 
+# Unlock any previously locked json files so theme switches (Dark/Light/JDDEFAULT) work.
+chmod 644 "${JD_CFG}/laf/"*.json 2>/dev/null || true
+chmod 644 "${JD_CFG}/org.jdownloader.settings.GraphicalUserInterfaceSettings.json" 2>/dev/null || true
+
 # Canonical value is JDDEFAULT; any casing (jddefault, JdDefault, …) must resolve the
 # same — split-brain with lowercase-only classic paths left Metal. Shared with autostart.
 HELPERS="/usr/local/bin/jdownloader-laf-helpers.py"

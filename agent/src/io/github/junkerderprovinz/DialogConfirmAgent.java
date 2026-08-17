@@ -163,9 +163,7 @@ public class DialogConfirmAgent {
             // installs its LAF, so the light fill is the render-time fallback from the first paint
             // and is re-asserted on every reinstall (no scroll grey-flash). Dark fills only.
             ensureLafChangeListener();
-            if (wantDarkLaf()) {
-                installProgressBarDefaults();
-            }
+            installProgressBarDefaults();
         } else {
             exposeSyntheticaToSystemLoader();
         }
@@ -1250,6 +1248,14 @@ public class DialogConfirmAgent {
         LookAndFeel laf = UIManager.getLookAndFeel();
         if (laf == null || !laf.getClass().getName().toLowerCase().contains("flat")) return;
 
+        // Light/Default FlatLaf: never apply Carbon custom defaults — leave native LAF intact.
+        if (!wantDarkLaf()) {
+            lafRefreshDone = true;
+            System.out.println("[jd-dialog-agent] non-dark LAF (" + laf.getClass().getSimpleName()
+                    + ") — skipping dark custom-defaults re-apply");
+            return;
+        }
+
         if (defaultsRegistered) {
             Color bg = UIManager.getColor("Panel.background");
             // Dark sentinel: Carbon #161616. Light: skip this check (FlatLight is never #161616).
@@ -1439,8 +1445,28 @@ public class DialogConfirmAgent {
                 if (top instanceof Color) colTop = (Color) top;
                 if (bot instanceof Color) colBottom = (Color) bot;
                 if (avg instanceof Color) colAvg = (Color) avg;
-                if (txt instanceof Color) colText = (Color) txt;
-            } catch (Throwable ignore) { /* fallback palette above */ }
+                if (txt instanceof Color) {
+                    colText = (Color) txt;
+                } else {
+                    colText = speedGraphTextColor();
+                }
+            } catch (Throwable ignore) {
+                colText = speedGraphTextColor();
+            }
+        }
+
+        private Color speedGraphTextColor() {
+            LookAndFeel laf = UIManager.getLookAndFeel();
+            if (laf != null) {
+                String cn = laf.getClass().getName().toLowerCase();
+                if (cn.contains("flatdark") || (cn.contains("dark") && !cn.contains("light"))) {
+                    return new Color(0xf4, 0xf4, 0xf4);
+                }
+            } else if (wantDarkLaf()) {
+                return new Color(0xf4, 0xf4, 0xf4);
+            }
+            Color label = UIManager.getColor("Label.foreground");
+            return label != null ? label : new Color(0x1a, 0x1a, 0x1a);
         }
 
         private void sample() {
@@ -1918,10 +1944,18 @@ public class DialogConfirmAgent {
     // shows the same colour instead of a grey flash. recolorBarFields stays as a per-instance
     // belt-and-suspenders layer and uses the SAME light fill (BAR_FILL) so they can't disagree.
     private static void installProgressBarDefaults() {
-        UIManager.put("ProgressBar.foreground",          new ColorUIResource(0xc6, 0xc6, 0xc6)); // light fill
-        UIManager.put("ProgressBar.background",          new ColorUIResource(0x26, 0x26, 0x26)); // dark track
-        UIManager.put("ProgressBar.selectionForeground", new ColorUIResource(0x16, 0x16, 0x16)); // % over the fill (dark on light)
-        UIManager.put("ProgressBar.selectionBackground", new ColorUIResource(0xf4, 0xf4, 0xf4)); // % over the track (white on dark)
+        if (wantDarkLaf()) {
+            UIManager.put("ProgressBar.foreground",          new ColorUIResource(0xc6, 0xc6, 0xc6)); // light fill
+            UIManager.put("ProgressBar.background",          new ColorUIResource(0x26, 0x26, 0x26)); // dark track
+            UIManager.put("ProgressBar.selectionForeground", new ColorUIResource(0x16, 0x16, 0x16)); // % over the fill (dark on light)
+            UIManager.put("ProgressBar.selectionBackground", new ColorUIResource(0xf4, 0xf4, 0xf4)); // % over the track (white on dark)
+        } else {
+            // Light/classic: clear developer overrides so native LAF renders correctly
+            UIManager.put("ProgressBar.foreground",          null);
+            UIManager.put("ProgressBar.background",          null);
+            UIManager.put("ProgressBar.selectionForeground", null);
+            UIManager.put("ProgressBar.selectionBackground", null);
+        }
     }
 
     private static boolean lafListenerAdded = false;
@@ -1935,10 +1969,8 @@ public class DialogConfirmAgent {
         UIManager.addPropertyChangeListener(evt -> {
             if ("lookAndFeel".equals(evt.getPropertyName())) {
                 SwingUtilities.invokeLater(() -> {
-                    if (wantDarkLaf()) {
-                        installProgressBarDefaults();
-                        retintProgressBars();
-                    }
+                    installProgressBarDefaults();
+                    if (wantDarkLaf()) retintProgressBars();
                 });
             }
         });
