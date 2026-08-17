@@ -298,16 +298,16 @@ heal_restart() {
                 "JDownloader for Unraid" \
                 "Modern dark UI · Selkies · Java 21" \
                 >&2 2>/dev/null || true
-            # Clean two-line status (house look: no rule/box walls). Colored via
-            # plain ANSI SGR codes, not tput (no terminfo db in a minimal
-            # container): 32 green / 33 yellow, reset with 0. docker logs passes
-            # stdout bytes through untouched, so any ANSI-aware viewer (a real
-            # terminal, Unraid's log panel) renders the color; a viewer that does
-            # not understand SGR codes just shows them as inert text. printf '%b',
-            # not "echo -e": this script runs under /bin/sh, where -e is not
-            # portable.
-            printf '  \033[0;32m✓ JDOWNLOADER IS READY\033[0m\n' >&2
-            echo "    Open the WebUI via HTTPS on port 3001" >&2
+            # Clean one-line status (house look: no rule/box walls, label +
+            # detail on the same line). print-banner.sh already left one blank
+            # line above this. Colored via plain ANSI SGR codes, not tput (no
+            # terminfo db in a minimal container): 32 green / 33 yellow, reset
+            # with 0. docker logs passes stdout bytes through untouched, so
+            # any ANSI-aware viewer (a real terminal, Unraid's log panel)
+            # renders the color; a viewer that does not understand SGR codes
+            # just shows them as inert text. printf '%b', not "echo -e": this
+            # script runs under /bin/sh, where -e is not portable.
+            printf '  \033[0;32m✓ JDOWNLOADER IS READY\033[0m - Open the WebUI via HTTPS on port 3001\n' >&2
             echo "" >&2
         elif [ ! -f /tmp/.jd-ready ] && [ "${waited}" -ge 120 ]; then
             # UNVERIFIED fallback after ~10 min (first boot only): usable, but say so
@@ -315,14 +315,13 @@ heal_restart() {
             # bug from the log).
             : > /tmp/.jd-ready
             echo "" >&2
-            printf '  \033[0;33m! JDOWNLOADER IS UP (theme NOT verified)\033[0m\n' >&2
-            echo "    Open the WebUI via HTTPS on port 3001. If the UI looks wrong," >&2
-            echo "    check the log above for [jd-dialog-agent] lines and restart" >&2
-            echo "    the container once." >&2
+            printf '  \033[0;33m! JDOWNLOADER IS UP (theme NOT verified)\033[0m - Open the WebUI via HTTPS on port 3001\n' >&2
+            echo "    If the UI looks wrong, check the log above for [jd-dialog-agent]" >&2
+            echo "    lines and restart the container once." >&2
             if [ -n "${EXPECT_LAF}" ] && [ ! -f "${JD_DIR}/libs/laf/flatlaf.jar" ]; then
-                echo "    NOTE: the FlatLaf theme was requested but JD never installed" >&2
-                echo "    it — the design download may have failed (blocked/slow" >&2
-                echo "    network). Check connectivity, then restart the container." >&2
+                echo "    NOTE: the FlatLaf theme was requested but JD never installed it -" >&2
+                echo "    the design download may have failed (blocked/slow network)." >&2
+                echo "    Check connectivity, then restart the container." >&2
             fi
             echo "" >&2
         fi
