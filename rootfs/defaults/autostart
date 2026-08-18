@@ -280,6 +280,14 @@ bootstrap_classic_jars_if_needed() {
 bootstrap_flatlaf_if_needed() {
     [ -n "${EXPECT_LAF}" ] || return 0
     [ -f "${JD_DIR}/Core.jar" ] || return 0
+    # A previous JDDEFAULT run parks flatlaf.jar under this name (see the
+    # EXPECT_CLASSIC branch below). Restore it here, before the valid-jar
+    # check, so a switch back to Dark/Light reuses it instead of running the
+    # ~3 min headless bootstrap for a jar that was sitting right here already.
+    if [ -f "${JD_DIR}/libs/laf/flatlaf.jar.disabled-for-classic" ] && [ ! -f "${JD_DIR}/libs/laf/flatlaf.jar" ]; then
+        mv -f "${JD_DIR}/libs/laf/flatlaf.jar.disabled-for-classic" "${JD_DIR}/libs/laf/flatlaf.jar" 2>/dev/null || true
+        echo "[jdownloader-autostart] re-enabled flatlaf.jar for FlatLaf theme (was parked from a previous classic run)" >&2
+    fi
     flatlaf_jar_valid "${JD_DIR}/libs/laf/flatlaf.jar" && return 0
     [ -f /tmp/.jd-flatlaf-bootstrap-tried ] && return 0
     : > /tmp/.jd-flatlaf-bootstrap-tried
