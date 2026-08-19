@@ -143,20 +143,30 @@ public class DialogConfirmAgent {
             java.util.Collections.newSetFromMap(new java.util.WeakHashMap<Window, Boolean>());
 
     public static void premain(String agentArgs, Instrumentation inst) {
-        System.out.println("[jd-dialog-agent] watching for installer dialogs + enforcing dark chrome");
+        if (wantClassicLaf()) {
+            System.out.println("[jd-dialog-agent] watching for installer dialogs (classic JDDEFAULT — no FlatLaf dark chrome)");
+        } else if (wantDarkLaf()) {
+            System.out.println("[jd-dialog-agent] watching for installer dialogs + enforcing dark chrome");
+        } else {
+            System.out.println("[jd-dialog-agent] watching for installer dialogs (Flat Light — no dark chrome remap)");
+        }
         INSTRUMENTATION = inst;
         // BUG 4: arm the load-time bytecode guards (AppWork CircledProgressBar UI + jsyntaxpane
         // ScriptAction) BEFORE JD lazily loads them — fixes the Event Scripter script-editor under FlatLaf.
         installBytecodeGuards(inst);
-        exposeFlatlafToSystemLoader();
-        // Put the light package-expander icons back BEFORE JD's GUI resolves them
-        // (premain runs before JD's main()); the tick loop keeps them in place.
-        restoreExpanderIcons();
-        // BUG 3: seed the progress-bar developer overrides + a LAF-change listener before JD
-        // installs its LAF, so the light fill is the render-time fallback from the first paint
-        // and is re-asserted on every reinstall (no scroll grey-flash).
-        ensureLafChangeListener();
-        installProgressBarDefaults();
+        if (!wantClassicLaf()) {
+            exposeFlatlafToSystemLoader();
+            // Put the light package-expander icons back BEFORE JD's GUI resolves them
+            // (premain runs before JD's main()); the tick loop keeps them in place.
+            restoreExpanderIcons();
+            // BUG 3: seed the progress-bar developer overrides + a LAF-change listener before JD
+            // installs its LAF, so the light fill is the render-time fallback from the first paint
+            // and is re-asserted on every reinstall (no scroll grey-flash). Dark fills only.
+            ensureLafChangeListener();
+            installProgressBarDefaults();
+        } else {
+            exposeSyntheticaToSystemLoader();
+        }
         writeFile(PID_FILE, Long.toString(ProcessHandle.current().pid()));
         Thread t = new Thread(DialogConfirmAgent::watch, "jd-dialog-agent");
         t.setDaemon(true);
@@ -193,8 +203,19 @@ public class DialogConfirmAgent {
     // editor opens normally. Same load-time transform technique + fail-safe as the CircledProgressBar fix.
     private static final String SA_CLASS = "jsyntaxpane/actions/ScriptAction";
     private static final String FLAT_LAF = "com/formdev/flatlaf/FlatLaf";
+    /** Classic JDDEFAULT: JDDefaultLookAndFeel lives on the App CL (via syntheticaJDCustom.jar)
+     *  and cannot see Core's NewTheme — getDisabledIcon then printStackTrace-spams CNFE on every
+     *  disabled icon. Force the Synthetica super path; disabled icons still render. */
+    private static final String JD_DEFAULT_LAF = "org/jdownloader/gui/laf/jddefault/JDDefaultLookAndFeel";
+    /** Classic painters call LAFOptions.getInstance() during early paints (settings scrollbar)
+     *  before JD has initialized the singleton → WTFException spam. Guard with stock colours. */
+    private static final String JD_SCROLLBAR_PAINTER = "org/jdownloader/gui/laf/jddefault/CustomScrollbarPainter";
+    private static final String JD_PROGRESS_PAINTER = "org/jdownloader/gui/laf/jddefault/CustomProgressbarPainter";
     private static boolean circleBarPatchLogged = false;
     private static boolean scriptActionPatchLogged = false;
+    private static boolean jdDefaultLafPatchLogged = false;
+    private static boolean jdScrollbarPatchLogged = false;
+    private static boolean jdProgressPatchLogged = false;
 
     private static void installBytecodeGuards(Instrumentation inst) {
         try {
@@ -205,6 +226,14 @@ public class DialogConfirmAgent {
                     try {
                         if (CPB_UI.equals(className))  return patchCircleBarUI(classfileBuffer, loader);
                         if (SA_CLASS.equals(className)) return patchScriptAction(classfileBuffer, loader);
+                        if (wantClassicLaf()) {
+                            if (JD_DEFAULT_LAF.equals(className))
+                                return patchJdDefaultGetDisabledIcon(classfileBuffer, loader);
+                            if (JD_SCROLLBAR_PAINTER.equals(className))
+                                return patchCustomScrollbarPainter(classfileBuffer, loader);
+                            if (JD_PROGRESS_PAINTER.equals(className))
+                                return patchCustomProgressbarPainter(classfileBuffer, loader);
+                        }
                         // theme robustness: the instant FlatLaf's base class loads (before JD's
                         // setLookAndFeel), register our custom-defaults source so the FIRST paint
                         // already carries our colours -> removes the reliance on the fragile
@@ -219,10 +248,234 @@ public class DialogConfirmAgent {
                 }
             };
             inst.addTransformer(t, true);
-            System.out.println("[jd-dialog-agent] bytecode guards armed (BUG 4: CircledProgressBar + ScriptAction)");
+            System.out.println("[jd-dialog-agent] bytecode guards armed (BUG 4: CircledProgressBar + ScriptAction"
+                    + (wantClassicLaf() ? " + classic JDDEFAULT painters" : "") + ")");
         } catch (Throwable err) {
             System.out.println("[jd-dialog-agent] could not arm bytecode guards (" + err + ")");
         }
+    }
+
+    private static ClassWriter lafClassWriter(ClassReader cr, final ClassLoader loader) {
+        return new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES) {
+            @Override
+            protected ClassLoader getClassLoader() {
+                return loader != null ? loader : super.getClassLoader();
+            }
+        };
+    }
+
+    /** getColor / getColorMouseOver: if LAFOptions not ready or colour null, return stock classic blues. */
+    private static byte[] patchCustomScrollbarPainter(byte[] original, final ClassLoader loader) {
+        ClassReader cr = new ClassReader(original);
+        ClassWriter cw = lafClassWriter(cr, loader);
+        final int[] hits = { 0 };
+        ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
+            @Override
+            public MethodVisitor visitMethod(int access, String name, String desc, String sig, String[] ex) {
+                MethodVisitor mv = super.visitMethod(access, name, desc, sig, ex);
+                final boolean normal = "getColor".equals(name) && "()Ljava/awt/Color;".equals(desc);
+                final boolean hover = "getColorMouseOver".equals(name) && "()Ljava/awt/Color;".equals(desc);
+                if (!normal && !hover) return mv;
+                hits[0]++;
+                final String field = normal ? "color" : "colorMouseOver";
+                final String lafGetter = normal ? "getColorForScrollbarsNormalState"
+                        : "getColorForScrollbarsMouseOverState";
+                final int fallbackArgb = normal ? 0xFFD7E7F0 : 0xFFABC7D8;
+                mv.visitCode();
+                // if (this.field != null) return this.field;
+                Label needFetch = new Label();
+                mv.visitVarInsn(Opcodes.ALOAD, 0);
+                mv.visitFieldInsn(Opcodes.GETFIELD, JD_SCROLLBAR_PAINTER, field, "Ljava/awt/Color;");
+                mv.visitJumpInsn(Opcodes.IFNULL, needFetch);
+                mv.visitVarInsn(Opcodes.ALOAD, 0);
+                mv.visitFieldInsn(Opcodes.GETFIELD, JD_SCROLLBAR_PAINTER, field, "Ljava/awt/Color;");
+                mv.visitInsn(Opcodes.ARETURN);
+                mv.visitLabel(needFetch);
+                Label tryStart = new Label(), tryEnd = new Label(), catchH = new Label(), fallback = new Label();
+                mv.visitTryCatchBlock(tryStart, tryEnd, catchH, "java/lang/Throwable");
+                mv.visitLabel(tryStart);
+                mv.visitMethodInsn(Opcodes.INVOKESTATIC, "org/jdownloader/updatev2/gui/LAFOptions",
+                        "getInstance", "()Lorg/jdownloader/updatev2/gui/LAFOptions;", false);
+                mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "org/jdownloader/updatev2/gui/LAFOptions",
+                        lafGetter, "()Ljava/awt/Color;", false);
+                mv.visitVarInsn(Opcodes.ASTORE, 1);
+                mv.visitVarInsn(Opcodes.ALOAD, 1);
+                mv.visitJumpInsn(Opcodes.IFNULL, fallback);
+                mv.visitVarInsn(Opcodes.ALOAD, 0);
+                mv.visitVarInsn(Opcodes.ALOAD, 1);
+                mv.visitFieldInsn(Opcodes.PUTFIELD, JD_SCROLLBAR_PAINTER, field, "Ljava/awt/Color;");
+                mv.visitVarInsn(Opcodes.ALOAD, 1);
+                mv.visitInsn(Opcodes.ARETURN);
+                mv.visitLabel(tryEnd);
+                mv.visitJumpInsn(Opcodes.GOTO, fallback);
+                mv.visitLabel(catchH);
+                mv.visitVarInsn(Opcodes.ASTORE, 1); // discard
+                mv.visitLabel(fallback);
+                // return new Color(fallbackArgb, true);  // do NOT cache — retry when LAFOptions ready
+                mv.visitTypeInsn(Opcodes.NEW, "java/awt/Color");
+                mv.visitInsn(Opcodes.DUP);
+                mv.visitLdcInsn(Integer.valueOf(fallbackArgb));
+                mv.visitInsn(Opcodes.ICONST_1);
+                mv.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/awt/Color", "<init>", "(IZ)V", false);
+                mv.visitInsn(Opcodes.ARETURN);
+                mv.visitMaxs(4, 2);
+                mv.visitEnd();
+                return new MethodVisitor(Opcodes.ASM9) { };
+            }
+        };
+        cr.accept(cv, 0);
+        if (hits[0] == 0) {
+            if (!jdScrollbarPatchLogged) { jdScrollbarPatchLogged = true;
+                System.out.println("[jd-dialog-agent] CustomScrollbarPainter colour getters not found — left as-is"); }
+            return null;
+        }
+        if (!jdScrollbarPatchLogged) { jdScrollbarPatchLogged = true;
+            System.out.println("[jd-dialog-agent] patched CustomScrollbarPainter (" + hits[0]
+                    + " getters) — no LAFOptions-not-ready scrollbar crash"); }
+        return cw.toByteArray();
+    }
+
+    /** getColorArray: never return null entries (LinearGradientPaint NPE). Use stock blues if LAFOptions missing. */
+    private static byte[] patchCustomProgressbarPainter(byte[] original, final ClassLoader loader) {
+        ClassReader cr = new ClassReader(original);
+        ClassWriter cw = lafClassWriter(cr, loader);
+        final boolean[] hit = { false };
+        // Stock classic progress gradient (aRGB) matching Vinylwalk / LAFSettings docs.
+        final int[] stock = { 0x5F70CCFF, 0x5F80C7F7, 0x8078C0EF, 0x5F80C7F7, 0x5F70CCFF };
+        ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
+            @Override
+            public MethodVisitor visitMethod(int access, String name, String desc, String sig, String[] ex) {
+                MethodVisitor mv = super.visitMethod(access, name, desc, sig, ex);
+                if (!"getColorArray".equals(name) || !"()[Ljava/awt/Color;".equals(desc)) return mv;
+                hit[0] = true;
+                mv.visitCode();
+                // if (colorArray != null) return colorArray;
+                Label build = new Label();
+                mv.visitVarInsn(Opcodes.ALOAD, 0);
+                mv.visitFieldInsn(Opcodes.GETFIELD, JD_PROGRESS_PAINTER, "colorArray", "[Ljava/awt/Color;");
+                mv.visitJumpInsn(Opcodes.IFNULL, build);
+                mv.visitVarInsn(Opcodes.ALOAD, 0);
+                mv.visitFieldInsn(Opcodes.GETFIELD, JD_PROGRESS_PAINTER, "colorArray", "[Ljava/awt/Color;");
+                mv.visitInsn(Opcodes.ARETURN);
+                mv.visitLabel(build);
+                mv.visitInsn(Opcodes.ICONST_5);
+                mv.visitTypeInsn(Opcodes.ANEWARRAY, "java/awt/Color");
+                mv.visitVarInsn(Opcodes.ASTORE, 1);
+                Label tryStart = new Label(), tryEnd = new Label(), catchH = new Label(), ensure = new Label();
+                mv.visitTryCatchBlock(tryStart, tryEnd, catchH, "java/lang/Throwable");
+                mv.visitLabel(tryStart);
+                for (int i = 0; i < 5; i++) {
+                    mv.visitVarInsn(Opcodes.ALOAD, 1);
+                    mv.visitLdcInsn(Integer.valueOf(i));
+                    mv.visitMethodInsn(Opcodes.INVOKESTATIC, "org/jdownloader/updatev2/gui/LAFOptions",
+                            "getInstance", "()Lorg/jdownloader/updatev2/gui/LAFOptions;", false);
+                    mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "org/jdownloader/updatev2/gui/LAFOptions",
+                            "getColorForProgressbar" + (i + 1), "()Ljava/awt/Color;", false);
+                    mv.visitInsn(Opcodes.AASTORE);
+                }
+                mv.visitLabel(tryEnd);
+                mv.visitJumpInsn(Opcodes.GOTO, ensure);
+                mv.visitLabel(catchH);
+                mv.visitVarInsn(Opcodes.ASTORE, 2); // ignore
+                mv.visitLabel(ensure);
+                // Replace any null slot with stock colour; track whether any fallback was used
+                // (local 2 = usedFallback int 0/1). Only cache colorArray when ALL slots came
+                // from LAFOptions — same fail-open retry as scrollbar painters.
+                mv.visitInsn(Opcodes.ICONST_0);
+                mv.visitVarInsn(Opcodes.ISTORE, 2);
+                for (int i = 0; i < 5; i++) {
+                    Label ok = new Label();
+                    mv.visitVarInsn(Opcodes.ALOAD, 1);
+                    mv.visitLdcInsn(Integer.valueOf(i));
+                    mv.visitInsn(Opcodes.AALOAD);
+                    mv.visitJumpInsn(Opcodes.IFNONNULL, ok);
+                    mv.visitInsn(Opcodes.ICONST_1);
+                    mv.visitVarInsn(Opcodes.ISTORE, 2);
+                    mv.visitVarInsn(Opcodes.ALOAD, 1);
+                    mv.visitLdcInsn(Integer.valueOf(i));
+                    mv.visitTypeInsn(Opcodes.NEW, "java/awt/Color");
+                    mv.visitInsn(Opcodes.DUP);
+                    mv.visitLdcInsn(Integer.valueOf(stock[i]));
+                    mv.visitInsn(Opcodes.ICONST_1);
+                    mv.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/awt/Color", "<init>", "(IZ)V", false);
+                    mv.visitInsn(Opcodes.AASTORE);
+                    mv.visitLabel(ok);
+                }
+                Label skipCache = new Label();
+                mv.visitVarInsn(Opcodes.ILOAD, 2);
+                mv.visitJumpInsn(Opcodes.IFNE, skipCache);
+                mv.visitVarInsn(Opcodes.ALOAD, 0);
+                mv.visitVarInsn(Opcodes.ALOAD, 1);
+                mv.visitFieldInsn(Opcodes.PUTFIELD, JD_PROGRESS_PAINTER, "colorArray", "[Ljava/awt/Color;");
+                mv.visitLabel(skipCache);
+                mv.visitVarInsn(Opcodes.ALOAD, 1);
+                mv.visitInsn(Opcodes.ARETURN);
+                mv.visitMaxs(6, 3);
+                mv.visitEnd();
+                return new MethodVisitor(Opcodes.ASM9) { };
+            }
+        };
+        cr.accept(cv, 0);
+        if (!hit[0]) {
+            if (!jdProgressPatchLogged) { jdProgressPatchLogged = true;
+                System.out.println("[jd-dialog-agent] CustomProgressbarPainter.getColorArray not found — left as-is"); }
+            return null;
+        }
+        if (!jdProgressPatchLogged) { jdProgressPatchLogged = true;
+            System.out.println("[jd-dialog-agent] patched CustomProgressbarPainter.getColorArray — no null gradient NPE"); }
+        return cw.toByteArray();
+    }
+
+    /** Replace getDisabledIcon with: return super.getDisabledIcon(component, icon);
+     *  Avoids Class.forName/loadClass(NewTheme) + printStackTrace spam when JDCustom is on App CL.
+     *  INVOKESPECIAL must target the real superclass from the class bytes (getSuperName),
+     *  not a hard-coded SyntheticaLookAndFeel — a wrong owner fails verification. */
+    private static byte[] patchJdDefaultGetDisabledIcon(byte[] original, final ClassLoader loader) {
+        ClassReader cr = new ClassReader(original);
+        final String superName = cr.getSuperName();
+        if (superName == null || superName.isEmpty() || "java/lang/Object".equals(superName)) {
+            if (!jdDefaultLafPatchLogged) { jdDefaultLafPatchLogged = true;
+                System.out.println("[jd-dialog-agent] JDDefaultLookAndFeel: unexpected superName="
+                        + superName + " — skip getDisabledIcon patch (keep original bytes)"); }
+            return null;
+        }
+        ClassWriter cw = lafClassWriter(cr, loader);
+        final boolean[] hit = { false };
+        ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
+            @Override
+            public MethodVisitor visitMethod(int access, String name, String desc, String sig, String[] ex) {
+                MethodVisitor mv = super.visitMethod(access, name, desc, sig, ex);
+                if (!"getDisabledIcon".equals(name)
+                        || !"(Ljavax/swing/JComponent;Ljavax/swing/Icon;)Ljavax/swing/Icon;".equals(desc)) {
+                    return mv;
+                }
+                hit[0] = true;
+                // Emit replacement body immediately; discard the original method instructions.
+                mv.visitCode();
+                mv.visitVarInsn(Opcodes.ALOAD, 0);
+                mv.visitVarInsn(Opcodes.ALOAD, 1);
+                mv.visitVarInsn(Opcodes.ALOAD, 2);
+                mv.visitMethodInsn(Opcodes.INVOKESPECIAL,
+                        superName,
+                        "getDisabledIcon",
+                        "(Ljavax/swing/JComponent;Ljavax/swing/Icon;)Ljavax/swing/Icon;",
+                        false);
+                mv.visitInsn(Opcodes.ARETURN);
+                mv.visitMaxs(3, 3);
+                mv.visitEnd();
+                return new MethodVisitor(Opcodes.ASM9) { /* drop original bytes */ };
+            }
+        };
+        cr.accept(cv, 0);
+        if (!hit[0]) {
+            if (!jdDefaultLafPatchLogged) { jdDefaultLafPatchLogged = true;
+                System.out.println("[jd-dialog-agent] JDDefaultLookAndFeel.getDisabledIcon not found — left as-is"); }
+            return null;
+        }
+        if (!jdDefaultLafPatchLogged) { jdDefaultLafPatchLogged = true;
+            System.out.println("[jd-dialog-agent] patched JDDefaultLookAndFeel.getDisabledIcon → super "
+                    + superName + " (no NewTheme CNFE spam)"); }
+        return cw.toByteArray();
     }
 
     /** For every entry method that dereferences the (possibly-null) circleBar field and receives the
@@ -235,12 +488,7 @@ public class DialogConfirmAgent {
      *  Returns patched bytes, or null (= use original) if none of the expected methods are present. */
     private static byte[] patchCircleBarUI(byte[] original, final ClassLoader loader) {
         ClassReader cr = new ClassReader(original);
-        ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES) {
-            @Override
-            protected ClassLoader getClassLoader() {
-                return loader != null ? loader : super.getClassLoader();
-            }
-        };
+        ClassWriter cw = lafClassWriter(cr, loader);
         final int[] patchedCount = { 0 };
         ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
             @Override
@@ -313,12 +561,7 @@ public class DialogConfirmAgent {
      *  or null (= use original) if the expected methods are absent (jsyntaxpane changed). */
     private static byte[] patchScriptAction(byte[] original, final ClassLoader loader) {
         ClassReader cr = new ClassReader(original);
-        ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES) {
-            @Override
-            protected ClassLoader getClassLoader() {
-                return loader != null ? loader : super.getClassLoader();
-            }
-        };
+        ClassWriter cw = lafClassWriter(cr, loader);
         final int[] patchedCount = { 0 };
         ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
             @Override
@@ -539,10 +782,32 @@ public class DialogConfirmAgent {
      */
     private static final java.io.File FLATLAF_JAR =
             new java.io.File("/config/JDownloader/libs/laf/flatlaf.jar");
+    private static final java.io.File LAF_DIR =
+            new java.io.File("/config/JDownloader/libs/laf");
     private static boolean flatlafExposed = false;
+    private static final java.util.HashSet<String> syntheticaExposed =
+            new java.util.HashSet<String>();
+
+    /** Classic official JD look (Synthetica DEFAULT). Skip FlatLaf dark-chrome work. */
+    private static boolean wantClassicLaf() {
+        String t = System.getenv("JD_THEME");
+        if (t == null || t.trim().isEmpty()) return false;
+        return "jddefault".equals(t.trim().toLowerCase());
+    }
+
+    /** Carbon #161616 chrome / dark progress retints are Dark-only. Light keeps FlatLight. */
+    private static boolean wantDarkLaf() {
+        if (wantClassicLaf()) return false;
+        String t = System.getenv("JD_THEME");
+        if (t == null || t.trim().isEmpty()) return true; // container default = Dark
+        String n = t.trim().toLowerCase();
+        if ("light".equals(n) || "jd_plain".equals(n)) return false;
+        if (n.contains("dark")) return true;
+        return true;
+    }
 
     private static void exposeFlatlafToSystemLoader() {
-        if (flatlafExposed || INSTRUMENTATION == null || !FLATLAF_JAR.isFile()) return;
+        if (wantClassicLaf() || flatlafExposed || INSTRUMENTATION == null || !FLATLAF_JAR.isFile()) return;
         try {
             // the JarFile constructor validates the zip; a truncated install throws
             // and we simply retry on a later tick (the container boot heal replaces it)
@@ -550,6 +815,48 @@ public class DialogConfirmAgent {
             flatlafExposed = true;
             System.out.println("[jd-dialog-agent] appended flatlaf.jar to the system classloader (LAF-by-name can resolve now)");
         } catch (Throwable ignore) { }
+    }
+
+    /** Same classloader fix as FlatLaf for Synthetica / JDDefaultLookAndFeel.
+     *  Include syntheticaJDCustom.jar (DEFAULT LAF assets) and every synthetica*.jar.
+     *  Exposing only synthetica.jar is not enough — JD falls back to Metal. */
+    private static void exposeSyntheticaToSystemLoader() {
+        if (!wantClassicLaf() || INSTRUMENTATION == null || !LAF_DIR.isDirectory()) return;
+        java.io.File[] preferred = new java.io.File[] {
+            new java.io.File(LAF_DIR, "synthetica.jar"),
+            new java.io.File(LAF_DIR, "syntheticaJDCustom.jar"),
+            new java.io.File(LAF_DIR, "syntheticaSimple2D.jar")
+        };
+        for (java.io.File jar : preferred) {
+            appendLafJarOnce(jar);
+        }
+        java.io.File[] all = LAF_DIR.listFiles();
+        if (all == null) return;
+        for (java.io.File jar : all) {
+            if (!jar.isFile()) continue;
+            String n = jar.getName();
+            if (n.startsWith("synthetica") && n.endsWith(".jar")) {
+                appendLafJarOnce(jar);
+            }
+        }
+    }
+
+    private static void appendLafJarOnce(java.io.File jar) {
+        if (jar == null || !jar.isFile()) return;
+        String path;
+        try {
+            path = jar.getCanonicalPath();
+        } catch (Throwable t) {
+            path = jar.getAbsolutePath();
+        }
+        if (!syntheticaExposed.add(path)) return;
+        try {
+            INSTRUMENTATION.appendToSystemClassLoaderSearch(new java.util.jar.JarFile(jar));
+            System.out.println("[jd-dialog-agent] appended " + jar.getName()
+                    + " to the system classloader (Synthetica LAF can resolve now)");
+        } catch (Throwable t) {
+            syntheticaExposed.remove(path);
+        }
     }
 
     private static void writeFile(java.io.File f, String content) {
@@ -586,18 +893,31 @@ public class DialogConfirmAgent {
     }
 
     private static void tick() {
-        exposeFlatlafToSystemLoader();
-        restoreExpanderIcons();
-        healPackageToggle();          // BUG 2: rebuild FileColumn's cached [+]/[-] toggle icons
-        handleDialogs();
-        registerDefaultsSource();
-        applyCustomDefaults();
-        enforceDarkChrome();
-        themeKaynExtras();            // Kayn: menu-toggle check state + light overview corner icons
-        retintProgressBars();
-        widenSpeedEditors();
-        growSpeedMeter();
-        replaceSpeedGraph();
+        if (wantClassicLaf()) {
+            exposeSyntheticaToSystemLoader();
+            seedClassicLafColors();
+            handleDialogs();
+            // Classic still gets the compact-toolbar / speed-graph growth.
+            widenSpeedEditors();
+            growSpeedMeter();
+            replaceSpeedGraph();
+        } else {
+            exposeFlatlafToSystemLoader();
+            restoreExpanderIcons();
+            healPackageToggle();          // BUG 2: rebuild FileColumn's cached [+]/[-] toggle icons
+            handleDialogs();
+            registerDefaultsSource();     // FlatDarkLaf.properties OR FlatLightLaf.properties
+            applyCustomDefaults();
+            // Dark chrome MUST NOT run on FlatLightLaf — left black panels on Light installs.
+            if (wantDarkLaf()) {
+                enforceDarkChrome();
+                themeKaynExtras();        // Kayn: menu-toggle check + overview corner icons
+                retintProgressBars();
+            }
+            widenSpeedEditors();
+            growSpeedMeter();
+            replaceSpeedGraph();
+        }
         if (++lafTick >= 12) {   // every ~5s (ticks run every 400ms)
             lafTick = 0;
             writeLafMarker();
@@ -928,9 +1248,18 @@ public class DialogConfirmAgent {
         LookAndFeel laf = UIManager.getLookAndFeel();
         if (laf == null || !laf.getClass().getName().toLowerCase().contains("flat")) return;
 
+        // Light/Default FlatLaf: never apply Carbon custom defaults — leave native LAF intact.
+        if (!wantDarkLaf()) {
+            lafRefreshDone = true;
+            System.out.println("[jd-dialog-agent] non-dark LAF (" + laf.getClass().getSimpleName()
+                    + ") — skipping dark custom-defaults re-apply");
+            return;
+        }
+
         if (defaultsRegistered) {
             Color bg = UIManager.getColor("Panel.background");
-            if (bg != null && (bg.getRGB() & 0xFFFFFF) == 0x161616) {
+            // Dark sentinel: Carbon #161616. Light: skip this check (FlatLight is never #161616).
+            if (wantDarkLaf() && bg != null && (bg.getRGB() & 0xFFFFFF) == 0x161616) {
                 // Registration beat JD's LAF apply — defaults are already live.
                 lafRefreshDone = true;
                 System.out.println("[jd-dialog-agent] custom defaults active from first paint (no re-apply needed)");
@@ -1116,8 +1445,28 @@ public class DialogConfirmAgent {
                 if (top instanceof Color) colTop = (Color) top;
                 if (bot instanceof Color) colBottom = (Color) bot;
                 if (avg instanceof Color) colAvg = (Color) avg;
-                if (txt instanceof Color) colText = (Color) txt;
-            } catch (Throwable ignore) { /* fallback palette above */ }
+                if (txt instanceof Color) {
+                    colText = (Color) txt;
+                } else {
+                    colText = speedGraphTextColor();
+                }
+            } catch (Throwable ignore) {
+                colText = speedGraphTextColor();
+            }
+        }
+
+        private Color speedGraphTextColor() {
+            LookAndFeel laf = UIManager.getLookAndFeel();
+            if (laf != null) {
+                String cn = laf.getClass().getName().toLowerCase();
+                if (cn.contains("flatdark") || (cn.contains("dark") && !cn.contains("light"))) {
+                    return new Color(0xf4, 0xf4, 0xf4);
+                }
+            } else if (wantDarkLaf()) {
+                return new Color(0xf4, 0xf4, 0xf4);
+            }
+            Color label = UIManager.getColor("Label.foreground");
+            return label != null ? label : new Color(0x1a, 0x1a, 0x1a);
         }
 
         private void sample() {
@@ -1447,6 +1796,72 @@ public class DialogConfirmAgent {
         }
     }
 
+    // ------------------------------------------------------------ classic LAF colours
+
+    /** Stock classic JD progress-bar gradient (aRGB). Defaults in LAFSettings are null —
+     *  CustomProgressbarPainter then NPEs on LinearGradientPaint. JSON seed alone is not
+     *  always visible to LAFOptions in time; set via cfg setters once LAFOptions exists. */
+    private static final String[] CLASSIC_PROGRESS_COLORS = {
+            "#5F70CCFF", "#5F80C7F7", "#8078C0EF", "#5F80C7F7", "#5F70CCFF"
+    };
+    private static boolean classicLafColorsSeeded = false;
+
+    private static void seedClassicLafColors() {
+        if (!wantClassicLaf() || classicLafColorsSeeded) return;
+        try {
+            Class<?> lafClz = Class.forName("org.jdownloader.updatev2.gui.LAFOptions");
+            Object inst;
+            try {
+                inst = lafClz.getMethod("getInstance").invoke(null);
+            } catch (Throwable notReady) {
+                return; // LAFOptions Not initialized yet — retry next tick
+            }
+            if (inst == null) return;
+            Object cfg = lafClz.getMethod("getCfg").invoke(inst);
+            if (cfg == null) return;
+            // Progress keys: same guarded path as other colours (LAFSettings Foreground names).
+            for (int i = 1; i <= 5; i++) {
+                putCfgStringIfBlank(cfg,
+                        "getColorForProgressbarForeground" + i,
+                        "setColorForProgressbarForeground" + i,
+                        CLASSIC_PROGRESS_COLORS[i - 1]);
+            }
+            // Readable config/dialog labels (avoids all-grey Update dialog text).
+            putCfgStringIfBlank(cfg, "getConfigLabelEnabledTextColor", "setConfigLabelEnabledTextColor", "#FF202020");
+            putCfgStringIfBlank(cfg, "getConfigLabelDisabledTextColor", "setConfigLabelDisabledTextColor", "#FFA0A0A0");
+            putCfgStringIfBlank(cfg, "getColorForConfigHeaderTextColor", "setColorForConfigHeaderTextColor", "#FF202020");
+            putCfgStringIfBlank(cfg, "getColorForConfigPanelDescriptionText", "setColorForConfigPanelDescriptionText", "#FF808080");
+            putCfgStringIfBlank(cfg, "getColorForPanelHeaderForeground", "setColorForPanelHeaderForeground", "#FF000000");
+            putCfgStringIfBlank(cfg, "getColorForScrollbarsNormalState", "setColorForScrollbarsNormalState", "#ffD7E7F0");
+            putCfgStringIfBlank(cfg, "getColorForScrollbarsMouseOverState", "setColorForScrollbarsMouseOverState", "#ffABC7D8");
+            // Text only — do not force speed-meter graph colours (leave JD stock green).
+            putCfgStringIfBlank(cfg, "getColorForSpeedMeterText", "setColorForSpeedMeterText", "#FF222222");
+            putCfgStringIfBlank(cfg, "getColorForSpeedMeterAverageText", "setColorForSpeedMeterAverageText", "#FF222222");
+            // Latch only when all five progress colours are actually present — otherwise retry.
+            Class<?> cfgClz = cfg.getClass();
+            for (int i = 1; i <= 5; i++) {
+                Object cur = cfgClz.getMethod("getColorForProgressbarForeground" + i).invoke(cfg);
+                if (cur == null || String.valueOf(cur).trim().isEmpty()) {
+                    return;
+                }
+            }
+            classicLafColorsSeeded = true;
+            System.out.println("[jd-dialog-agent] seeded classic LAF progress/text/scrollbar colors (NPE/grey-text guard)");
+        } catch (Throwable t) {
+            // keep retrying until LAFOptions + cfg are usable
+        }
+    }
+
+    private static void putCfgStringIfBlank(Object cfg, String getter, String setter, String value) {
+        try {
+            Class<?> cfgClz = cfg.getClass();
+            Object cur = cfgClz.getMethod(getter).invoke(cfg);
+            if (cur == null || String.valueOf(cur).trim().isEmpty()) {
+                cfgClz.getMethod(setter, String.class).invoke(cfg, value);
+            }
+        } catch (Throwable ignore) { /* optional keys */ }
+    }
+
     // ------------------------------------------------------------ progress bars
 
     /**
@@ -1529,10 +1944,18 @@ public class DialogConfirmAgent {
     // shows the same colour instead of a grey flash. recolorBarFields stays as a per-instance
     // belt-and-suspenders layer and uses the SAME light fill (BAR_FILL) so they can't disagree.
     private static void installProgressBarDefaults() {
-        UIManager.put("ProgressBar.foreground",          new ColorUIResource(0xc6, 0xc6, 0xc6)); // light fill
-        UIManager.put("ProgressBar.background",          new ColorUIResource(0x26, 0x26, 0x26)); // dark track
-        UIManager.put("ProgressBar.selectionForeground", new ColorUIResource(0x16, 0x16, 0x16)); // % over the fill (dark on light)
-        UIManager.put("ProgressBar.selectionBackground", new ColorUIResource(0xf4, 0xf4, 0xf4)); // % over the track (white on dark)
+        if (wantDarkLaf()) {
+            UIManager.put("ProgressBar.foreground",          new ColorUIResource(0xc6, 0xc6, 0xc6)); // light fill
+            UIManager.put("ProgressBar.background",          new ColorUIResource(0x26, 0x26, 0x26)); // dark track
+            UIManager.put("ProgressBar.selectionForeground", new ColorUIResource(0x16, 0x16, 0x16)); // % over the fill (dark on light)
+            UIManager.put("ProgressBar.selectionBackground", new ColorUIResource(0xf4, 0xf4, 0xf4)); // % over the track (white on dark)
+        } else {
+            // Light/classic: clear developer overrides so native LAF renders correctly
+            UIManager.put("ProgressBar.foreground",          null);
+            UIManager.put("ProgressBar.background",          null);
+            UIManager.put("ProgressBar.selectionForeground", null);
+            UIManager.put("ProgressBar.selectionBackground", null);
+        }
     }
 
     private static boolean lafListenerAdded = false;
@@ -1545,7 +1968,10 @@ public class DialogConfirmAgent {
         lafListenerAdded = true;
         UIManager.addPropertyChangeListener(evt -> {
             if ("lookAndFeel".equals(evt.getPropertyName())) {
-                SwingUtilities.invokeLater(() -> { installProgressBarDefaults(); retintProgressBars(); });
+                SwingUtilities.invokeLater(() -> {
+                    installProgressBarDefaults();
+                    if (wantDarkLaf()) retintProgressBars();
+                });
             }
         });
     }
@@ -1564,6 +1990,7 @@ public class DialogConfirmAgent {
      * early startup; a self-update restarts the JVM, which re-runs this from scratch.)
      */
     private static void enforceDarkChrome() {
+        if (!wantDarkLaf()) return;
         if (chromeDone) return;
         if (!lafRefreshDone) return;   // ORDER: run only after the one-shot LAF re-apply
                                         // (a later setLookAndFeel would wipe this remap)
@@ -1723,14 +2150,61 @@ public class DialogConfirmAgent {
                 }
             }
 
-            // FLATLAF_DARK design install prompt -> OK (installs + registers the design).
+            // Design-Update: accept for FlatLaf themes; refuse FlatLaf prompts when classic.
             if (title.contains("Design-Update") || title.contains("Design Update")) {
+                String body = collectText(w).toLowerCase();
+                boolean mentionsFlat = body.contains("flatlaf") || body.contains("flat laf")
+                        || title.toLowerCase().contains("flat");
+                if (wantClassicLaf() && mentionsFlat) {
+                    JButton cancel = findButtonByLabels(w, "Cancel", "Abbrechen", "No", "Nein", "Later", "Später");
+                    if (cancel != null && clickAllowed(w)) {
+                        cancel.doClick();
+                        markClicked(w);
+                        System.out.println("[jd-dialog-agent] refused FlatLaf design-update (classic JDDEFAULT)");
+                        continue;
+                    }
+                    w.setVisible(false);
+                    w.dispose();
+                    System.out.println("[jd-dialog-agent] dismissed FlatLaf design-update (classic JDDEFAULT)");
+                    continue;
+                }
                 JButton ok = findButtonByLabels(w, "OK", "Ok");
                 if (ok != null && clickAllowed(w)) {
                     ok.doClick();
                     markClicked(w);
-                    System.out.println("[jd-dialog-agent] accepted design-update");
+                    System.out.println("[jd-dialog-agent] accepted design-update"
+                            + (wantClassicLaf() ? " (classic/Synthetica path)" : ""));
                     continue;
+                }
+            }
+
+            // After leaving JDDEFAULT, FlatLaf may be re-enabled on disk but JD still
+            // thinks FLATLAF_DARK/LIGHT is "not installed" and shows a one-shot install
+            // prompt. Accept FlatLaf install prompts (any FlatLaf wording); never while
+            // classic is selected, never on About.
+            if (w instanceof Dialog && !wantClassicLaf()) {
+                String body = collectText(w).toLowerCase();
+                boolean isInfoDialog = title.toLowerCase().contains("about")
+                        || title.toLowerCase().contains("über");
+                boolean notInstalled = body.contains("not installed")
+                        || body.contains("nicht installiert")
+                        || body.contains("is not installed");
+                boolean wantsInstall = body.contains("install it now")
+                        || body.contains("installieren")
+                        || body.contains("do you want to install");
+                boolean mentionsFlatLafTheme = body.contains("flatlaf_dark")
+                        || body.contains("flatlaf_light")
+                        || body.contains("flatlaf dark")
+                        || body.contains("flatlaf light")
+                        || body.contains("flatlaf");
+                if (!isInfoDialog && notInstalled && wantsInstall && mentionsFlatLafTheme) {
+                    JButton ok = findButtonByLabels(w, "OK", "Ok", "Yes", "Ja", "Install", "Installieren");
+                    if (ok != null && clickAllowed(w)) {
+                        ok.doClick();
+                        markClicked(w);
+                        System.out.println("[jd-dialog-agent] accepted Look&Feel install (switch back to FlatLaf)");
+                        continue;
+                    }
                 }
             }
 
@@ -1771,6 +2245,20 @@ public class DialogConfirmAgent {
                         || body.contains("apply") || body.contains("übernehmen")
                         || body.contains("anwenden");
                 if (!isInfoDialog && mentionsLaf && wantsRestart) {
+                    // Classic theme: do not confirm a restart into FlatLaf.
+                    if (wantClassicLaf() && body.contains("flatlaf")) {
+                        JButton cancel = findButtonByLabels(w, "Cancel", "Abbrechen", "No", "Nein");
+                        if (cancel != null && clickAllowed(w)) {
+                            cancel.doClick();
+                            markClicked(w);
+                            System.out.println("[jd-dialog-agent] refused FlatLaf restart (classic JDDEFAULT)");
+                            continue;
+                        }
+                        w.setVisible(false);
+                        w.dispose();
+                        System.out.println("[jd-dialog-agent] dismissed FlatLaf restart (classic JDDEFAULT)");
+                        continue;
+                    }
                     JButton confirm = findButtonByLabels(w,
                             "Yes", "Ja", "Restart", "Neustart", "Restart now",
                             "Jetzt neu starten", "OK", "Ok");
