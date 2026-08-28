@@ -26,7 +26,7 @@ ARG BASE_TAG=ubunturesolute
 # under FlatLaf and otherwise break the Event Scripter script editor. The bytecode
 # guards need ASM, bundled (shaded) into the agent jar below.
 # ---------------------------------------------------------------------------
-FROM eclipse-temurin:25.0.3_9-jdk AS agent-builder
+FROM eclipse-temurin:25.0.4_7-jdk AS agent-builder
 WORKDIR /build
 # ASM (BSD-3-Clause) for the load-time bytecode guards. Pinned + SHA-256 verified so a
 # supply-chain swap of the artifact fails the build (never build an unverified download).
