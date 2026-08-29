@@ -15,7 +15,7 @@ __pycache__/
 *.tar
 *.tar.gz
 *.log
-# Local Claude Code / agent config (never commit)
+# Local agent config (never commit)
 .claude/
 
 # Importable Unraid template deliverable (copy of templates/jdownloader.xml — regenerated on each template change)
