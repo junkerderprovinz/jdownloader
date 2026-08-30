@@ -1,5 +1,5 @@
 # JDownloader (Unraid container) task runner — run `just` to list recipes.
-# Recipes use sh (Git Bash on Windows). See CLAUDE.md for the full guide.
+# Recipes use sh (Git Bash on Windows).
 # This is a container repo: no Go, no Node — the deliverable is the Docker image.
 
 set shell := ["sh", "-cu"]

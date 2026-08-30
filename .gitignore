@@ -16,7 +16,6 @@ __pycache__/
 *.tar.gz
 *.log
 # Local agent config (never commit)
-.claude/
 
 # Importable Unraid template deliverable (copy of templates/jdownloader.xml — regenerated on each template change)
 my-JDownloader.xml
