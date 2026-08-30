@@ -11,3 +11,6 @@ rootfs/etc/**                                   text eol=lf
 agent/**/*.java                                 text eol=lf
 agent/*.mf                                       text eol=lf
 .github/workflows/*.yml                          text eol=lf
+local-tests/*.sh                                text eol=lf
+local-tests/*.py                                text eol=lf
+local-tests/java/*.java                         text eol=lf
