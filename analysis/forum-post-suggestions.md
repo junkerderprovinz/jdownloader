@@ -69,7 +69,7 @@ captured at component initialisation.
 
 **Reproduction**:
 1. Start JDownloader on a fresh profile
-2. Settings → GUI → Look & Feel → `FLATLAF_DARK`
+2. Settings → Advanced Settings → `lookandfeeltheme` → `FLATLAF_DARK`
 3. Restart JD
 4. Observe: menu bar is dark, download list is white
 
