@@ -30,15 +30,20 @@ download graph keeps its full height. Full GUI in your browser via Selkies, zero
 <br>
 
 <p align="center">
-Maintained solo, in whatever spare time there is. Questions via the <a href="https://forums.unraid.net/topic/199305-support-junkerderprovinz-jdownloader-2/">support thread</a>, bugs, ideas and feature requests via <a href="https://github.com/junkerderprovinz/jdownloader/issues">GitHub issues</a>. If it's useful to you, a coffee is always welcome.
+This is a one-person project. I put a lot of work into building it, keeping it running, helping
+people get it working and building the things they ask for, all in whatever free time I have. If it
+has helped you, I would genuinely appreciate your support to cover my costs and keep this project
+alive. Three ways below, whichever suits you.
 </p>
 
 <br>
 
 <p align="center">
-  <a href="https://buymeacoffee.com/junkerderprovinz">
-    <img src=".github/assets/button-buy-me-a-coffee.svg" alt="Buy me a coffee" width="220">
-  </a>
+  <a href="https://buymeacoffee.com/junkerderprovinz"><img src="https://raw.githubusercontent.com/junkerderprovinz/junkerderprovinz/main/donate/buttons/button-buy-me-a-coffee-live.svg" alt="Buy me a coffee" width="160"></a>
+  &nbsp;
+  <a href="https://paypal.me/hallelujadesign"><img src="https://raw.githubusercontent.com/junkerderprovinz/junkerderprovinz/main/donate/buttons/button-paypal-live.svg" alt="PayPal" width="160"></a>
+  &nbsp;
+  <a href="https://junkerderprovinz.github.io/junkerderprovinz/"><img src="https://raw.githubusercontent.com/junkerderprovinz/junkerderprovinz/main/donate/buttons/button-crypto-live.svg" alt="Donate with crypto" width="160"></a>
 </p>
 
 <br>
@@ -364,10 +369,12 @@ This repository packages JDownloader as a container for Unraid. The packaging in
 
 Questions? Check the [support thread](https://forums.unraid.net/topic/199305-support-junkerderprovinz-jdownloader-2/). Bugs, ideas or feature requests? Please [open a GitHub issue](https://github.com/junkerderprovinz/jdownloader/issues).
 
-This is a one-person project. I put a lot of time and effort into building and maintaining it, in whatever free time I have. If it's helped you, I'd genuinely appreciate the support: you're welcome to buy me a coffee.
+This is a one-person project. I put a lot of work into building it, keeping it running, helping people get it working and building the things they ask for, all in whatever free time I have. If it has helped you, I would genuinely appreciate your support to cover my costs and keep this project alive. Three ways below, whichever suits you.
 
 <p align="center">
-  <a href="https://buymeacoffee.com/junkerderprovinz">
-    <img src=".github/assets/button-buy-me-a-coffee.svg" alt="Buy me a coffee" width="220">
-  </a>
+  <a href="https://buymeacoffee.com/junkerderprovinz"><img src="https://raw.githubusercontent.com/junkerderprovinz/junkerderprovinz/main/donate/buttons/button-buy-me-a-coffee-live.svg" alt="Buy me a coffee" width="160"></a>
+  &nbsp;
+  <a href="https://paypal.me/hallelujadesign"><img src="https://raw.githubusercontent.com/junkerderprovinz/junkerderprovinz/main/donate/buttons/button-paypal-live.svg" alt="PayPal" width="160"></a>
+  &nbsp;
+  <a href="https://junkerderprovinz.github.io/junkerderprovinz/"><img src="https://raw.githubusercontent.com/junkerderprovinz/junkerderprovinz/main/donate/buttons/button-crypto-live.svg" alt="Donate with crypto" width="160"></a>
 </p>
