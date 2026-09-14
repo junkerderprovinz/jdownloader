@@ -210,7 +210,7 @@ services:
 | `TZ` | `Europe/Vienna` | Timezone |
 | `CUSTOM_USER` | _(empty)_ | WebUI login username — leave empty with `PASSWORD` for no login |
 | `PASSWORD` | _(empty)_ | WebUI password — **set this if exposed beyond LAN** |
-| `UMASK` | `022` | File-creation mask |
+| `UMASK` | `000` | File-creation mask. Keeps new files writable for other containers on the same shares |
 
 | Port | Purpose | | Volume | Purpose |
 |---|---|---|---|---|
