@@ -53,6 +53,32 @@ jobs:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      # Is the tag being built the newest release in this repo?
+      #
+      # `latest` moves only for a tag build (see the metadata block below), and
+      # only for the highest version. Both halves are needed and they guard
+      # different accidents: gating on tags stops an unreleased merge from
+      # reaching everybody who pulls `latest`, and gating on "newest" stops a
+      # re-cut of an older version from dragging `latest` backwards.
+      #
+      # checkout gives no tags by default, so they are fetched here rather than
+      # assumed. `sort -V` orders versions, not strings, so v4.10.0 beats v4.9.0.
+      - name: Is this the newest release tag?
+        id: newest
+        if: github.ref_type == 'tag'
+        run: |
+          git fetch --tags --force --quiet
+          newest=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -1)
+          echo "this tag: ${GITHUB_REF_NAME}"
+          echo "newest:   ${newest}"
+          if [ "$newest" = "${GITHUB_REF_NAME}" ]; then
+            echo "is_newest=true" >> "$GITHUB_OUTPUT"
+            echo "-> this build moves :latest"
+          else
+            echo "is_newest=false" >> "$GITHUB_OUTPUT"
+            echo "-> this build leaves :latest where it is"
+          fi
+
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
@@ -60,6 +86,23 @@ jobs:
           images: |
             ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
             name=docker.io/${{ vars.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }},enable=${{ vars.DOCKERHUB_USERNAME != '' }}
+          # `latest` MEANS "the newest released version", and nothing else.
+          #
+          # It used to mean "the tip of main": every merge and every weekly
+          # rebuild moved it, because the condition was only
+          # {{is_default_branch}}. On 2026-09-14 a 23-commit merge to main put
+          # an unreleased build in front of everyone pulling `latest` before a
+          # release existed, and the first bug report against it arrived before
+          # the release notes did.
+          #
+          # So: a tag build sets `latest`, and only when that tag is the newest
+          # release (see the step above). Gating on the tag alone would bring
+          # back the older accident in the other direction: on 2026-09-02 a
+          # re-cut of an old version tag, long after a newer one had shipped,
+          # moved `latest` backwards onto it. That is why both halves are there.
+          #
+          # `edge` is where the tip of main goes now. Still pullable, still
+          # built, still smoke-tested; just nobody gets it without asking.
           tags: |
             type=ref,event=branch
             type=ref,event=pr
@@ -67,7 +110,8 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
             type=schedule,pattern=weekly
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=edge,enable=${{ github.ref_type == 'branch' && github.ref_name == github.event.repository.default_branch }}
+            type=raw,value=latest,enable=${{ github.ref_type == 'tag' && steps.newest.outputs.is_newest == 'true' }}
             type=sha,format=short
 
       # Smoke-test gate (amd64): build the image, boot it, and require the Selkies
