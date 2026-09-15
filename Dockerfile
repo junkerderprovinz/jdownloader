@@ -73,6 +73,23 @@ LABEL org.opencontainers.image.vendor="junkerderprovinz"
 # NOTE deliberately UNSET: RESTART_APP (the base watchdog would fight our
 # launcher loop + theme healer in autostart) and PIXELFLUX_WAYLAND (X11 mode is
 # the default and is what JD's whole window/agent mechanic is built on).
+#
+# NO MAX_RES DEFAULT HERE, ON PURPOSE. The virtual screen is the container's
+# biggest single memory item: the X server allocates the whole framebuffer up
+# front, about 4 bytes per pixel, so the base default of 15360x8640 is 530 MB
+# before anything else runs, measured at 1.19 GiB for the whole container. The
+# full range has to stay available, so the choice belongs to the user: the
+# Unraid template offers a preset dropdown (MAX_RES) plus a free field
+# (MAX_RES_CUSTOM) whose value wins, and init-screen-size settles the two
+# before svc-xorg reads them.
+#
+# NO RESTART_APP EITHER, and that IS the deliberate difference from the
+# sibling Selkies images. They enable the base image's svc-watchdog to bring
+# the application back when the user closes it; this image has supervised JD
+# itself since day one, in rootfs/defaults/autostart, with a fast-exit counter
+# and a capped backoff the watchdog does not have, and it also parks the loop
+# while JD relaunches itself for an update. Turning both on would have two
+# supervisors racing for the same process.
 ENV TITLE="JDownloader 2" \
     SELKIES_UI_TITLE="JDownloader 2" \
     SELKIES_ENABLE_BASIC_AUTH="false"
@@ -167,6 +184,21 @@ ENV MOZ_CRASHREPORTER_DISABLE=1
 # ---------------------------------------------------------------------------
 COPY rootfs/ /
 
+# ---------------------------------------------------------------------------
+# Assert the X service we hook the screen size onto is really the base's
+# ---------------------------------------------------------------------------
+# rootfs/ ships svc-xorg/dependencies.d/init-screen-size so our oneshot settles
+# MAX_RES before Xvfb reads it. If a base bump ever renames that service, the
+# COPY above would CREATE /etc/s6-overlay/s6-rc.d/svc-xorg as a service
+# directory with a dependency and no `type` file. s6-rc-compile then aborts in
+# stage 2 and EVERY container exits at boot, while the build itself stays
+# green, so the failure would only show up in users' logs. Checking for the
+# base's own `type` file turns that into a build error instead.
+RUN set -eux; \
+    t=/etc/s6-overlay/s6-rc.d/svc-xorg/type; \
+    [ -f "$t" ] || { echo "ERROR: $t missing — the selkies base renamed or dropped svc-xorg; re-point rootfs/etc/s6-overlay/s6-rc.d/svc-xorg/dependencies.d/init-screen-size at the new service"; exit 1; }; \
+    echo "jdownloader: screen-size oneshot ordered before svc-xorg"
+
 # Banner: single source at .github/assets/banner-raw.txt. Strip Windows CR
 # (tr is byte-safe, no locale issues with the block characters used).
 COPY .github/assets/banner-raw.txt /usr/local/share/banner-raw.txt
@@ -191,6 +223,8 @@ COPY --from=agent-builder /build/jd-dialog-agent.jar /opt/JDownloader/jd-dialog-
 
 RUN chmod +x \
     /usr/local/bin/ff-launch \
+    /usr/local/bin/selkies-resolution.sh \
+    /etc/s6-overlay/s6-rc.d/init-screen-size/run \
     /usr/local/bin/jdownloader-language.sh \
     /usr/local/bin/jdownloader-theme.sh \
     /usr/local/bin/jdownloader-downloaddir.sh \

@@ -200,6 +200,8 @@ services:
 
 | Variable | Default | Description |
 |---|---|---|
+| `MAX_RES` | `15360x8640` | Virtual screen the container serves, picked from a dropdown of presets in the template. This is where most of the container's memory goes, see below. |
+| `MAX_RES_CUSTOM` | *(empty)* | Your own `WIDTHxHEIGHT` instead of a preset, e.g. `3440x1440`. Wins over `MAX_RES` when set. |
 | `JD_THEME` | `Dark` | UI theme — `Dark` = monochrome Carbon `#161616`, `Light` = FlatLaf light, `JDDEFAULT` = classic official JDownloader look (Synthetica). Default stays `Dark`; existing themes are unchanged. |
 | `JD_SELFUPDATE` | `true` | `false` disables JD's periodic self-update checks (opt-in "frozen appliance"). **Note:** the same update channel delivers the hoster plugins, which go stale within weeks — downloads may start failing. First install always uses the updater. |
 | `JD_ENABLE_BROWSER` | `false` | `true` enables JD's "solve captcha in browser" flow: reCAPTCHA/hCaptcha/Turnstile open in a bundled **Firefox** (with **uBlock Origin**) on the web desktop, solved with one click from the container's own IP (tokens are IP-bound); the profile persists in `/config/.config/mozilla`. Off by default — no browser process runs. Only enable it if a hoster you use needs browser captchas (classic image captchas are auto-solved either way); enabling it runs a full browser (more resources + attack surface). |
@@ -212,6 +214,17 @@ services:
 | `PASSWORD` | _(empty)_ | WebUI password — **set this if exposed beyond LAN** |
 | `UMASK` | `000` | File-creation mask. Keeps new files writable for other containers on the same shares |
 
+### Screen size and memory use
+
+The X server reserves its whole virtual framebuffer up front, at roughly **4 bytes per pixel**, no
+matter how big your browser window actually is. At the full `15360x8640` that is 530 MB before
+anything else runs, which is most of what this container uses at idle.
+
+The image ships that full size, so every resolution stays available. If you would rather have the
+RAM back, pick a smaller screen in the template: the dropdown lists sizes from 1080p upwards with
+the cost of each, and the free field next to it takes anything not in the list. A value that is not
+a `WIDTHxHEIGHT` pair is ignored with a note in the container log rather than stopping the
+container. Above the size you picked, the picture is scaled to your window rather than cut off.
 | Port | Purpose | | Volume | Purpose |
 |---|---|---|---|---|
 | `3001` | Selkies HTTPS *(self-signed)* — **default WebUI, needed for clipboard** | | `/config` | Persistent JDownloader config, links, session |
