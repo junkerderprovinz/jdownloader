@@ -113,6 +113,15 @@ jobs:
             type=raw,value=edge,enable=${{ github.ref_type == 'branch' && github.ref_name == github.event.repository.default_branch }}
             type=raw,value=latest,enable=${{ github.ref_type == 'tag' && steps.newest.outputs.is_newest == 'true' }}
             type=sha,format=short
+          # org.opencontainers.image.version carries the git ref (v4.7.0), not the
+          # semver output (4.7.0). Without this override the action derives the
+          # label from the first tag it produces, and `type=semver,pattern={{version}}`
+          # strips the leading `v`. The other own-image repos take their labels from
+          # a metadata step that has no tag rules at all, so theirs falls back to the
+          # ref and reads v2.5.0; this keeps the label the same shape across all of
+          # them. Only tag builds override it. On branches, pull requests and the
+          # weekly schedule the expression is empty and the action's own value stands.
+          labels: ${{ github.ref_type == 'tag' && format('org.opencontainers.image.version={0}', github.ref_name) || '' }}
 
       # Smoke-test gate (amd64): build the image, boot it, and require the Selkies
       # WebUI to respond before anything is pushed. A green Docker build only proves
