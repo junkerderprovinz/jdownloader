@@ -304,7 +304,7 @@ The base image also supports `/config/custom-cont-init.d/` for your own init scr
 
 - This is how a streamed desktop works: Selkies sends the whole X display as one video stream, so zooming your browser upscales that video and blurs the text.
 - JDownloader is a Java app and picks its scale once, when it starts. It cannot follow each browser's display scaling the way GTK or Qt apps can. So this image streams every browser at the size the browser reports (`SELKIES_USE_CSS_SCALING=true`, DPI fixed at 96), which keeps JDownloader the same size on a 100 % desktop and on a 200 % laptop. On the laptop the text is a little softer, because the browser stretches the picture.
-- If you only use high-resolution displays and want sharp text, switch **HiDPI** on in the Selkies sidebar (it is remembered per browser) and set **`JD_UI_SCALE`** to your display scaling, for example `2`. Restart the container after changing it.
+- If you only use high-resolution displays and want sharp text, switch **HiDPI** on in the Selkies sidebar (it is remembered per browser and wins over the image default) and set **`JD_UI_SCALE`** to your display scaling, for example `2`. Restart the container after changing it.
 - `JD_UI_SCALE` applies to every browser, so with displays at different scaling it will be too big on some or too small on others. Leave it empty then.
 </details>
 
