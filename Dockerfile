@@ -56,43 +56,39 @@ LABEL org.opencontainers.image.source="https://github.com/junkerderprovinz/jdown
 LABEL org.opencontainers.image.licenses="AGPL-3.0-only"
 LABEL org.opencontainers.image.vendor="junkerderprovinz"
 
-# TITLE feeds the PWA manifest; SELKIES_UI_TITLE is the visible tab/sidebar
-# title of the Selkies web client — both must be set on this base.
+# TITLE feeds the PWA manifest and SELKIES_UI_TITLE the tab and sidebar title
+# of the Selkies client; this base needs both.
 #
-# SELKIES_ENABLE_BASIC_AUTH=false: Selkies' server enables basic auth by DEFAULT
-# with the well-known default credentials (ubuntu / mypasswd), which would pop a
-# login on a container that never set a password — worse, an insecure default
-# one. The KasmVNC base required no login unless CUSTOM_USER/PASSWORD were set,
-# so we keep that: no login by default. The base's nginx would still turn a
-# merely-SET (even empty) PASSWORD into a login, so the init-nologin oneshot
-# drops an empty PASSWORD/CUSTOM_USER before nginx starts. Selkies binds to
-# localhost only, so when a user DOES set a real CUSTOM_USER/PASSWORD the base's
-# nginx enforces HTTP-basic-auth on the proxy (the single reachable entry
-# point), exactly as before.
+# Selkies turns basic auth on by default with the well-known ubuntu/mypasswd
+# credentials, so SELKIES_ENABLE_BASIC_AUTH=false keeps a container without a
+# password free of a login. The base's nginx would still turn a set but empty
+# PASSWORD into one, which is why init-nologin drops an empty PASSWORD and
+# CUSTOM_USER before nginx starts. Selkies listens on localhost only, so a real
+# CUSTOM_USER/PASSWORD is enforced by nginx, the one reachable entry point.
 #
-# NOTE deliberately UNSET: RESTART_APP (the base watchdog would fight our
-# launcher loop + theme healer in autostart) and PIXELFLUX_WAYLAND (X11 mode is
-# the default and is what JD's whole window/agent mechanic is built on).
+# MAX_RES has no default here. The X server allocates its whole framebuffer up
+# front at about 4 bytes per pixel, so the base's 15360x8640 costs 530 MB
+# before anything else runs (1.19 GiB measured for the whole container). The
+# template offers a preset dropdown (MAX_RES) and a free field (MAX_RES_CUSTOM)
+# that wins, and init-screen-size settles the two before svc-xorg reads them.
 #
-# NO MAX_RES DEFAULT HERE, ON PURPOSE. The virtual screen is the container's
-# biggest single memory item: the X server allocates the whole framebuffer up
-# front, about 4 bytes per pixel, so the base default of 15360x8640 is 530 MB
-# before anything else runs, measured at 1.19 GiB for the whole container. The
-# full range has to stay available, so the choice belongs to the user: the
-# Unraid template offers a preset dropdown (MAX_RES) plus a free field
-# (MAX_RES_CUSTOM) whose value wins, and init-screen-size settles the two
-# before svc-xorg reads them.
-#
-# NO RESTART_APP EITHER, and that IS the deliberate difference from the
-# sibling Selkies images. They enable the base image's svc-watchdog to bring
-# the application back when the user closes it; this image has supervised JD
-# itself since day one, in rootfs/defaults/autostart, with a fast-exit counter
-# and a capped backoff the watchdog does not have, and it also parks the loop
-# while JD relaunches itself for an update. Turning both on would have two
-# supervisors racing for the same process.
+# Unlike the sibling Selkies images, RESTART_APP stays unset: autostart
+# supervises JD itself, with a fast-exit counter, a capped backoff and a pause
+# while JD relaunches for an update, so the base watchdog would race it for the
+# same process. PIXELFLUX_WAYLAND stays unset because JD's window and agent
+# handling is built on X11.
 ENV TITLE="JDownloader 2" \
     SELKIES_UI_TITLE="JDownloader 2" \
     SELKIES_ENABLE_BASIC_AUTH="false"
+
+# Swing takes its scale once, when the JVM starts, and cannot follow the DPI
+# Selkies hands each browser, so a HiDPI browser streaming in physical pixels
+# would show JD at half size. Streaming every browser at its CSS size keeps JD
+# the same size on any display. HiDPI can still be switched on per browser in
+# the Selkies sidebar; the DPI stays at 96 because JD would not follow a higher
+# one.
+ENV SELKIES_USE_CSS_SCALING="true" \
+    SELKIES_SCALING_DPI="96"
 
 # ---------------------------------------------------------------------------
 # Java 21 + Basis-Tools
