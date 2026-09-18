@@ -206,7 +206,7 @@ services:
 | `JD_THEME` | `Dark` | UI theme — `Dark` = monochrome Carbon `#161616`, `Light` = FlatLaf light, `JDDEFAULT` = classic official JDownloader look (Synthetica). Default stays `Dark`; existing themes are unchanged. |
 | `JD_SELFUPDATE` | `true` | `false` disables JD's periodic self-update checks (opt-in "frozen appliance"). **Note:** the same update channel delivers the hoster plugins, which go stale within weeks — downloads may start failing. First install always uses the updater. |
 | `JD_ENABLE_BROWSER` | `false` | `true` enables JD's "solve captcha in browser" flow: reCAPTCHA/hCaptcha/Turnstile open in a bundled **Firefox** (with **uBlock Origin**) on the web desktop, solved with one click from the container's own IP (tokens are IP-bound); the profile persists in `/config/.config/mozilla`. Off by default — no browser process runs. Only enable it if a hoster you use needs browser captchas (classic image captchas are auto-solved either way); enabling it runs a full browser (more resources + attack surface). |
-| `JD_UI_SCALE` | _(empty)_ | Optional HiDPI scaling for the whole JDownloader UI, e.g. `1.5` or `2`; empty keeps 1x. Renders the UI crisp and large at the desktop's native resolution so you do not need browser zoom (browser zoom upscales the Selkies video stream and blurs it). See Troubleshooting if text looks tiny or blurry. |
+| `JD_UI_SCALE` | _(empty)_ | Optional scaling for the whole JDownloader UI, e.g. `1.5` or `2`; empty keeps 1x. Renders the UI larger at full pixel density instead of browser zoom, which upscales the Selkies video stream and blurs it. It applies to every browser that opens the WebUI, so leave it empty if you use displays with different scaling. See Troubleshooting if text looks tiny or blurry. |
 | `JD_COMPACT_TOOLBAR` | _(empty)_ | `true` / `1` keeps JDownloader's stock ~32px toolbar row (icons with less vertical padding). Empty / `false` keeps this image's default: the speed-graph row is grown to 64px so the download graph has full height. |
 | `PUID` | `99` | User ID — Unraid's *nobody* |
 | `PGID` | `100` | Group ID — Unraid's *users* |
@@ -225,7 +225,14 @@ The image ships that full size, so every resolution stays available. If you woul
 RAM back, pick a smaller screen in the template: the dropdown lists sizes from 1080p upwards with
 the cost of each, and the free field next to it takes anything not in the list. A value that is not
 a `WIDTHxHEIGHT` pair is ignored with a note in the container log rather than stopping the
-container. Above the size you picked, the picture is scaled to your window rather than cut off.
+container.
+
+Pick a size at least as big as the largest browser window you open the WebUI in. A bigger window
+does not get a bigger desktop: the desktop keeps its last size in the top-left corner and the rest
+of the window stays black. This image streams at the size your browser reports, so a 1600x1000
+window on a laptop set to 200 % counts as 1600x1000. With HiDPI switched on in the Selkies sidebar
+the same window counts in physical pixels, 3200x2000.
+
 | Port | Purpose | | Volume | Purpose |
 |---|---|---|---|---|
 | `3001` | Selkies HTTPS *(self-signed)* — **default WebUI, needed for clipboard** | | `/config` | Persistent JDownloader config, links, session |
@@ -296,8 +303,9 @@ The base image also supports `/config/custom-cont-init.d/` for your own init scr
 <summary><b>Text looks tiny at high resolution, or blurry when I zoom the browser</b></summary>
 
 - This is how a streamed desktop works: Selkies sends the whole X display as one video stream, so zooming your browser upscales that video and blurs the text.
-- Instead of browser zoom, set **`JD_UI_SCALE`** (for example `1.5` or `2`). JDownloader then renders its UI larger at full pixel density, so text stays crisp at the desktop's native resolution.
-- Keep the browser at 100% zoom once `JD_UI_SCALE` is set, and restart the container after changing it.
+- JDownloader is a Java app and picks its scale once, when it starts. It cannot follow each browser's display scaling the way GTK or Qt apps can. So this image streams every browser at the size the browser reports (`SELKIES_USE_CSS_SCALING=true`, DPI fixed at 96), which keeps JDownloader the same size on a 100 % desktop and on a 200 % laptop. On the laptop the text is a little softer, because the browser stretches the picture.
+- If you only use high-resolution displays and want sharp text, switch **HiDPI** on in the Selkies sidebar (it is remembered per browser) and set **`JD_UI_SCALE`** to your display scaling, for example `2`. Restart the container after changing it.
+- `JD_UI_SCALE` applies to every browser, so with displays at different scaling it will be too big on some or too small on others. Leave it empty then.
 </details>
 
 <details>
