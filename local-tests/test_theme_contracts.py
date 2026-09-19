@@ -1,4 +1,4 @@
-"""Local unit tests for JDDEFAULT / theme independence contracts (r1 + r2 + Metal fix).
+"""Local tests for the theme contracts of autostart, the LAF helpers and the agent.
 
 Run from repo root:
 
@@ -42,7 +42,6 @@ def load_helpers():
 h = load_helpers()
 
 
-# --------------------------------------------------------------------------- #1 casing + whitespace
 @pytest.mark.parametrize(
     "theme,laf,classic",
     [
@@ -60,7 +59,7 @@ h = load_helpers()
         ("SomethingElse", "FLATLAF_DARK", False),
     ],
 )
-def test_01_theme_casing_no_split_brain(theme, laf, classic):
+def test_theme_resolves_any_casing_and_whitespace(theme, laf, classic):
     r = h.resolve_jd_theme(theme)
     assert r["laf"] == laf
     assert r["is_classic"] is classic
@@ -71,39 +70,37 @@ def test_01_theme_casing_no_split_brain(theme, laf, classic):
         assert r["expect_laf"] in ("flatdark", "flatlight")
 
 
-def test_r2_autostart_uses_expect_classic_not_raw_tr_case():
+def test_autostart_launch_loop_keys_off_expect_classic():
     auto = AUTOSTART.read_text(encoding="utf-8")
-    # Launch loop must key off EXPECT_CLASSIC (not a bare jddefault case on JD_THEME)
     assert 'if [ "${EXPECT_CLASSIC}" = "1" ]; then' in auto
     assert "disabled flatlaf.jar" in auto
 
 
-def test_r2_setup_uses_helpers_or_trim():
+def test_setup_normalises_theme_through_helpers():
     setup = SETUP.read_text(encoding="utf-8")
     assert "jdownloader-laf-helpers.py" in setup
     assert "is_classic" in setup
     assert "sed 's/^[[:space:]]*//" in setup or "strip" in setup.lower()
 
 
-def test_r2_expect_laf_safety_default():
+def test_autostart_expect_laf_defaults_to_flatdark():
     auto = AUTOSTART.read_text(encoding="utf-8")
     assert 'EXPECT_LAF:=flatdark' in auto
     assert 'EXPECT_CLASSIC}" = "1"' in auto or 'EXPECT_CLASSIC" = "1"' in auto
-    # Metal must not match READY when EXPECT_LAF empty on non-classic
+    # Metal must not match READY when EXPECT_LAF is empty on non-classic
     assert '[ -n "${EXPECT_LAF}" ] || return 1' in auto or '[ -n "${EXPECT_LAF}" ]' in auto
 
 
-def test_r2_selfupdate_freeze_requires_synthetica_when_classic():
+def test_selfupdate_freeze_requires_synthetica_when_classic():
     auto = AUTOSTART.read_text(encoding="utf-8")
     assert "any_synthetica_valid" in auto
     assert "synthetica-license.key" in auto
-    # Old gate: empty EXPECT_LAF alone freezes — must not be the only classic path
     assert "JD_SELFUPDATE" in auto
     # Must not freeze solely because EXPECT_LAF is empty
     assert '{ [ -z "${EXPECT_LAF}" ] || flatlaf_jar_valid' not in auto
 
 
-def test_r2_heal_only_core_synthetica_jar():
+def test_heal_only_touches_core_synthetica_jar():
     auto = AUTOSTART.read_text(encoding="utf-8")
     # Core path only inside heal_invalid_synthetica
     assert 'libs/laf/synthetica.jar"' in auto or "libs/laf/synthetica.jar" in auto
@@ -116,8 +113,8 @@ def test_r2_heal_only_core_synthetica_jar():
     assert '[ -f "${HELPERS}" ]' in body or "[ -f \"${HELPERS}\" ]" in body
 
 
-def test_r2_asm_progressbar_short_names_not_foreground():
-    """#1 DENIED: LAFOptions getters are getColorForProgressbarN (no Foreground)."""
+def test_asm_progressbar_uses_short_getter_names():
+    """LAFOptions getters are getColorForProgressbarN, without Foreground."""
     src = AGENT_JAVA.read_text(encoding="utf-8")
     # ASM invoke uses short names
     assert re.search(r'getColorForProgressbar"\s*\+\s*\(i\s*\+\s*1\)', src) or \
@@ -125,14 +122,12 @@ def test_r2_asm_progressbar_short_names_not_foreground():
     # Must not use Foreground inside the ASM progress painter patch block
     prog = src.split("patchCustomProgressbarPainter")[1].split("patchJdDefaultGetDisabledIcon")[0]
     assert "getColorForProgressbarForeground" not in prog
-    # Seed/cfg layer DOES use Foreground
+    # The seed and cfg layer does use Foreground
     assert "getColorForProgressbarForeground" in src
 
 
-def test_r2_seed_classic_uses_putcfg_and_conditional_latch():
+def test_seed_classic_uses_putcfg_and_conditional_latch():
     src = AGENT_JAVA.read_text(encoding="utf-8")
-    seed = src.split("seedClassicLafColors()")[1].split("putCfgStringIfBlank")[0] \
-        if False else src  # full file checks
     assert 'putCfgStringIfBlank(cfg,\n                        "getColorForProgressbarForeground"' in src \
         or 'putCfgStringIfBlank(cfg,\n                        "getColorForProgressbarForeground" + i' in src \
         or 'putCfgStringIfBlank(cfg,' in src and "getColorForProgressbarForeground" in src
@@ -142,16 +137,15 @@ def test_r2_seed_classic_uses_putcfg_and_conditional_latch():
     assert "return;" in src.split("seedClassicLafColors")[1].split("// keep retrying")[0]
 
 
-def test_r2_shared_laf_class_writer():
+def test_agent_shares_laf_class_writer():
     src = AGENT_JAVA.read_text(encoding="utf-8")
     assert "lafClassWriter(" in src
     assert src.count("lafClassWriter(") >= 5
 
 
-def test_r2_theme_sh_no_dead_progress_loop():
+def test_theme_sh_has_no_forced_progress_loop():
     text = THEME_SH.read_text(encoding="utf-8")
     assert "d.update(classic)" in text
-    # Dead force loop after update removed
     assert not re.search(
         r"d\.update\(classic\)\s*\n\s*# Always force progress.*?\nfor i in range\(1, 6\):",
         text,
@@ -159,7 +153,7 @@ def test_r2_theme_sh_no_dead_progress_loop():
     )
 
 
-def test_r2_no_flatlaf_parked_param():
+def test_classic_heal_does_not_depend_on_flatlaf():
     helper = HELPERS_PATH.read_text(encoding="utf-8")
     assert "flatlaf_present_or_parked" not in helper
     assert "--flatlaf" not in helper
@@ -169,14 +163,13 @@ def test_r2_no_flatlaf_parked_param():
     assert "--flatlaf" not in auto
 
 
-# --------------------------------------------------------------------------- jar integrity
 def _make_jar(path: Path, entry: str, payload: bytes = b"ok"):
     path.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(path, "w") as z:
         z.writestr(entry, payload)
 
 
-def test_03_synthetica_jar_valid_and_truncated():
+def test_synthetica_jar_valid_and_truncated():
     with tempfile.TemporaryDirectory() as td:
         good = Path(td) / "synthetica.jar"
         _make_jar(good, h.SYNTHETICA_ENTRY)
@@ -187,7 +180,7 @@ def test_03_synthetica_jar_valid_and_truncated():
         assert h.synthetica_jar_valid(str(bad)) is False
 
 
-def test_03_heal_deregisters_extension_ids():
+def test_heal_deregisters_extension_ids():
     with tempfile.TemporaryDirectory() as td:
         inst = Path(td) / "extensions.installed.json"
         inst.write_text(
@@ -199,7 +192,7 @@ def test_03_heal_deregisters_extension_ids():
         assert "synthetica-themes" not in left
 
 
-def test_05_license_error_and_marker_in_autostart():
+def test_autostart_marks_missing_license():
     text = AUTOSTART.read_text(encoding="utf-8")
     assert "/tmp/.jd-synthetica-license-missing" in text
     assert "WARNING: cfg/synthetica-license.key missing" not in text
@@ -216,7 +209,7 @@ def test_05_license_error_and_marker_in_autostart():
         (False, False, False, False, False),
     ],
 )
-def test_06_should_increment_classic_mismatch(classic, matches, syn, lic, expect):
+def test_should_increment_classic_mismatch(classic, matches, syn, lic, expect):
     got = h.should_increment_classic_mismatch(
         expect_classic=classic,
         laf_matches=matches,
@@ -226,7 +219,7 @@ def test_06_should_increment_classic_mismatch(classic, matches, syn, lic, expect
     assert got is expect
 
 
-def test_minor_classic_colors_use_hash():
+def test_classic_colors_use_hash():
     text = THEME_SH.read_text(encoding="utf-8")
     m = re.search(r"classic\s*=\s*\{(.*?)\n\}", text, re.S)
     assert m
@@ -235,18 +228,17 @@ def test_minor_classic_colors_use_hash():
         assert v.startswith("#")
 
 
-def test_02_get_disabled_icon_uses_get_super_name():
+def test_get_disabled_icon_uses_get_super_name():
     src = AGENT_JAVA.read_text(encoding="utf-8")
     assert "cr.getSuperName()" in src
     assert "skip getDisabledIcon patch" in src
 
 
-def test_minor_progress_painter_skips_cache_on_fallback():
+def test_progress_painter_skips_cache_on_fallback():
     src = AGENT_JAVA.read_text(encoding="utf-8")
     assert "skipCache" in src
 
 
-# --------------------------------------------------------------------------- Light must not get Carbon #161616 chrome
 def _want_dark_laf_method(src: str) -> str:
     m = re.search(
         r"private static boolean wantDarkLaf\(\)\s*\{(.*?)\n    \}",
@@ -319,7 +311,6 @@ def test_autostart_theme_aware_xsetroot():
     )
 
 
-# --------------------------------------------------------------------------- theme independence (Dark / Light / JDDEFAULT)
 def test_theme_independence_resolve_three_ways():
     """Switching helpers must resolve Dark / Light / JDDEFAULT to distinct LAFs."""
     dark = h.resolve_jd_theme("Dark")
@@ -334,7 +325,7 @@ def test_theme_independence_resolve_three_ways():
 
 
 def test_classic_jars_ready_requires_jdcustom_not_core_alone():
-    """Core synthetica.jar alone must NOT count as classic-ready (Metal path)."""
+    """Core synthetica.jar alone must not count as classic-ready (Metal path)."""
     with tempfile.TemporaryDirectory() as td:
         laf = Path(td)
         _make_jar(laf / "synthetica.jar", h.SYNTHETICA_ENTRY)
@@ -391,7 +382,7 @@ def test_heal_never_globs_all_synthetica_jars():
 
 
 def test_flatlaf_parking_gated_classic_only_and_restorable():
-    """Classic parks flatlaf; non-classic restores — never permanent delete."""
+    """Classic parks flatlaf.jar and non-classic restores it; it is never deleted."""
     auto = AUTOSTART.read_text(encoding="utf-8")
     assert "flatlaf.jar.disabled-for-classic" in auto
     assert "re-enabled flatlaf.jar for FlatLaf theme" in auto
@@ -408,7 +399,7 @@ def test_flatlaf_parking_gated_classic_only_and_restorable():
 
 
 def test_agent_light_skips_dark_chrome_classic_skips_flat():
-    """Agent: Light ≠ dark chrome; classic ≠ FlatLaf path; Dark still gets chrome."""
+    """Light gets no dark chrome and classic no FlatLaf path, while Dark keeps the chrome."""
     src = AGENT_JAVA.read_text(encoding="utf-8")
     # tick() classic branch
     tick = src.split("private static void tick()")[1].split(
@@ -441,7 +432,7 @@ def test_autostart_classic_ready_uses_classic_jars_ready():
 
 
 def test_headless_flatlaf_does_not_wait_for_jar():
-    """Dark/Light must not block headless on flatlaf.jar (never arrives → Metal after 15 min)."""
+    """Dark and Light must not hold the headless install for flatlaf.jar, which never arrives there."""
     auto = AUTOSTART.read_text(encoding="utf-8")
     start = auto.index('if [ ! -f "${JD_DIR}/Core.jar" ]; then')
     end = auto.index("# The READY marker must be cleared")
