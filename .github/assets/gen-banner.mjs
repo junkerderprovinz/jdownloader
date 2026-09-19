@@ -1,24 +1,23 @@
 /**
- * Generates the JDownloader README banners (theme-adaptive pair):
- *   jdownloader-banner.svg / .png      : light 1600x500 - globe on the LEFT, then the
- *                                        "JDOWNLOADER" wordmark + a cheeky claim.
- *   jdownloader-banner-dark.svg / .png : same layout on GitHub-dark #0d1117, light text.
- * The README serves the pair via <picture> (prefers-color-scheme).
+ * Generates the JDownloader README banners as a theme-adaptive pair:
+ *   jdownloader-banner.svg / .png      : light 1600x500, the globe on the left, then the
+ *                                        "JDOWNLOADER" wordmark and a cheeky claim.
+ *   jdownloader-banner-dark.svg / .png : the same layout on GitHub-dark #0d1117, light text.
+ * The README serves the pair through <picture> (prefers-color-scheme).
  *
- * Wordmark: a FAITHFUL reproduction of the user-built wordmark (_fonts/wordmark-source.svg,
- * "Element 1.svg") - JDownloader's real look done as a mix of Myriad Pro weights:
- *   - "DOWNLOADER" in Myriad Pro BLACK at 190, with the per-run letter-spacing from the source.
- *   - the initial "J" in Myriad Pro SEMIBOLD at 300 - bigger, so it overshoots up + down, but
- *     the lighter Semibold weight at the larger size keeps the stroke matched to the Black caps
- *     (bigger, not heavier).
+ * The wordmark reproduces the hand-built one in _fonts/wordmark-source.svg ("Element 1.svg"),
+ * JDownloader's own look as a mix of Myriad Pro weights:
+ *   - "DOWNLOADER" in Myriad Pro Black at 190, with the source's per-run letter-spacing.
+ *   - the initial "J" in Myriad Pro Semibold at 300, which overshoots up and down while the
+ *     lighter weight keeps its stroke matched to the Black caps.
  *   - a horizontal crossbar across the top of the J, drawn as a rectangle.
- * All in the source SVG's own coordinate system (viewBox 1324.24 x 326.1); we render the glyph
- * runs to VECTOR PATHS (opentype.js) and place the block beside the globe.
+ * Everything uses the source SVG's coordinate system (viewBox 1324.24 x 326.1); the glyph runs
+ * become vector paths (opentype.js) placed beside the globe.
  *
- * The Myriad Pro OTFs live at .github/assets/_fonts/ (gitignored - the font files are NEVER
- * committed; only the outlines land in the SVG). Nominative use of the product's own mark.
- * Letters are FLAT: #161616 on the light card, light on dark. The claim uses Lato (OFL).
- * The globe (icon.svg: green earth + gold arrow) is embedded verbatim in both themes.
+ * The Myriad Pro OTFs live in .github/assets/_fonts/, which is gitignored, so only the outlines
+ * land in the SVG. Nominative use of the product's own mark. The letters are flat: #161616 on
+ * the light card, light on dark. The claim uses Lato (OFL). The globe (icon.svg: green earth
+ * and gold arrow) is embedded verbatim in both themes.
  *
  * Deps: `npm i -g @resvg/resvg-js opentype.js`. Run: node .github/assets/gen-banner.mjs
  */
@@ -35,19 +34,18 @@ const opentype = require(`${gRoot}/opentype.js`);
 const { Resvg } = require(`${gRoot}/@resvg/resvg-js`); // needed early for the wordmark bbox
 const __dir = dirname(fileURLToPath(import.meta.url));
 
-// ---- content + styling -----------------------------------------------------
 const CLAIM = "Grab it. All of it. In the dark.";
 const THEMES = [
   { suffix: "",      bg: "#ffffff", name: "#1f2328", claim: "#5a5d5e" },
   { suffix: "-dark", bg: "#0d1117", name: "#e6edf3", claim: "#9aa4ad" },
 ];
 const W = 1600, H = 500;
-const LH = 470, LW = LH;      // globe on the left (square) — jdp big-logo standard (~400px ink)
+const LH = 470, LW = LH;      // globe on the left (square), the house big-logo size (~400px ink)
 const gap = 70, lineGap = 26;
 const claimSize = 44;
 const WM_H = 214;             // rendered wordmark height in the banner
 const MAX_GROUP = W - 150;
-// Source wordmark geometry (from the user's Element 1.svg; viewBox 1324.24 x 326.1) --------
+// Source wordmark geometry (Element 1.svg, viewBox 1324.24 x 326.1)
 const SRC_VB = { w: 1324.24, h: 326.1 };
 const CROSSBAR = { x: 27.78, y: 48.9, w: 70.62, h: 24.14 };
 const DL_BASE = { x: 101.22, y: 205.77, size: 190 };   // "DOWNLOADER" in Black
@@ -56,7 +54,6 @@ const DL_RUNS = [                                       // [text, x-offset, lett
   ["L", 547, -0.08], ["O", 632.51, -0.06], ["ADER", 760.57, -0.04],
 ];
 const J_RUN = { text: "J", x: 0, y: 251.1, size: 300 }; // "J" in Semibold
-// ---------------------------------------------------------------------------
 
 const black = opentype.parse(readFileSync(join(__dir, "_fonts", "MyriadPro-Black.otf")).buffer);
 const semi = opentype.parse(readFileSync(join(__dir, "_fonts", "MyriadPro-Semibold.otf")).buffer);
@@ -92,20 +89,16 @@ function runWidth(font, text, size) {
   return w;
 }
 
-// Build the wordmark (glyph paths + crossbar) in the SOURCE coordinate system.
+// Build the wordmark (glyph paths and crossbar) in the source coordinate system.
 let wordmarkPath = runPath(semi, J_RUN.text, J_RUN.x, J_RUN.y, J_RUN.size);
 for (const [text, dx, ls] of DL_RUNS)
   wordmarkPath += runPath(black, text, DL_BASE.x + dx, DL_BASE.y, DL_BASE.size, ls);
 const crossbarPath = `M${CROSSBAR.x} ${CROSSBAR.y} h${CROSSBAR.w} v${CROSSBAR.h} h${-CROSSBAR.w} Z`;
 if ((wordmarkPath + crossbarPath).includes("NaN")) throw new Error("NaN path");
 
-// FIXED layout, matching the user's hand-refined theme banner: the globe box sits at a fixed left so
-// its circle centre lands at (293, 242); the wordmark starts at a fixed x=522 (its crossbar aligns to
-// the user's x), 214px tall; the claim is centred under the wordmark. "JDOWNLOADER" is shorter than
-// "JD HIGHLIGHTER" so it leaves more room on the right — the same slightly left-weighted balance.
-// House banner standard: logo left-anchored (165), wordmark to its right, the
-// [wordmark + claim] block vertically centred; claim left-aligned with the
-// wordmark and pulled close (gap 8). Sized + placed by the wordmark's real ink bbox.
+// House banner layout: the logo is left-anchored at 165 with the wordmark to its right, and
+// the wordmark and claim are centred vertically as one block, the claim close under the
+// wordmark (gap 8) and centred on it. Size and position follow the wordmark's real ink bbox.
 const startX = 165, LY = (H - LH) / 2;
 const textX = startX + LW + gap;
 const WM_TARGET = 150;                                     // visual wordmark height (~ the 132px text names)

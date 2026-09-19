@@ -1,19 +1,18 @@
-name: Experiment — headless first boot
+name: "Experiment: headless first boot"
 
-# -----------------------------------------------------------------------------
-# v3 Architecture-A experiment (manual only, NOT part of any release path).
-# Mirrors the container's A-lite flow EXACTLY, in the same order:
-#   seed flatlaf-themes request -> headless boot -> wait for the detached
-#   chain -> TERM/KILL the chain (run 4 learned: the extension registry is
-#   read ONLY at JVM init, and the boot-1 daemon holds the JD2 single-instance
-#   lock — a later boot dies on the lock and never consumes the request).
-# Verdicts this run delivers:
-#   1. FRESH-INSTALL path: does the PRE-seeded request make the headless chain
+# A manual experiment outside every release path. It follows the container's
+# headless pre-install in the same order: seed the flatlaf-themes request, boot
+# headless, wait for the detached chain, then TERM and KILL it. The extension
+# registry is read only at JVM init, and the first boot's daemon holds the JD2
+# single-instance lock, so a later boot would die on the lock and never consume
+# the request.
+#
+# It answers two questions:
+#   1. Fresh install: does a request seeded beforehand make the headless chain
 #      install libs/laf/flatlaf.jar together with the core?
-#   2. HEAL path (existing install missing the extension): after killing the
-#      chain, does a NEW headless JVM consume a seeded request and install it?
-# Read the artifact + job log; nothing is published.
-# -----------------------------------------------------------------------------
+#   2. Heal (an existing install missing the extension): once the chain is
+#      killed, does a new headless JVM consume a seeded request and install it?
+# The answers are in the artifact and the job log; nothing is published.
 
 on:
   workflow_dispatch:
@@ -28,15 +27,15 @@ jobs:
           sudo apt-get update -q
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends openjdk-21-jre
 
-      - name: Prepare JD dir + theme config + PRE-seed flatlaf-themes request (mirrors autostart)
+      - name: Prepare JD dir, theme config and the flatlaf-themes request (as autostart does)
         run: |
           mkdir -p "$RUNNER_TEMP/jd/cfg" "$RUNNER_TEMP/jd/update/versioninfo/JD"
           cat > "$RUNNER_TEMP/jd/cfg/org.jdownloader.settings.GraphicalUserInterfaceSettings.json" <<'EOF'
           {"lookandfeeltheme":"FLATLAF_DARK"}
           EOF
-          # Ground truth from JD source: every FlatLaf theme maps to updater extension
-          # id "flatlaf-themes" (LookAndFeelType enum); the request list is a PLAIN
-          # JSON ARRAY — the sanctioned path other JD Docker images seed too.
+          # JD's LookAndFeelType maps every FlatLaf theme to the updater extension id
+          # "flatlaf-themes", and the request list is a plain JSON array, the same
+          # path other JD Docker images seed.
           echo '["flatlaf-themes"]' > "$RUNNER_TEMP/jd/update/versioninfo/JD/extensions.requestedinstalls.json"
           echo "pre-seeded:"
           cat "$RUNNER_TEMP/jd/update/versioninfo/JD/extensions.requestedinstalls.json"
@@ -53,9 +52,9 @@ jobs:
           timeout --signal=TERM --kill-after=30 600 \
             java -Djava.awt.headless=true -jar JDownloader.jar < /dev/null > boot1.log 2>&1
           echo "boot1_exit=$?" | tee boot1.exit
-          # The bootstrap spawns a DETACHED chain (SecondLevelLauncher -> rescue
-          # updater -> core install) that ends in a RUNNING headless daemon — wait,
-          # then stop it exactly like the container's A-lite does.
+          # The bootstrap spawns a detached chain (SecondLevelLauncher, rescue
+          # updater, core install) that ends in a running headless daemon, which
+          # is stopped the same way the container does it.
           waited=0
           while pgrep -f 'java.*jar' > /dev/null 2>&1 && [ "$waited" -lt 900 ]; do
             sleep 15
@@ -73,12 +72,12 @@ jobs:
           echo "── last 60 log lines ──"
           tail -60 boot1.log || true
 
-      - name: "VERDICT 1 (fresh install): flatlaf.jar after pre-seeded headless run?"
+      - name: "Verdict 1 (fresh install): flatlaf.jar after the pre-seeded headless run?"
         run: |
           cd "$RUNNER_TEMP/jd"
           echo "== did the updater see the request? =="
           grep -a "Requested Extension Installations" boot1.log | head -5 || echo "(no ExtensionManager init line in boot1.log)"
-          echo "== THE verdict: libs/laf =="
+          echo "== verdict 1: libs/laf =="
           ls -la libs/laf 2>/dev/null || echo "NO libs/laf"
           echo "== extension registry after boot 1 =="
           for f in update/versioninfo/JD/extensions*; do
@@ -87,10 +86,9 @@ jobs:
           echo "== core sanity =="
           ls Core.jar build.json 2>/dev/null || echo "core incomplete"
 
-      # HEAL scenario: an existing install that is missing the extension (e.g. a box
-      # that ran the first :v3-preview). Re-seed if consumed, then a FRESH JVM (the
-      # chain from boot 1 is dead, so no lock collision) must read the request at
-      # init and install the extension.
+      # Heal: an existing install that is missing the extension. The request is
+      # seeded again if it was consumed, and a new JVM (boot 1's chain is dead, so
+      # the lock is free) has to read it at init and install the extension.
       - name: "Boot 2 (heal path): fresh JVM with seeded request on an existing install"
         run: |
           cd "$RUNNER_TEMP/jd"
@@ -127,7 +125,7 @@ jobs:
           set -e
           echo "== did the updater see the request? =="
           grep -a "Requested Extension Installations" boot2.log | head -5 || echo "(no ExtensionManager init line in boot2.log)"
-          echo "== VERDICT 2 (heal): libs/laf =="
+          echo "== verdict 2 (heal): libs/laf =="
           ls -la libs/laf 2>/dev/null || echo "still NO libs/laf"
           echo "== extension registry after boot 2 =="
           for f in update/versioninfo/JD/extensions*; do
