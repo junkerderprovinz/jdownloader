@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Local-only Java/ASM checks (gitignored). Requires JDK under local-tests-out/jdk.
+# Local Java/ASM checks. They need a JDK under local-tests-out/jdk, which is gitignored.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="$ROOT/local-tests-out"
 ASM="$OUT/asm.jar"
 JAVA_HOME="$(echo "$OUT"/jdk/jdk-* | awk '{print $1}')"
 if [[ ! -x "$JAVA_HOME/bin/javac" ]]; then
-  echo "No JDK in local-tests-out/jdk — skip Java tests" >&2
+  echo "No JDK in local-tests-out/jdk, skipping Java tests" >&2
   exit 0
 fi
 export JAVA_HOME
