@@ -1,43 +1,28 @@
 # syntax=docker/dockerfile:1.26
 #
-# JDownloader 2 for Unraid – community edition (Selkies)
-# -------------------------------------------------------
-# Built on the LinuxServer Selkies base image (successor of their EOL KasmVNC
-# packaging) for a smooth, hardware-accelerated, web-native Linux desktop.
-#
-# Features:
-#   * JDownloader 2 (self-updating Java download manager)
-#   * Java 21 JRE (full AWT/Swing, not headless)
-#   * Auto-install JDownloader on first start into /config/JDownloader
-#   * Selectable theme via JD_THEME (Dark = Carbon #161616 monochrome, Light)
-#
-# Repository:  https://github.com/junkerderprovinz/jdownloader
-# License:     AGPL-3.0-only (this wrapper) – JDownloader 2 has its own license
-#
-# Flavor-PINNED on purpose: the Selkies base makes deliberate breaking changes
-# between flavors; ubunturesolute = Ubuntu 25.10, same flavor as krusader.
+# JDownloader 2 for Unraid on the LinuxServer Selkies base image.
+# https://github.com/junkerderprovinz/jdownloader
+# AGPL-3.0-only for this wrapper; JDownloader 2 has its own licence.
+
+# The Selkies base breaks compatibility between flavors, so the flavor is pinned.
+# ubunturesolute is Ubuntu 25.10, the same flavor krusader uses.
 ARG BASE_TAG=ubunturesolute
 
-# ---------------------------------------------------------------------------
-# Builder stage — compiles the dialog-confirm + theme agent. JD FORCES its first-run /
-# update installer dialogs whenever the GUI is visible (UpdateController), so no
-# config can suppress them; this agent auto-clicks them, enforces the dark chrome, and
-# (BUG 4) load-time bytecode-guards two latent AppWork/jsyntaxpane NPEs that only fire
-# under FlatLaf and otherwise break the Event Scripter script editor. The bytecode
-# guards need ASM, bundled (shaded) into the agent jar below.
-# ---------------------------------------------------------------------------
+# The agent clicks through the first-run and update installer dialogs, which JD
+# forces whenever the GUI is visible (UpdateController) and no config can suppress.
+# It also enforces the dark chrome and guards two AppWork/jsyntaxpane NPEs that fire
+# under FlatLaf and break the Event Scripter editor; those bytecode guards need ASM,
+# shaded into the agent jar.
 FROM eclipse-temurin:25.0.4_7-jdk AS agent-builder
 WORKDIR /build
-# ASM (BSD-3-Clause) for the load-time bytecode guards. Pinned + SHA-256 verified so a
-# supply-chain swap of the artifact fails the build (never build an unverified download).
+# ASM (BSD-3-Clause) is pinned and checked against its SHA-256, so a swapped
+# artifact fails the build.
 ADD https://repo1.maven.org/maven2/org/ow2/asm/asm/9.7.1/asm-9.7.1.jar /build/asm.jar
 COPY agent/ /build/
-# JDownloader runs on the Java 21 runtime (openjdk-21-jre below), so the agent's class
-# files must target 21. Pin javac --release 21 so a newer build JDK (e.g. a Renovate
-# bump of the temurin tag above) can't ship a higher-classfile agent the 21 runtime
-# refuses to load (UnsupportedClassVersionError). ASM classes are unpacked into out/
-# (shaded) so the -javaagent jar is self-contained; JD keeps its own ASM on a separate
-# launcher loader, so there is no collision.
+# JD runs on the Java 21 runtime, so --release 21 keeps a newer build JDK from
+# producing class files that runtime refuses (UnsupportedClassVersionError). ASM is
+# unpacked into the jar so the -javaagent is self-contained; JD loads its own ASM
+# through a separate launcher loader, so the two do not collide.
 RUN set -eux; \
     echo "8cadd43ac5eb6d09de05faecca38b917a040bb9139c7edeb4cc81c740b713281  /build/asm.jar" > asm.jar.sha256; \
     sha256sum -c asm.jar.sha256; \
@@ -51,7 +36,7 @@ FROM ghcr.io/linuxserver/baseimage-selkies:${BASE_TAG}
 
 LABEL maintainer="junkerderprovinz"
 LABEL org.opencontainers.image.title="jdownloader"
-LABEL org.opencontainers.image.description="JDownloader 2 für Unraid — schlanke, moderne Dark-Mode-GUI (komplettes monochromes Carbon #161616, nicht nur die Menüleiste) auf Selkies, Multi-Language"
+LABEL org.opencontainers.image.description="JDownloader 2 für Unraid: schlanke, moderne Dark-Mode-GUI (komplettes monochromes Carbon #161616, nicht nur die Menüleiste) auf Selkies, Multi-Language"
 LABEL org.opencontainers.image.source="https://github.com/junkerderprovinz/jdownloader"
 LABEL org.opencontainers.image.licenses="AGPL-3.0-only"
 LABEL org.opencontainers.image.vendor="junkerderprovinz"
@@ -90,54 +75,42 @@ ENV TITLE="JDownloader 2" \
 ENV SELKIES_USE_CSS_SCALING="true" \
     SELKIES_SCALING_DPI="96"
 
-# ---------------------------------------------------------------------------
-# Java 21 + Basis-Tools
-# ---------------------------------------------------------------------------
 RUN set -eux; \
     apt-get update; \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        # Java – volles JRE (AWT/Swing für JDownloader-GUI erforderlich)
+        # A full JRE, since the JD GUI needs AWT and Swing
         openjdk-21-jre \
-        # Download-Tools für Installer
         wget ca-certificates \
-        # ffmpeg/ffprobe – JD braucht BEIDE, um DASH-Streams zu muxen (YouTube
-        # liefert Video- und Audiospur getrennt). Auf Linux lädt JD KEINEN eigenen
-        # ffmpeg-Build herunter, sondern erwartet ein System-Binary — ohne es
-        # scheitert das YouTube-Muxing (Video + Audio bleiben getrennt liegen) und
-        # JD öffnet stattdessen den "FFmpeg fehlt"-Installationsdialog. Der Pfad
-        # wird beim Init in die FFmpegSetup-Config geschrieben (10-jdownloader-setup).
+        # JD needs ffmpeg and ffprobe to mux DASH streams (YouTube serves video and
+        # audio separately). On Linux JD fetches no ffmpeg build of its own, so
+        # without a system binary the streams stay apart and JD opens its "FFmpeg
+        # missing" dialog. 10-jdownloader-setup writes the path into FFmpegSetup.
         ffmpeg \
-        # Font-Support (Java rendert Schrift über fontconfig)
+        # Java renders text through fontconfig
         fontconfig \
         fonts-noto fonts-noto-color-emoji \
         fonts-dejavu fonts-dejavu-core fonts-dejavu-extra \
         fonts-liberation fonts-liberation2 \
         fonts-hack \
-        # Locale
         locales coreutils \
-        # openbox-xdg-autostart braucht PyXDG
+        # openbox-xdg-autostart needs PyXDG
         python3-xdg; \
-    # Font-Cache aufbauen damit Java die Fonts beim ersten Start sofort findet
+    # Build the font cache so Java finds the fonts on the first start
     fc-cache -f -v >/dev/null 2>&1 || true; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 
-# ---------------------------------------------------------------------------
-# Firefox — OPTIONAL in-container browser for JD's captcha flow (opt-in)
-# ---------------------------------------------------------------------------
-# Baked in but INERT by default: nothing launches Firefox and it is NOT wired as
-# JD's URL handler unless JD_ENABLE_BROWSER=true (the wiring — mimeapps default +
-# XDG_CURRENT_DESKTOP + BROWSER — is done at runtime in 10-jdownloader-setup, only
-# when the switch is on). So a default container never runs a browser process; the
-# only cost when off is the on-disk size. With it on, JD's "solve in browser" flow
-# (reCAPTCHA/hCaptcha/Turnstile) opens on the Selkies desktop and is solved from the
-# CONTAINER's IP — the same IP the download uses (tokens are IP-bound). Classic image
-# captchas are still auto-solved by JD's built-in JAC, so most users never need this.
-# (Firefox portion of community PR #2 by @ahmed-abdelrazek, reworked as opt-in.)
+# Firefox for JD's captcha flow, off by default. Nothing launches it and it is not
+# JD's URL handler unless JD_ENABLE_BROWSER=true, in which case 10-jdownloader-setup
+# wires it up at runtime (mimeapps default, XDG_CURRENT_DESKTOP, BROWSER). With it
+# on, JD's "solve in browser" flow for reCAPTCHA, hCaptcha and Turnstile opens on
+# the Selkies desktop and is solved from the container's IP, the same IP the
+# download uses, since the tokens are bound to it. JD's built-in JAC still solves
+# classic image captchas, so most users never need this.
 #
-# Source is Mozilla's OFFICIAL apt repo packages.mozilla.org (amd64+arm64); Ubuntu's
-# own "firefox" package is a Snap stub (Snaps don't run inside containers).
+# The packages come from Mozilla's own apt repo (amd64 and arm64), because Ubuntu's
+# "firefox" package is a Snap stub and Snaps do not run inside containers.
 RUN set -eux; \
     install -d -m 0755 /etc/apt/keyrings; \
     wget -qO /etc/apt/keyrings/packages.mozilla.org.asc \
@@ -150,11 +123,10 @@ RUN set -eux; \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         firefox \
         xdg-utils; \
-    # Route the firefox .desktop launch through ff-launch (COPYed via rootfs/ below):
-    # JD -> xdg-open -> gio -> this .desktop Exec. ff-launch redirects Firefox's stdio
-    # off JD's ProcessBuilder pipe so Firefox is not SIGPIPE-killed when JD reaps
-    # xdg-open. DBusActivatable=false forces gio to honor Exec (else it D-Bus-activates
-    # Firefox, bypassing the wrapper).
+    # JD opens links through xdg-open, gio and this .desktop Exec. ff-launch moves
+    # Firefox's stdio off JD's ProcessBuilder pipe, so Firefox is not killed by
+    # SIGPIPE when JD reaps xdg-open. DBusActivatable=false makes gio honour Exec
+    # instead of activating Firefox over D-Bus and bypassing the wrapper.
     sed -i -E 's#^Exec=(/usr/lib/firefox/)?firefox#Exec=/usr/local/bin/ff-launch#' \
         /usr/share/applications/firefox.desktop; \
     if grep -q '^DBusActivatable' /usr/share/applications/firefox.desktop; then \
@@ -162,50 +134,43 @@ RUN set -eux; \
     else \
         echo 'DBusActivatable=false' >> /usr/share/applications/firefox.desktop; \
     fi; \
-    # No systemd in the container -> dbus-daemon fails to exec these manifests and spams
-    # "Activated service '...' failed: Permission denied" on every link click; drop them.
+    # Without systemd, dbus-daemon cannot exec these services and logs "Activated
+    # service '...' failed: Permission denied" on every link click.
     for svc in login1 timedate1 hostname1 locale1 network1 systemd1; do \
         rm -f "/usr/share/dbus-1/system-services/org.freedesktop.${svc}.service"; \
     done; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-# Only ever affects a Firefox that actually runs (opt-in): no crash-reporter
-# background tasks on the GPU-less Xvfb display.
+# Keeps an enabled Firefox from starting crash-reporter background tasks on the
+# GPU-less Xvfb display.
 ENV MOZ_CRASHREPORTER_DISABLE=1
 
 
-# ---------------------------------------------------------------------------
-# Skeleton-Configs + s6-overlay init scripts
-# ---------------------------------------------------------------------------
 COPY rootfs/ /
 
-# ---------------------------------------------------------------------------
-# Assert the X service we hook the screen size onto is really the base's
-# ---------------------------------------------------------------------------
-# rootfs/ ships svc-xorg/dependencies.d/init-screen-size so our oneshot settles
-# MAX_RES before Xvfb reads it. If a base bump ever renames that service, the
-# COPY above would CREATE /etc/s6-overlay/s6-rc.d/svc-xorg as a service
-# directory with a dependency and no `type` file. s6-rc-compile then aborts in
-# stage 2 and EVERY container exits at boot, while the build itself stays
-# green, so the failure would only show up in users' logs. Checking for the
-# base's own `type` file turns that into a build error instead.
+# rootfs/ adds svc-xorg/dependencies.d/init-screen-size so our oneshot settles
+# MAX_RES before Xvfb reads it. If a base update renamed that service, the COPY
+# above would create svc-xorg as a directory with a dependency and no `type` file.
+# s6-rc-compile would then abort in stage 2 and every container would exit at
+# boot while the build stays green, so the failure would only show up in users'
+# logs. Checking for the base's own `type` file makes it a build error instead.
 RUN set -eux; \
     t=/etc/s6-overlay/s6-rc.d/svc-xorg/type; \
-    [ -f "$t" ] || { echo "ERROR: $t missing — the selkies base renamed or dropped svc-xorg; re-point rootfs/etc/s6-overlay/s6-rc.d/svc-xorg/dependencies.d/init-screen-size at the new service"; exit 1; }; \
+    [ -f "$t" ] || { echo "ERROR: $t missing: the selkies base renamed or dropped svc-xorg; re-point rootfs/etc/s6-overlay/s6-rc.d/svc-xorg/dependencies.d/init-screen-size at the new service"; exit 1; }; \
     echo "jdownloader: screen-size oneshot ordered before svc-xorg"
 
-# Banner: single source at .github/assets/banner-raw.txt. Strip Windows CR
-# (tr is byte-safe, no locale issues with the block characters used).
+# The banner's source is .github/assets/banner-raw.txt. tr strips the Windows CRs
+# and is byte-safe for the block characters.
 COPY .github/assets/banner-raw.txt /usr/local/share/banner-raw.txt
 RUN tr -d '\r' < /usr/local/share/banner-raw.txt > /usr/local/share/banner.txt
 
-# Suppress LSIO base-image branding so OUR ASCII banner (print-banner.sh) is the only
-# branding in the init log. Two sources: the "linuxserver.io" ASCII logo comes from the
-# init-adduser `branding` file (emptied), and the "To support LSIO projects visit / donate"
-# solicitation is echoed SEPARATELY inside init-adduser/run — strip those two lines from it.
-# The GID/UID block is left intact (it confirms the applied PUID/PGID); its echo stays valid
-# because the donate lines sit between the opening `echo '` and the closing quote.
+# Keeps our banner (print-banner.sh) the only branding in the init log. The
+# linuxserver.io logo comes from init-adduser's `branding` file, which is emptied,
+# and the "To support LSIO projects visit / donate" lines are echoed by
+# init-adduser/run, which loses those two lines. The GID/UID block stays because it
+# confirms the applied PUID/PGID; its echo stays valid because the donate lines sit
+# between the opening `echo '` and the closing quote.
 RUN set -eux; \
     : > /etc/s6-overlay/s6-rc.d/init-adduser/branding 2>/dev/null || true; \
     run=/etc/s6-overlay/s6-rc.d/init-adduser/run; \
@@ -213,8 +178,7 @@ RUN set -eux; \
         sed -i -e '/To support LSIO projects visit:/d' -e '\#linuxserver\.io/donate#d' "$run"; \
     fi
 
-# Dialog-confirm agent (compiled in the builder stage); loaded via JAVA_TOOL_OPTIONS
-# in autostart so it auto-confirms JD's forced installer dialogs.
+# autostart loads the agent through JAVA_TOOL_OPTIONS.
 COPY --from=agent-builder /build/jd-dialog-agent.jar /opt/JDownloader/jd-dialog-agent.jar
 
 RUN chmod +x \
@@ -235,45 +199,32 @@ RUN chmod +x \
     /defaults/autostart \
     /defaults/startwm.sh
 
-# ---------------------------------------------------------------------------
-# Browser-tab favicon / branding
-# ---------------------------------------------------------------------------
-# On the Selkies base the branding is a single file: init-nginx copies
-# /usr/share/selkies/www/icon.png to favicon.ico + icon.png in the served web
-# root on every start and writes the PWA manifest around ${TITLE}. Replacing
-# that one PNG brands the whole web UI — the entire kclient/kasm multi-path
-# surgery of the old base is gone. Fail loudly if the path moves (base layout
-# change), so CI / the weekly rebuild surfaces the regression. (Same as krusader.)
+# init-nginx copies /usr/share/selkies/www/icon.png to favicon.ico and icon.png in
+# the served web root on every start and builds the PWA manifest around ${TITLE},
+# so replacing that one PNG brands the whole web UI. The check fails the build if
+# the base moves the file, so CI and the weekly rebuild catch it.
 COPY .github/assets/icon.png /usr/local/share/jdownloader-icon.png
 RUN set -eux; \
     dst=/usr/share/selkies/www/icon.png; \
-    [ -f "$dst" ] || { echo "ERROR: $dst missing — selkies base layout changed, update the branding override"; exit 1; }; \
+    [ -f "$dst" ] || { echo "ERROR: $dst missing: the selkies base layout changed, update the branding override"; exit 1; }; \
     cp /usr/local/share/jdownloader-icon.png "$dst"; \
     echo "jdownloader: branded selkies icon at $dst"
 
-# ---------------------------------------------------------------------------
-# Graceful shutdown so JD can persist column layout etc.
-# ---------------------------------------------------------------------------
-# JD writes its settings only in its JVM shutdown hook. The s6 default kill-gracetime is
-# 3 s — too short for that flush, so JD got SIGKILLed mid-save and hidden columns came back
-# after a restart. The svc-de `finish` script SIGTERMs the JVM and waits; these gracetimes
-# keep s6 from SIGKILLing before the save completes. (Shutdown-only — no effect on startup.)
+# JD writes its settings only in its JVM shutdown hook, which needs longer than
+# s6's default grace time of 3 s; cut short, it loses settings such as hidden
+# columns. svc-de's finish script sends SIGTERM to the JVM and waits for it.
 ENV S6_KILL_GRACETIME=30000 \
     S6_SERVICES_GRACETIME=30000
 
-# ---------------------------------------------------------------------------
-# Standard-ENV (durch Unraid-Template überschreibbar)
-# ---------------------------------------------------------------------------
-# JD_LANG       – UI-Sprache: ISO-Code (de, en, fr, ...)
-# JD_THEME      – UI-Theme: Dark (Carbon #161616) | Light
-# JD_SELFUPDATE – true (Default) | false = JDs Self-Update-Checks deaktivieren
-#                 (opt-in "frozen appliance"; Achtung: derselbe Kanal liefert die
-#                 Hoster-Plugins — die veralten in Wochen)
-# JD_INST_DIR   – Installations-Pfad (nicht ändern außer für Debugging)
-# JD_UI_SCALE   – optionale HiDPI-Skalierung der Swing-GUI (z. B. 1.5, 2); leer = 1x.
-#                 Rendert die GUI größer bei voller Pixeldichte, so bleibt Text bei
-#                 nativer Desktop-Auflösung scharf statt per Browser-Zoom (der den
-#                 Selkies-H.264-Stream hochskaliert und unscharf macht).
+# Defaults the Unraid template can override:
+# JD_LANG       UI language as an ISO code (de, en, fr, ...)
+# JD_THEME      Dark (Carbon #161616) or Light
+# JD_SELFUPDATE false turns off JD's self-update checks. The same channel delivers
+#               the hoster plugins, which go stale within weeks.
+# JD_INST_DIR   install path, only worth changing for debugging
+# JD_UI_SCALE   optional Swing scale such as 1.5 or 2, empty for 1x. The GUI renders
+#               larger at full pixel density, so text stays sharp where browser
+#               zoom would blur it by scaling up the Selkies H.264 stream.
 ENV JD_LANG=en \
     JD_THEME=Dark \
     JD_SELFUPDATE=true \
@@ -283,16 +234,13 @@ ENV JD_LANG=en \
     LANGUAGE=en_US:en \
     LC_ALL=en_US.UTF-8
 
-# ---------------------------------------------------------------------------
-# Build provenance — passed from CI, written to image so users can verify
-# exactly which commit their running image was built from.
-# Inspect at runtime: `docker exec jdownloader cat /etc/jdownloader-build`
-# Deliberately the LAST layer: BUILD_SHA changes on every commit, so an earlier
-# placement would bust the build cache for all layers that follow it.
-# ---------------------------------------------------------------------------
+# CI passes the commit so users can check what their image was built from with
+# `docker exec jdownloader cat /etc/jdownloader-build`. This is the last layer
+# because BUILD_SHA changes on every commit and would bust the cache of every
+# layer after it.
 ARG BUILD_SHA=dev
 ARG BUILD_DATE=unknown
 RUN echo "sha=${BUILD_SHA}"   >  /etc/jdownloader-build && \
     echo "date=${BUILD_DATE}" >> /etc/jdownloader-build
 
-# Ports werden vom Baseimage freigegeben (3000/HTTP, 3001/HTTPS).
+# The base image exposes 3000 (HTTP) and 3001 (HTTPS).
