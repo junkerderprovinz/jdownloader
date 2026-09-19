@@ -1,8 +1,8 @@
 name: Geometry Probe
 
-# Diagnostic-only: boots the current :v3-preview image, waits for the JD GUI,
-# collects the agent's GEO log lines and a PNG screenshot of the live desktop
-# as artifacts. Manual trigger; no image is built or pushed here.
+# Diagnostic only: boots an image, waits for the JD GUI and collects the agent's
+# GEO log lines and a PNG screenshot of the live desktop as artifacts. Manual
+# trigger; nothing is built or pushed here.
 
 on:
   workflow_dispatch:
@@ -31,11 +31,11 @@ jobs:
               echo "READY after ~$((i*10))s"; ready=1; break
             fi
             if [ -z "$(docker ps -q --filter name=jd)" ]; then
-              echo "container exited early — logs:"; docker logs jd || true; exit 1
+              echo "container exited early, logs:"; docker logs jd || true; exit 1
             fi
             sleep 10
           done
-          [ -n "$ready" ] || { echo "no READY banner within 15 min — continuing anyway (GEO lines may still exist)"; }
+          [ -n "$ready" ] || { echo "no READY banner within 15 min, continuing anyway (GEO lines may still exist)"; }
 
       - name: Let the GUI settle, then collect the agent log
         run: |
