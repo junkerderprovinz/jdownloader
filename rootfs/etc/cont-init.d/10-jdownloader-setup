@@ -1,6 +1,6 @@
 #!/usr/bin/with-contenv bash
 # shellcheck shell=bash
-# Runs synchronously before any service (incl. Selkies/openbox).
+# Runs synchronously before any service, Selkies and openbox included.
 
 log() { echo "[jdownloader-setup] $*"; }
 
@@ -8,27 +8,23 @@ CONFIG_HOME="/config/.config"
 JD_DIR="${JD_INST_DIR:-/config/JDownloader}"
 JD_CFG="${JD_DIR}/cfg"
 
-# Always sync autostart from image so openbox never reads a stale version
+# Copied on every start so openbox never reads a stale autostart.
 mkdir -p "${CONFIG_HOME}/openbox"
 cp -f /defaults/autostart "${CONFIG_HOME}/openbox/autostart"
 chmod 0755 "${CONFIG_HOME}/openbox/autostart"
 log "autostart synced from /defaults/autostart"
 
-# NOTE: the openbox rc.xml window rules (decor=no + dialog un-maximize) moved to
-# the init-jdownloader s6 oneshot — the Selkies base restores rc.xml from its
-# .bak on every start AFTER this legacy cont-init stage runs, so a patch here
-# would be wiped again each boot. init-jdownloader runs after that restore.
+# The openbox rc.xml window rules live in the init-jdownloader oneshot, because the
+# Selkies base restores rc.xml from its .bak after this stage on every start.
 
-# Ensure cfg dir exists (language/theme scripts seed files here)
 mkdir -p "${JD_CFG}"
 
-# Seed the bundled "flat" icon set (JD_Plain / icons8) into the config volume so
-# iconsetid=flat resolves from the very first start. JD ships this set but only
-# provisions it on GUI selection, so a fresh /config would otherwise fall back to
-# wrong icons. (icons8 CC BY-ND 3.0 — bundled verbatim, see flat/.../icons8.license.)
-# Skip when JDDEFAULT: classic look uses JD's stock glossy icons, not flat.
-# Normalize via the same helpers as autostart (strip + casing) so " JDDEFAULT "
-# does not accidentally seed flat icons.
+# Seeds the bundled "flat" icon set (JD_Plain, icons8) so iconsetid=flat resolves from
+# the first start. JD ships the set but only provisions it when it is picked in the
+# GUI, so a fresh /config would show the wrong icons. The icons are CC BY-ND 3.0 and
+# bundled verbatim (see flat/.../icons8.license). Classic JDDEFAULT keeps JD's stock
+# icons; the helper normalises the theme like autostart does, so " JDDEFAULT " counts
+# as classic too.
 THEMES_SRC="/opt/JDownloader/themes-default"
 THEMES_DST="${JD_DIR}/themes"
 HELPERS="/usr/local/bin/jdownloader-laf-helpers.py"
@@ -48,15 +44,9 @@ elif [[ "${_is_classic}" == "1" ]]; then
 fi
 unset _is_classic
 
-# NOTE: FlatLaf is intentionally NOT pre-seeded into libs/laf. JD installs and
-# registers the FLATLAF_DARK design itself on first run (one-time prompt); seeding
-# our own jar made JD never register it, so it re-asked every start. The Breeze
-# chrome is provided by the /opt boot classpath (see autostart), not libs/laf.
-
-# Language
 /usr/local/bin/jdownloader-language.sh "${JD_LANG:-en}" || log "language hook failed (non-fatal)"
 
-# Push locale into s6 env so all child processes inherit it
+# The locale goes into the s6 environment so every child process inherits it.
 mkdir -p /run/s6/container_environment
 if [[ -f /config/.profile.d/jdownloader-lang.sh ]]; then
     _L=$(grep '^export LANG='     /config/.profile.d/jdownloader-lang.sh | head -1 | cut -d= -f2-)
@@ -68,22 +58,19 @@ if [[ -f /config/.profile.d/jdownloader-lang.sh ]]; then
     log "locale → s6 env: LANG=${_L:-unchanged}"
 fi
 
-# Theme
 /usr/local/bin/jdownloader-theme.sh "${JD_THEME:-JD_Plain_Dark}" || log "theme hook failed (non-fatal)"
 
-# Optional in-container browser for JD's captcha "solve in browser" flow. Firefox is
-# baked into the image but INERT unless JD_ENABLE_BROWSER is truthy: only then do we
-# wire it as the URL handler (mimeapps default) and tell JD's URL opener a desktop it
-# understands. JD's AppWork DesktopSupportLinux only recognises GNOME/KDE/Unity/XFCE;
-# XFCE is the one whose browse command is plain xdg-open (GNOME/KDE want gnome-open/
-# kde-open, absent here). BROWSER points xdg-open's fallback at ff-launch (not bare
-# firefox) so that path also gets the stdio-detached launch. Left off, JD has no
-# browser handler and never launches one — zero browser process, exactly as before.
-# The opt-in is remembered in a /config sentinel so it survives a container recreate
-# (a Docker update): even if the recreated container comes up with the "auto" default
-# or without JD_ENABLE_BROWSER at all, the saved choice is re-applied instead of the
-# browser silently turning off. Only an explicit false/off is a real opt-out and
-# clears the sentinel. The wiring runs on every boot from cont-init.
+# Firefox for JD's captcha "solve in browser" flow is in the image but stays unused
+# unless JD_ENABLE_BROWSER is truthy. Only then is it the URL handler (mimeapps
+# default), and JD's URL opener gets a desktop it understands: AppWork's
+# DesktopSupportLinux knows GNOME, KDE, Unity and XFCE, and only XFCE browses with
+# plain xdg-open (GNOME and KDE want gnome-open or kde-open, which are missing here).
+# BROWSER points xdg-open's fallback at ff-launch rather than bare firefox, so that
+# path also gets the stdio-detached launch.
+#
+# The opt-in is remembered in a /config sentinel, so a recreated container (a Docker
+# update) that comes up with the "auto" default or without JD_ENABLE_BROWSER keeps
+# the browser. Only an explicit false or off opts out and clears the sentinel.
 browser_sentinel=/config/.jd-browser-enabled
 wire_browser_on() {
     printf '[Default Applications]\nx-scheme-handler/http=firefox.desktop\nx-scheme-handler/https=firefox.desktop\ntext/html=firefox.desktop\n' \
@@ -92,62 +79,55 @@ wire_browser_on() {
     printf '%s' "/usr/local/bin/ff-launch"    > /run/s6/container_environment/BROWSER
 }
 wire_browser_off() {
-    # Ensure a stale handler from a previously-enabled run can't linger and make
-    # JD open a browser after the switch was turned back off.
+    # A handler left from an enabled run would still make JD open a browser.
     rm -f /etc/xdg/mimeapps.list
 }
 case "${JD_ENABLE_BROWSER,,}" in
     true|yes|1|on)
         wire_browser_on
         : > "${browser_sentinel}"
-        log "in-container browser ENABLED (JD_ENABLE_BROWSER) — captcha 'solve in browser' will open Firefox"
+        log "in-container browser ENABLED (JD_ENABLE_BROWSER): captcha 'solve in browser' will open Firefox"
         ;;
     false|no|0|off)
         wire_browser_off
         rm -f "${browser_sentinel}"
-        log "in-container browser disabled (JD_ENABLE_BROWSER=false) — Firefox captcha solving off"
+        log "in-container browser disabled (JD_ENABLE_BROWSER=false), Firefox captcha solving off"
         ;;
     ""|auto)
-        # No explicit choice this boot (the "auto" default, or the variable was dropped
-        # by a container recreate): follow the saved opt-in so an update cannot silently
-        # turn the browser off.
+        # No explicit choice on this boot, so the saved opt-in decides.
         if [ -f "${browser_sentinel}" ]; then
             wire_browser_on
-            log "in-container browser ENABLED from saved choice (/config) — survives container recreate"
+            log "in-container browser ENABLED from saved choice (/config), survives container recreate"
         else
             wire_browser_off
-            log "in-container browser disabled (default) — set JD_ENABLE_BROWSER=true to enable Firefox captcha solving"
+            log "in-container browser disabled (default); set JD_ENABLE_BROWSER=true to enable Firefox captcha solving"
         fi
         ;;
     *)
         wire_browser_off
-        log "in-container browser disabled (unrecognised JD_ENABLE_BROWSER='${JD_ENABLE_BROWSER}') — use true, false or auto"
+        log "in-container browser disabled (unrecognised JD_ENABLE_BROWSER='${JD_ENABLE_BROWSER}'), use true, false or auto"
         ;;
 esac
 
-# Default download folder — seed /downloads (the mapped volume) so a fresh install
-# writes to the download share, not JD's built-in /config/JDownloader/downloads.
-# Only seeds when unset/JD-internal; a user's own GUI choice is preserved.
+# Points a fresh install at the mapped /downloads instead of JD's built-in
+# /config/JDownloader/downloads, leaving a folder the user picked alone.
 /usr/local/bin/jdownloader-downloaddir.sh || log "download-dir hook failed (non-fatal)"
 
-# First-run window state: start the main frame MAXIMIZED. Without this a fresh
-# install opens JD at its built-in 1024x728 default, leaving black desktop around
-# it (JDGui.internalInitLocationAndDimension applies the saved extendedState right
-# before setVisible; a WM-maximized frame then tracks Selkies' dynamic desktop
-# resize to the browser size). Seed ONLY when absent — JD persists the user's
-# real window state here on every shutdown, and that choice must be preserved.
+# A fresh install would open JD at its built-in 1024x728 with black desktop around it.
+# JDGui.internalInitLocationAndDimension applies the saved extendedState right before
+# setVisible, and a frame maximised by the window manager then follows Selkies'
+# desktop resize to the browser size. JD saves the real window state here on every
+# shutdown, so this is only written when the file is missing.
 FRAME_STATUS="${JD_CFG}/org.jdownloader.settings.GraphicalUserInterfaceSettings.lastframestatus.json"
 if [ ! -f "${FRAME_STATUS}" ]; then
     printf '%s' '{"extendedState":"MAXIMIZED_BOTH","visible":true,"active":true,"focus":true,"locationSet":false,"silentShutdown":false,"width":-1,"height":-1,"x":-1,"y":-1}' > "${FRAME_STATUS}"
     log "seeded first-run window state: maximized"
 fi
 
-# ffmpeg/ffprobe paths — the image ships system ffmpeg (apt) because JD does not
-# auto-download its own build on Linux; without it YouTube DASH muxing fails and
-# JD pops the (kiosk-clipped) "FFmpeg is missing" install dialog. JD usually
-# finds it via PATH, but seed the explicit paths once so detection is
-# deterministic on the very first start. Seed ONLY when absent — a user's own
-# GUI choice is preserved.
+# JD does not download its own ffmpeg on Linux, so the image ships the system one;
+# without it YouTube DASH muxing fails and JD opens its "FFmpeg is missing" dialog. JD
+# usually finds it on PATH, but explicit paths make detection certain on the first
+# start. They are only written when missing, so a path set in the GUI stays.
 FFMPEG_CFG="${JD_CFG}/org.jdownloader.controlling.ffmpeg.FFmpegSetup.binarypath.json"
 FFPROBE_CFG="${JD_CFG}/org.jdownloader.controlling.ffmpeg.FFmpegSetup.binarypathprobe.json"
 if [[ ! -f "${FFMPEG_CFG}" && -x /usr/bin/ffmpeg ]]; then
@@ -159,29 +139,27 @@ if [[ ! -f "${FFPROBE_CFG}" && -x /usr/bin/ffprobe ]]; then
     log "seeded ffprobe path: /usr/bin/ffprobe"
 fi
 
-# Disable system tray extension — not supported in containers, would otherwise
-# trigger an error popup on every start.
+# A container has no system tray, and the extension would raise an error popup on
+# every start.
 python3 /usr/local/bin/disable-tray.py "${JD_CFG}" 2>/dev/null || \
     log "disable-tray failed (non-fatal)"
 
-# Disable JD's built-in advertisements (banner / premium alerts / special deals)
-# so the GUI stays clean and the download graph keeps its full height.
+# Turns off JD's advertising (banner, premium alerts, special deals), which also
+# gives the download graph its full height.
 python3 /usr/local/bin/jdownloader-noads.py "${JD_CFG}" 2>/dev/null || \
     log "noads failed (non-fatal)"
 
-# Log cfg files present — helps diagnose config issues
 cfg_files=("${JD_CFG}"/*.json)
 if [[ -e "${cfg_files[0]}" ]]; then
     log "cfg files: ${cfg_files[*]##*/}"
 fi
 
-# Make the mapped /downloads volume writable by the JD user (PUID/PGID).
-# Docker creates a MISSING host path as root:root, which the JD user can't write —
-# JD then silently falls back to <config>/Downloads. chown only the TOP level (no -R)
-# so we never traverse a large share or rewrite files that already live inside it.
-# NOTE: numeric PUID/PGID, NOT abc — this legacy cont-init stage runs BEFORE the
-# base image's init-adduser remaps abc to PUID/PGID, so `chown abc` would still hit
-# the build-time uid 911 and miss e.g. Unraid's PUID=99.
+# Docker creates a missing host path as root:root, which the JD user cannot write,
+# and JD then falls back to <config>/Downloads without a word. Only the top level is
+# chowned, so a large share is never traversed and the files in it keep their owner.
+# The ids are numeric because this cont-init stage runs before the base's
+# init-adduser remaps abc to PUID/PGID; `chown abc` would still hit the build-time
+# uid 911 and miss Unraid's PUID=99.
 if [[ -d /downloads ]]; then
     chown "${PUID:-911}:${PGID:-911}" /downloads 2>/dev/null || true
     if [ "$(stat -c %u /downloads 2>/dev/null)" = "${PUID:-911}" ]; then
@@ -193,7 +171,6 @@ if [[ -d /downloads ]]; then
     fi
 fi
 
-# Fix ownership (numeric ids — see note above: abc is not yet remapped at this stage)
 chown -R "${PUID:-911}:${PGID:-911}" /config 2>/dev/null || true
 
 log "setup done (JD_LANG=${JD_LANG:-en}, JD_THEME=${JD_THEME:-JD_Plain_Dark})"

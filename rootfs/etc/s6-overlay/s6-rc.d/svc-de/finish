@@ -1,20 +1,19 @@
 #!/usr/bin/with-contenv bash
 # shellcheck shell=bash
-# JDownloader flushes its settings (hidden columns, sort order, widths, link list) ONLY in
-# its JVM shutdown hook — it writes cfg/*.json on shutdown, not on change. The JD java
-# process is an openbox grandchild (not s6-supervised), so on `docker stop`/`restart` it
-# would be SIGKILLed before saving. This finish runs when the desktop service goes down:
-# SIGTERM the JVM directly and wait for it to exit so the hook completes. S6_*_GRACETIME
-# (Dockerfile) keeps s6 from SIGKILLing us before that.
+# JDownloader writes its settings (hidden columns, sort order, widths, link list) to
+# cfg/*.json only in its JVM shutdown hook, not on change. The JVM is an openbox
+# grandchild outside s6's supervision, so on `docker stop` or restart it would be
+# killed before saving. This finish runs when the desktop service goes down: it sends
+# SIGTERM to the JVM and waits for the hook, and S6_*_GRACETIME in the Dockerfile
+# keeps s6 from killing it first.
 #
-# NOTE: deliberately NO shutdown flag here. An earlier version had the autostart loop check
-# a flag and `exit 0`, which raced with this script and stopped JD from launching at all.
-# The finish is shutdown-only and never runs at startup, so it cannot affect JD launching.
+# The launch loop is stopped with pkill rather than a shutdown flag, because a flag
+# checked by autostart races with this script and can keep JD from launching at all.
 
-# Kill the autostart launcher loop FIRST — it is not s6-supervised, survives the JVM,
-# and its restart loop would otherwise relaunch JDownloader mid-shutdown. openbox runs
-# the loop as `sh /config/.config/openbox/autostart`, and its forked background watchers
-# share that cmdline, so matching the path takes out loop + watchers in one go.
+# The autostart loop goes first: s6 does not supervise it, it outlives the JVM and it
+# would relaunch JD mid-shutdown. openbox runs it as
+# `sh /config/.config/openbox/autostart`, and its background watchers share that
+# command line, so one match stops them all.
 pkill -f 'openbox/autostart' 2>/dev/null || true
 
 pids="$(pgrep -f 'JDownloader\.jar' || true)"
@@ -33,10 +32,10 @@ if [ -n "${pids}" ]; then
     done
 fi
 
-# This file OVERWRITES the Selkies base's own svc-de/finish, so replicate its
-# cleanup after the JD flush: TERM the remaining desktop descendants recorded
-# in /de-pid (openbox etc.) and remove the pid file. Short wait only — JD (the
-# slow saver) is already down at this point.
+# This file replaces the Selkies base's own svc-de/finish, so its cleanup follows:
+# TERM the remaining desktop processes under the pid in /de-pid (openbox and the
+# rest) and remove the pid file. JD, the slow one, is already down, so the wait is
+# short.
 PID_FILE="/de-pid"
 if [ -r "${PID_FILE}" ]; then
     PARENT_PID=$(cat "${PID_FILE}")

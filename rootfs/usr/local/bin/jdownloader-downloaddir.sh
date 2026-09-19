@@ -1,23 +1,9 @@
 #!/usr/bin/env bash
-# -----------------------------------------------------------------------------
-# jdownloader-downloaddir.sh
-# -----------------------------------------------------------------------------
-# Seeds JDownloader's default download folder so a FRESH install writes to the
-# mapped /downloads volume (the user's download share) instead of JDownloader's
-# built-in default <JD-home>/downloads (= /config/JDownloader/downloads, inside
-# the install/appdata dir).
-#
-# Called by 10-jdownloader-setup BEFORE JDownloader starts.
-#
-# JDownloader stores the global default download folder in:
-#   cfg/org.jdownloader.settings.GeneralSettings.json  ->  "defaultdownloadfolder"
-#
-# Seed policy (so the folder stays freely changeable in the GUI):
-#   - set to ${JD_DOWNLOAD_DIR:-/downloads} ONLY when the value is missing/empty
-#     or still points inside the JD install dir (JD's built-in default).
-#   - any other value (a real user choice, e.g. /downloads/Movies or /mnt/...) is
-#     kept untouched.
-# -----------------------------------------------------------------------------
+# Points JDownloader's default download folder at the mapped /downloads volume, so a
+# fresh install does not write into <JD-home>/downloads inside the appdata dir. JD
+# keeps the folder in cfg/org.jdownloader.settings.GeneralSettings.json as
+# "defaultdownloadfolder". It is only set while missing, empty or still inside the
+# JD install dir; any other value is the user's choice and stays.
 set -e
 
 JD_DIR="${JD_INST_DIR:-/config/JDownloader}"
@@ -45,8 +31,6 @@ if os.path.exists(path):
 
 cur = data.get("defaultdownloadfolder")
 
-# Seed only when unset/empty or still inside the JD install dir (JD's built-in
-# default). A real user choice elsewhere is preserved.
 if (not cur) or cur == jd_dir or cur.startswith(jd_dir + "/"):
     data["defaultdownloadfolder"] = target
     tmp = path + ".tmp"

@@ -1,57 +1,33 @@
 #!/usr/bin/env bash
-# -----------------------------------------------------------------------------
-# selkies-resolution.sh
-# -----------------------------------------------------------------------------
-# Prints the screen size the X server should be started with, or nothing when
-# neither variable is set (then the base image's own default applies).
+# Prints the screen size the X server should start with, or nothing when neither
+# variable is set so the base image's default applies. Shared byte for byte by
+# every junkerderprovinz image on linuxserver/baseimage-selkies: fix it in one,
+# copy it to the others.
 #
-# SHARED FILE: byte-identical in every junkerderprovinz image that builds on
-# linuxserver/baseimage-selkies. Fix it in one place, copy it to the others.
+# Unraid renders a template variable as a plain <select> as soon as its Default
+# contains a "|" (CreateDocker.php, addConfig()), so the template offers MAX_RES
+# as a preset dropdown and MAX_RES_CUSTOM as a free field. A usable
+# MAX_RES_CUSTOM wins, otherwise the dropdown value applies.
 #
-# Why two variables: Unraid renders a template variable as a plain <select> as
-# soon as its Default contains a "|" (see CreateDocker.php, addConfig()), so a
-# dropdown of presets and a free-text field cannot be the same field. The
-# template therefore offers MAX_RES as the preset dropdown and MAX_RES_CUSTOM
-# as a free field, and this script decides between them:
-#
-#   MAX_RES_CUSTOM set and usable  -> that value wins
-#   otherwise                      -> MAX_RES as chosen in the dropdown
-#
-# A malformed value is REPORTED AND IGNORED rather than passed on. Xvfb takes
-# the screen size as a literal command line argument, so a typo like
-# "1920*1080" would stop the X server from starting at all and the container
-# would come up with no desktop. Falling back keeps a working session and says
-# what happened; the opposite trade turns a five-second mistake into a dead
-# container.
-#
-# Spellings people actually type are accepted: surrounding spaces, spaces
-# around the separator, and a capital X.
-# -----------------------------------------------------------------------------
+# A malformed value is reported and ignored: Xvfb takes the size as a literal
+# argument, so a typo like "1920*1080" would leave the container with no
+# desktop at all.
 set -u
 
 log() { echo "[selkies-resolution] $*" >&2; }
 
 normalise() {
-    # An Unraid dropdown hands over the whole label it shows, so a preset
-    # arrives as "3840x2160 (4K, ~93 MB)" and the size has to be read out of
-    # it. Drop everything from the first "(", then strip whitespace and
-    # lowercase the separator so a hand-typed " 1920 X 1080 " works too.
+    # An Unraid dropdown hands over its whole label, such as
+    # "3840x2160 (4K, ~93 MB)", and people type " 1920 X 1080 ".
     printf '%s' "${1%%(*}" | tr -d '[:space:]' | tr 'X' 'x'
 }
 
-# Largest edge either side may have. This is NOT a product decision about how
-# big a desktop may be — the full 15360x8640 and more stay available. It only
-# catches a digit slip: "15360x86400" is a well-formed WIDTHxHEIGHT that would
-# have the X server ask for a 5 GB framebuffer, so the container would be
-# OOM-killed on every single boot with nothing in the log pointing at the typo.
-# 16384 is the ceiling X drivers and GL implementations conventionally carry,
-# and it sits above the base image's own default.
+# Catches a digit slip, not a size limit: "15360x86400" is well formed but asks
+# for a 5 GB framebuffer and gets the container OOM-killed on every boot. 16384
+# is the usual ceiling of X drivers and GL, above the base image's default.
 SELKIES_MAX_EDGE=16384
 
 valid() {
-    # WIDTHxHEIGHT, 3 to 5 digits each, no leading zero, both edges within
-    # SELKIES_MAX_EDGE. Anything else Xvfb could not parse or could not
-    # survive.
     [[ "$1" =~ ^([1-9][0-9]{2,4})x([1-9][0-9]{2,4})$ ]] || return 1
     [ "${BASH_REMATCH[1]}" -le "${SELKIES_MAX_EDGE}" ] && [ "${BASH_REMATCH[2]}" -le "${SELKIES_MAX_EDGE}" ]
 }

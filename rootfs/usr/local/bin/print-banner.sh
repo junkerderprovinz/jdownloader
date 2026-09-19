@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
-# ─────────────────────────────────────────────────────────────────
-# print-banner.sh <container-name> <subtitle>
-# Einheitlicher Init-Log-Banner für alle Junker-der-Provinz-Container
-# ─────────────────────────────────────────────────────────────────
+# Usage: print-banner.sh <container-name> <subtitle>
+# Prints the init-log banner shared by the junkerderprovinz containers.
 
 CONTAINER="${1:-Container}"
 SUBTITLE="${2:-}"
@@ -12,8 +10,7 @@ echo ""
 
 if [ -f "${BANNER_FILE}" ]; then
     cat "${BANNER_FILE}"
-    # The shared banner file has no trailing newline; add blank lines so the
-    # banner gets breathing room before the title block.
+    # The banner file has no trailing newline.
     echo ""
     echo ""
 else
@@ -22,10 +19,8 @@ else
     echo ""
 fi
 
-# Clean title block: name + subtitle on ONE line (house look, no rules). The
-# caller's READY/status line follows directly below the blank line this
-# prints -- the banner + title + status block is always the LAST thing this
-# container's own boot log prints.
+# The caller's status line follows the blank line printed last, so banner,
+# title and status close the container's boot log together.
 if [ -n "${SUBTITLE}" ]; then
     printf '  %s · %s\n' "${CONTAINER}" "${SUBTITLE}"
 else

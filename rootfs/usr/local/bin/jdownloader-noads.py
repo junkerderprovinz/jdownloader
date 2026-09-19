@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
 """
-Disables JDownloader's built-in advertisements so the GUI stays clean - the
-"Become premium user" banner otherwise fills the right side of the tab row,
-directly under the download graph. (The graph's own height is a separate,
-hardcoded toolbar constraint; the dialog agent grows that row at runtime.)
+Turns off JDownloader's built-in advertising. The "Become premium user" banner
+otherwise fills the right side of the tab row under the download graph; the
+graph's own height is a separate toolbar constraint that the dialog agent grows
+at runtime.
 
-JD recreates / resets this config on first install and on self-update, so this
-runs before EVERY JD start (like disable-tray.py), not only once at init.
+JD resets this config on first install and on self-update, so this runs before
+every JD start, like disable-tray.py.
 
-Only advertisement elements are touched: the banner, the premium-alert columns,
-the status-bar "+ premium" button, and the special-deal popups. The Donate
-button and every functional setting are left exactly as JD / the user set them.
-
-Key names are verbatim from JD's org.jdownloader.settings.GraphicalUserInterfaceSettings.
+Only advertising is touched: the banner, the premium-alert columns, the
+status-bar "+ premium" button and the special-deal popups. The Donate button and
+every functional setting stay as JD or the user set them. The key names are those
+of JD's org.jdownloader.settings.GraphicalUserInterfaceSettings.
 
 Usage: jdownloader-noads.py <jd_cfg_dir>
 """
@@ -24,7 +23,6 @@ from pathlib import Path
 
 NAME = "org.jdownloader.settings.GraphicalUserInterfaceSettings.json"
 
-# key -> enforced value. Advertisement-only; nothing functional.
 AD_KEYS = {
     "bannerenabled": False,                       # the bottom "Become premium user" banner
     "statusbaraddpremiumbuttonvisible": False,    # status-bar "+ premium" button
@@ -44,7 +42,7 @@ def disable(cfg_dir: str) -> None:
 
     data = {}
     if path.exists():
-        # Force writable in case a prior run / hardening left it read-only.
+        # A previous run may have left it read-only.
         try:
             os.chmod(path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
         except OSError:
