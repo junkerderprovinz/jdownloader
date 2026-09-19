@@ -221,6 +221,7 @@ RUN chmod +x \
     /usr/local/bin/ff-launch \
     /usr/local/bin/selkies-resolution.sh \
     /etc/s6-overlay/s6-rc.d/init-screen-size/run \
+    /etc/s6-overlay/s6-rc.d/init-dpi/run \
     /usr/local/bin/jdownloader-language.sh \
     /usr/local/bin/jdownloader-theme.sh \
     /usr/local/bin/jdownloader-downloaddir.sh \
