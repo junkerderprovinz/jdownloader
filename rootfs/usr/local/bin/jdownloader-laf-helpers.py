@@ -57,20 +57,19 @@ def resolve_jd_theme(theme: str | None) -> dict:
 
 
 FLATLAF_ENTRY = "com/formdev/flatlaf/FlatDarkLaf.class"
-# LookAndFeelType.DEFAULT uses Synthetica base; skins live in synthetica-themes.
-# synthetica.jar ships the core LAF classes (see libs/laf/synthetica.dep.json).
+# LookAndFeelType.DEFAULT builds on Synthetica, whose core LAF classes ship in
+# synthetica.jar (see libs/laf/synthetica.dep.json); the skins are in synthetica-themes.
 SYNTHETICA_ENTRY = "de/javasoft/plaf/synthetica/SyntheticaLookAndFeel.class"
-# JDDefaultLookAndFeel (LookAndFeelType.DEFAULT) ships in syntheticaJDCustom.jar.
-# Core synthetica.jar alone is NOT enough — JD falls back to MetalLookAndFeel.
+# JDDefaultLookAndFeel ships in syntheticaJDCustom.jar; with the core jar alone JD
+# falls back to MetalLookAndFeel.
 JD_CUSTOM_ENTRY = "org/jdownloader/gui/laf/jddefault/JDDefaultLookAndFeel.class"
 JD_CUSTOM_JAR = "syntheticaJDCustom.jar"
 
-# Citation: org.jdownloader.updatev2.gui.LookAndFeelType —
-#   optional Synthetica skins -> extensionID "synthetica-themes"
-#   LookAndFeelType.DEFAULT -> extensionID null (no GUI-driven install ID)
-# Citation: ressourcen/libs/laf/synthetica.dep.json — package id "synthetica" for synthetica.jar
+# org.jdownloader.updatev2.gui.LookAndFeelType maps the optional Synthetica skins to
+# the extension id "synthetica-themes" and DEFAULT to none, and
+# ressourcen/libs/laf/synthetica.dep.json names synthetica.jar's package "synthetica".
 SYNTHETICA_REQUEST_IDS = ("synthetica", "synthetica-themes")
-# Skin package only — re-arm updater when JDCustom was deleted but core remains.
+# The skin package, requested again when JDCustom is gone but the core jar remains.
 SYNTHETICA_THEMES_ID = "synthetica-themes"
 
 
@@ -107,10 +106,9 @@ def any_valid_synthetica(laf_dir: str) -> bool:
 
 
 def classic_laf_jars_ready(laf_dir: str) -> bool:
-    """Classic JDDEFAULT needs BOTH core synthetica.jar AND syntheticaJDCustom.jar.
+    """Classic JDDEFAULT needs both synthetica.jar and syntheticaJDCustom.jar.
 
-    A previous heal wrongly deleted skin jars; recovery must keep seeding until
-    JDCustom is back — core-alone still yields Metal.
+    The core jar alone still yields Metal, so seeding goes on until JDCustom is back.
     """
     if not os.path.isdir(laf_dir):
         return False
@@ -171,12 +169,12 @@ def should_increment_classic_mismatch(
     has_valid_synthetica: bool,
     has_license: bool,
 ) -> bool:
-    """Gate for autostart healer: never kill JD while waiting for first Synthetica download.
+    """Whether the autostart healer may count a classic LAF mismatch.
 
-    Increment mismatch only when classic is ready to apply (core + JDCustom + license)
-    but LAF still wrong. Parked FlatLaf alone must NOT trigger heal. Core-alone must
-    NOT trigger heal (would Metal↔restart without JDCustom).
-    has_valid_synthetica here means classic_laf_jars_ready (both jars).
+    Only when classic is ready to apply (both jars and the licence) and the LAF is
+    still wrong. Restarting while the first Synthetica download is pending, or with
+    the core jar alone, would only cycle between Metal and restarts.
+    has_valid_synthetica means classic_laf_jars_ready.
     """
     if not expect_classic or laf_matches:
         return False
@@ -191,7 +189,7 @@ def ensure_hash_prefix(value: str) -> str:
 
 
 def is_flatlaf_install_prompt(title: str, body: str) -> bool:
-    """Tight Look&Feel install matcher (agent contract)."""
+    """Matches JD's FlatLaf install prompt the same way the agent does."""
     t = (title or "").lower()
     b = (body or "").lower()
     if "about" in t or "über" in t or "uber" in t:
@@ -276,7 +274,6 @@ def main(argv: list[str]) -> int:
     if cmd == "should-heal-classic":
         return _cmd_should_heal(argv[2:])
     if cmd == "seed-synthetica":
-        # argv: seed-synthetica <request.json> [laf_dir] [installed.json]
         before = []
         path = argv[2]
         laf_dir = argv[3] if len(argv) > 3 else ""
@@ -284,7 +281,8 @@ def main(argv: list[str]) -> int:
         if laf_dir and classic_laf_jars_ready(laf_dir):
             print("ok")
             return 0
-        # Core present but JDCustom missing: drop themes from installed so updater re-fetches.
+        # With the core jar present but JDCustom missing, deregistering the themes
+        # makes the updater fetch them again.
         if (
             laf_dir
             and installed
@@ -293,7 +291,7 @@ def main(argv: list[str]) -> int:
         ):
             deregister_extensions(installed, [SYNTHETICA_THEMES_ID])
             print(
-                "[jdownloader-autostart] syntheticaJDCustom.jar missing — re-requesting synthetica-themes"
+                "[jdownloader-autostart] syntheticaJDCustom.jar missing, re-requesting synthetica-themes"
                 " (core alone yields Metal)",
                 file=sys.stderr,
             )

@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
-Disables JD's system-tray extension before JD starts.
-JD creates / re-creates tray config files on first run, so this must run
-before every JD start (not only once at container init).
+Disables JD's system-tray extension. JD recreates the tray config on first run,
+so this runs before every JD start, not only at container init.
 
 Usage: disable-tray.py <jd_cfg_dir>
 """
@@ -20,8 +19,8 @@ def disable(cfg_dir: str) -> None:
         path = cfg / name
         data = {}
         if path.exists():
-            # Force writable in case a prior chmod 444 (autostart hardening)
-            # left the file unwriteable from a previous container instance.
+            # autostart locks these files with chmod 444, and a previous container
+            # may have left them that way.
             try:
                 os.chmod(path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
             except OSError:

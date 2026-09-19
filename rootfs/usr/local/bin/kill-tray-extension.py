@@ -1,20 +1,11 @@
 #!/usr/bin/env python3
 """
-Removes JDownloader's SystemTrayExtension JAR after the bootstrap installs it.
+Disables JDownloader's SystemTrayExtension jar after the bootstrap installs it.
 
-The "system tray isn't supported in this environment" popup is triggered by
-the extension's startup probe of java.awt.SystemTray.isSupported() — which
-runs as soon as JD loads the extension JAR, regardless of any config that
-says the extension is disabled.
-
-The only reliable way to prevent the popup is to keep JD from loading the
-JAR at all. This script:
-
-  1. Walks ${JD_DIR}/libs/extensions/ for any *ystemTray*.jar
-  2. Renames each match to *.jar.disabled
-
-JD's extension loader skips files without the .jar suffix, so the extension
-is never instantiated and the probe never runs.
+The extension probes java.awt.SystemTray.isSupported() as soon as JD loads the
+jar, whatever its config says, and raises the "system tray isn't supported"
+popup. Each *ystemTray*.jar in libs/extensions is renamed to *.jar.disabled,
+which JD's extension loader skips.
 
 Usage: kill-tray-extension.py <jd_install_dir>
 """

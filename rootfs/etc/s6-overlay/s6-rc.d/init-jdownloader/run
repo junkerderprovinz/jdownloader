@@ -1,22 +1,18 @@
 #!/usr/bin/with-contenv bash
 # shellcheck shell=bash
-# s6-rc oneshot — build provenance + the openbox window rules.
-# Ordered AFTER init-selkies-config (dependencies.d): the Selkies base restores
-# /etc/xdg/openbox/rc.xml from rc.xml.bak on EVERY start and then applies its
-# own env-driven seds, so any rule patched in earlier (the old cont-init did
-# this) would be wiped again each boot. Patching here survives, and svc-de
-# (openbox) only starts after all init-* oneshots, so the rules are always in
-# place at window-map time.
-# The house ASCII banner is NOT printed here — it prints right above the
-# "JDOWNLOADER IS READY" box (autostart), so brand + ready status sit together
-# as the log's final block instead of scrolling off the top during startup.
-# Installation of JD itself is handled by the autostart (needs a live DISPLAY).
+# Writes the openbox window rules and logs the build. It runs after
+# init-selkies-config (dependencies.d) because the Selkies base restores
+# /etc/xdg/openbox/rc.xml from rc.xml.bak on every start and then applies its own
+# env-driven seds, which would wipe an earlier patch. svc-de starts openbox only
+# after all init-* oneshots, so the rules are in place when windows map. autostart
+# prints the ASCII banner right above the READY line and installs JD itself, since
+# that needs a live DISPLAY.
 
 log() { echo "[init-jdownloader] $*"; }
 
-# NO title bar on ANY JD window (main frame AND the brief install dialogs), and
-# dialogs must float at their natural size instead of being maximized by the
-# base's kiosk catch-all. Idempotent; injects the rules if the base drops them.
+# No title bar on any JD window, the main frame and the short install dialogs
+# alike, and dialogs float at their natural size instead of being maximised by the
+# base's kiosk catch-all. The rules are added again if the base drops them.
 RC=/etc/xdg/openbox/rc.xml
 if [[ -f "${RC}" ]]; then
     python3 - "${RC}" <<'PYEOF' && log "openbox rc.xml: decor=no + dialogs un-maximized" || log "openbox rc.xml patch failed (non-fatal)"
@@ -25,9 +21,9 @@ rc = sys.argv[1]
 s = open(rc).read()
 changed = False
 
-# 1) No window decorations on any JD window (the LSIO base catch-all already
-#    maximises every window for kiosk; we only strip the title bar). Same sed
-#    the base applies for NO_DECOR — done here so it never depends on that env.
+# The LSIO catch-all already maximises every window for kiosk use; this only strips
+# the title bar, with the same sed the base applies for NO_DECOR, so it does not
+# depend on that variable.
 marker = '<application class="*">'
 if marker in s and (marker + '<decor>no</decor>') not in s:
     s = s.replace(marker, marker + '<decor>no</decor>', 1); changed = True
@@ -36,10 +32,8 @@ elif marker not in s and '</applications>' in s:
                   '  <application class="*"><decor>no</decor></application>\n</applications>', 1)
     changed = True
 
-# 2) Dialog windows (e.g. "Add premium account", settings popups) must NOT be
-#    maximized — the catch-all maximises everything, but dialogs should float at
-#    their natural size. A later-listed matching rule overrides the catch-all's
-#    <maximized> for type=dialog.
+# Dialogs such as "Add premium account" or the settings popups keep their natural
+# size, because a matching rule listed later overrides the catch-all's <maximized>.
 if '<application type="dialog">' not in s and '</applications>' in s:
     rule = '  <application type="dialog"><maximized>no</maximized><decor>no</decor></application>\n'
     s = s.replace('</applications>', rule + '</applications>', 1); changed = True
@@ -49,7 +43,7 @@ if changed:
 PYEOF
 fi
 
-# Print build provenance so users can verify which image is actually running
+# Build provenance, so users can tell which image is running.
 if [ -f /etc/jdownloader-build ]; then
     BUILD_SHA=$(grep '^sha='  /etc/jdownloader-build | cut -d= -f2)
     BUILD_DATE=$(grep '^date=' /etc/jdownloader-build | cut -d= -f2)
