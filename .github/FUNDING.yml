@@ -1,3 +1,3 @@
-# GitHub's Sponsor menu prints a custom link as the bare URL with no label, so
-# only the Sponsors entry is listed.
+# GitHub Sponsors only. The Sponsor menu has no label field and prints any
+# custom entry as a bare URL, which nobody can read before clicking it.
 github: [junkerderprovinz]
