@@ -1,4 +1,4 @@
-# Forum Post — Suggestions & Requests
+# Forum Post: Suggestions & Requests
 
 **Forum board**: https://board.jdownloader.org/forumdisplay.php?f=14
 (Section: "Suggestions & Requests")
@@ -20,7 +20,7 @@ I've put together a dark variant of the **JD Plain** icon set using the KDE Bree
 Dark colour palette. The goal was a clean, modern dark theme that matches what users
 get on KDE Plasma desktops (Krusader, Dolphin, etc.).
 
-The theme is a simple `theme.json` overlay on the existing JD Plain icons — no new
+The theme is a simple `theme.json` overlay on the existing JD Plain icons, no new
 icon set needed. Attached as `JD_Plain_Dark_theme.zip`.
 
 **Palette:**
@@ -43,13 +43,13 @@ would benefit.
 
 ### 2. Bug report: white download list & link grabber background in dark themes
 
-While testing this theme — and also while testing the stock `FLATLAF_DARK` Look & Feel —
+While testing this theme, and also while testing the stock `FLATLAF_DARK` Look & Feel,
 I noticed a consistent rendering bug:
 
 When a dark Look & Feel is active (`FLATLAF_DARK`, `FLATLAF_MAC_DARK`, `BLACK_EYE`, or
 any other dark theme), the **menu bar, toolbar, tab headers, column headers, and
-scrollbars** correctly switch to dark colours. However, JD's custom content areas — the
-**download list**, the **link grabber**, AND the **Advanced Settings table** — keep a
+scrollbars** correctly switch to dark colours. However, JD's custom content areas, the
+**download list**, the **link grabber**, and the **Advanced Settings table**, keep a
 white/light background, and the light theme text on them is barely readable in places.
 It affects both FlatLaf-based and Synthetica-based (BLACK_EYE) dark LAFs. See screenshots.
 
@@ -59,7 +59,7 @@ colour.
 **Hypothesis** (symptom + failed fixes verified; exact cause not proven): JD's ExtTable
 (download list / link grabber) does not follow the active LAF. Patching FlatLaf's
 FlatDarkLaf.properties with explicit Table/List/Panel keys did not change the content
-area, and adding a dark themes/flat/theme.json did not either — only a JVM agent that
+area, and adding a dark themes/flat/theme.json did not either; only a JVM agent that
 forces the colours into UIManager *after* the LAF is applied worked. So the ExtTable
 seems to read its colour from a source the LAF does not drive.
 
@@ -75,14 +75,14 @@ captured at component initialisation.
 
 **Environment**: JDownloader 2 (core revision 50639, build 2026-06-02), FlatLaf 3.7,
 Java 21.0.10 (Eclipse Adoptium, 64-bit). Reproduced on Windows 11 (25H2) AND on Linux
-(Ubuntu Noble, Docker/KasmVNC) — identical (dark chrome, white content area).
+(Ubuntu Noble, Docker/KasmVNC), identical (dark chrome, white content area).
 
 Screenshots attached.
 
-Thank you for considering — happy to provide more details, additional palettes, or
+Thank you for considering, happy to provide more details, additional palettes, or
 contribute an icon variant if useful.
 
-— junkerderprovinz
+junkerderprovinz
 
 ---
 

@@ -1,4 +1,4 @@
-# Security Findings — JDownloader Container
+# Security Findings: JDownloader Container
 
 Generated: 2026-05-28
 
@@ -55,4 +55,4 @@ Top CWE categories: CWE-78 (OS Command Injection) × 3, CWE-494 (Download withou
 
 Fixes applied directly in this session (SEC-004, SEC-006, SEC-011) are minimal and targeted.
 Remaining patches in `security_remediation.patch` address the harder injection issues and action pinning.
-SEC-001/002/003 require refactoring three scripts — recommended as a follow-up PR.
+SEC-001/002/003 require refactoring three scripts, recommended as a follow-up PR.

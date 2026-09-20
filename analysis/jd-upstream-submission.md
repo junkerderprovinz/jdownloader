@@ -1,10 +1,10 @@
-# Upstream Submission — JDownloader Dark Theme
+# Upstream Submission: JDownloader Dark Theme
 
-> **Status 2026-06-04 — acknowledged upstream.** Reported on the forum (thread t=98756,
+> **Status 2026-06-04, acknowledged upstream.** Reported on the forum (thread t=98756,
 > merged into ACRONYM's long-running FlatLAF-theme-issues thread). **Jiaz (JD Manager)
 > confirmed it:** JD still runs Synthetica + FlatLAF in parallel (not fully compatible),
 > which causes these dark-theme issues; they will be gone once JD fully migrates to
-> FlatLAF (no ETA, no individual fix). So **no separate GitHub issue is needed** — it is
+> FlatLAF (no ETA, no individual fix). So **no separate GitHub issue is needed**; it is
 > acknowledged and tracked upstream. This draft is kept for reference only. Our container's
 > JVM-agent workaround stays until JD finishes the FlatLAF migration.
 
@@ -17,14 +17,14 @@
 
 ---
 
-**Subject**: [Theme] JD Plain Dark — Breeze Dark colour palette
+**Subject**: [Theme] JD Plain Dark: Breeze Dark colour palette
 
 Hi,
 
 I'd like to share a dark colour theme for JDownloader 2 based on the KDE Breeze Dark palette.
 
 **What it does:** replaces JDownloader's colour tokens (table backgrounds, selection colours,
-panels, tabs, etc.) with the Breeze Dark palette — the scheme used in KDE Plasma and apps like
+panels, tabs, etc.) with the Breeze Dark palette, the scheme used in KDE Plasma and apps like
 Krusader.
 
 **Colour palette:** background #232629 | alternate row #1e2124 | panel #31363b |
@@ -37,7 +37,7 @@ progress #2d8a42
 Under ANY dark Look & Feel (FLATLAF_DARK, FLATLAF_MAC_DARK, BLACK_EYE, ...), JD's custom-rendered
 content areas keep a LIGHT background while the chrome (menu/toolbar/headers/scrollbars) is
 correctly dark. Affected at least: the download list, the link grabber, AND the Advanced Settings
-table — and the light theme text on the light background is barely readable in places (screenshots
+table, and the light theme text on the light background is barely readable in places (screenshots
 attached). It happens with both FlatLaf-based and Synthetica-based (BLACK_EYE) dark LAFs, so it's
 JD's own rendering, not a single LAF. I confirmed externally that the LAF can't reach these areas:
 patching FlatLaf's FlatDarkLaf.properties (Table/List/Panel keys) and adding a dark
@@ -52,7 +52,7 @@ after LAF init worked.
 
 **Environment**: JDownloader 2 (core revision 50639, build 2026-06-02), FlatLaf 3.7,
 Java 21.0.10 (Eclipse Adoptium, 64-bit). Reproduced on Windows 11 (25H2) AND on Linux
-(Ubuntu Noble, Docker/KasmVNC) — same on both, not container-specific.
+(Ubuntu Noble, Docker/KasmVNC), same on both, not container-specific.
 
 Thank you!
 
@@ -100,7 +100,7 @@ Java 21.0.10 (Eclipse Adoptium, 64-bit). Reproduced on Windows 11 (25H2) AND Lin
 
 ## 3. Attached Files
 
-- `JD_Plain_Dark_theme.zip` — importable theme package
+- `JD_Plain_Dark_theme.zip`, importable theme package
 - Screenshots: light download list + light Advanced Settings under a dark LAF
 
 ## 4. Timeline

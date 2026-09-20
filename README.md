@@ -20,7 +20,7 @@
 
 <p align="center">
 A modern, plug-and-play Docker image for <b>JDownloader 2</b> on Unraid with a
-<b>clean, sleek, fully dark and ad-free UI</b> out of the box — a monochrome IBM&nbsp;Carbon&nbsp;<code>#161616</code>
+<b>fully dark and ad-free UI</b> out of the box: a monochrome IBM&nbsp;Carbon&nbsp;<code>#161616</code>
 dark across the <i>entire</i> interface (download list, link grabber <b>and</b> settings, not just
 the menu bar), with light fills + readable text on the progress bars and a borderless,
 maximised kiosk window. JDownloader's built-in advertisements are switched off, so the
@@ -70,18 +70,18 @@ This image packages [JDownloader 2](https://jdownloader.org) into a self-contain
 
 What's included beyond bare JDownloader:
 
-- **Selkies** instead of noVNC — a hybrid VNC/H.264 pipeline for a smooth 60fps web desktop, real bidirectional browser clipboard, native file upload and download, high-DPI ready
-- **Sleek, complete Dark Mode** pre-applied — a monochrome IBM Carbon (#161616) dark across the *entire* GUI (download list, link grabber **and** settings, not just the menu bar), in a clean maximised kiosk window; switch to a matching Light theme with one variable
-- **Ad-free by default** — JDownloader's built-in advertisements (the *"Become premium user"* banner, the premium-alert column nags, the special-deal popups) are switched off, so the GUI stays clean and the download speed graph keeps its **full height**
-- **Java 21 JRE** — full AWT/Swing support for the JDownloader GUI, not headless
-- **Auto-install** — downloads and installs JDownloader 2 on first container start, no manual JAR setup
-- **Self-updating** — JDownloader updates itself on every start as it normally does
-- **Update-safe config** — all settings, links and session state live in `/config` and survive every `docker pull`
-- **Multi-arch** — amd64 and arm64
+- **Selkies** instead of noVNC: a hybrid VNC/H.264 pipeline for a smooth 60fps web desktop, real bidirectional browser clipboard, native file upload and download, high-DPI ready
+- **Complete Dark Mode** pre-applied: a monochrome IBM Carbon (#161616) dark across the *entire* GUI (download list, link grabber **and** settings, not just the menu bar), in a maximised kiosk window; switch to a matching Light theme with one variable
+- **Ad-free by default**: JDownloader's built-in advertisements (the *"Become premium user"* banner, the premium-alert column nags, the special-deal popups) are switched off, so the GUI stays clean and the download speed graph keeps its **full height**
+- **Java 21 JRE**: full AWT/Swing support for the JDownloader GUI, not headless
+- **Auto-install**: downloads and installs JDownloader 2 on first container start, no manual JAR setup
+- **Self-updating**: JDownloader updates itself on every start as it normally does
+- **Update-safe config**: all settings, links and session state live in `/config` and survive every `docker pull`
+- **Multi-arch**: amd64 and arm64
 
 | | **This image** | jlesage | jaymoulin |
 |---|:---:|:---:|:---:|
-| Web stack | **Selkies** | noVNC | — (headless) |
+| Web stack | **Selkies** | noVNC | n/a (headless) |
 | HW-accelerated rendering | ✅ | ❌ | ❌ |
 | Browser clipboard | ✅ | ⚠️ | ❌ |
 | File upload via WebUI | ✅ | ❌ | ❌ |
@@ -97,28 +97,28 @@ What's included beyond bare JDownloader:
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/junkerderprovinz/jdownloader/main/.github/assets/screenshots/jdownloader-1.jpg" alt="JDownloader download list with the Carbon dark theme and right-click menu" width="90%">
-  <br><em>Download list in monochrome Carbon <code>#161616</code> — right-click menu, per-file priority, live speed/ETA.</em>
+  <br><em>Download list in monochrome Carbon <code>#161616</code>: right-click menu, per-file priority, live speed/ETA.</em>
 </p>
 
 <br>
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/junkerderprovinz/jdownloader/main/.github/assets/screenshots/jdownloader-2.jpg" alt="JDownloader downloading multiple packages with the dark theme" width="90%">
-  <br><em>Multiple packages downloading — uniform dark rows, light progress bars, green speed graph.</em>
+  <br><em>Multiple packages downloading: uniform dark rows, light progress bars, green speed graph.</em>
 </p>
 
 <br>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/junkerderprovinz/jdownloader/main/.github/assets/screenshots/jdownloader-3.jpg" alt="JDownloader Settings — User Interface tab, fully dark" width="90%">
-  <br><em>Settings &rarr; User Interface — fully dark, the same Carbon palette across the whole app.</em>
+  <img src="https://raw.githubusercontent.com/junkerderprovinz/jdownloader/main/.github/assets/screenshots/jdownloader-3.jpg" alt="JDownloader Settings: User Interface tab, fully dark" width="90%">
+  <br><em>Settings &rarr; User Interface: fully dark, the same Carbon palette across the whole app.</em>
 </p>
 
 <br>
 
 ## 3. Quick Start
 
-### Step 1 — Install the template
+### Step 1: Install the template
 
 In Unraid: **Apps** → search for **JDownloader** → click **Install**.
 
@@ -127,7 +127,7 @@ The Community Applications template is published from the
 (one feed for all of junkerderprovinz's apps). If the Template dropdown in **Docker → Add
 Container** no longer accepts a URL on your Unraid version, drop the XML directly into the
 templates-user folder via SSH (or WinSCP). **Important:** the filename must be
-`my-JDownloader.xml` with the `my-` prefix and capital `J` — otherwise Unraid sees it as a
+`my-JDownloader.xml` with the `my-` prefix and capital `J`; otherwise Unraid sees it as a
 separate template and a `Force Update` will reset all customizations.
 
 ```bash
@@ -135,18 +135,18 @@ wget -O /boot/config/plugins/dockerMan/templates-user/my-JDownloader.xml \
     https://raw.githubusercontent.com/junkerderprovinz/unraid-apps/main/jdownloader/jdownloader.xml
 ```
 
-### Step 2 — Adjust paths and start
+### Step 2: Adjust paths and start
 
 The defaults work out of the box, but you may want to tweak:
 
-- **Config (`/config`)** — defaults to `/mnt/user/appdata/jdownloader`
-- **Downloads (`/downloads`)** — defaults to `/mnt/user/downloads`; this is where JDownloader saves files
-- **Theme** — default `Dark` (JD Plain Dark, Carbon #161616 palette); switch to `Light`, or `JDDEFAULT` for the classic official JDownloader look, any time
-- **WebUI Password** — leave empty for LAN-only, set anything for exposure beyond the LAN
+- **Config (`/config`)**: defaults to `/mnt/user/appdata/jdownloader`
+- **Downloads (`/downloads`)**: defaults to `/mnt/user/downloads`; this is where JDownloader saves files
+- **Theme**: default `Dark` (JD Plain Dark, Carbon #161616 palette); switch to `Light`, or `JDDEFAULT` for the classic official JDownloader look, any time
+- **WebUI Password**: leave empty for LAN-only, set anything for exposure beyond the LAN
 
 Click **Apply**.
 
-> ## ⏳ First start — wait for the READY banner
+> ## ⏳ First start: wait for the READY banner
 >
 > On the **first start (and after every image update)** JDownloader installs/updates itself
 > and applies the dark theme. **The WebUI stays black for a few minutes.** Open the container
@@ -159,12 +159,12 @@ Click **Apply**.
 > ```
 >
 > **Do not restart the container while it installs.** The banner is shown only once the GUI is
-> up **and** the dark theme is fully applied — so when you see it, the UI is already dark and
+> up **and** the dark theme is fully applied, so when you see it, the UI is already dark and
 > ready. (It self-heals JDownloader's first-run theme reset, then prints the banner.)
 
-### Step 3 — Open the WebUI
+### Step 3: Open the WebUI
 
-Use **`https://<unraid-ip>:3001/`** (this is what the template's WebUI button opens) and accept the self-signed certificate warning once. **HTTPS is required for direct access:** the Selkies web client needs a browser *secure context* — for the WebCodecs video decoder it streams through, and for **seamless clipboard** (copy on your PC, paste straight into JD). Opening `http://<unraid-ip>:3000/` therefore stops at a *"This application requires a secure connection (HTTPS)"* error and never loads the desktop. Port `3000` exists for a reverse proxy that terminates TLS in front of the container and forwards plain HTTP to it.
+Use **`https://<unraid-ip>:3001/`** (this is what the template's WebUI button opens) and accept the self-signed certificate warning once. **HTTPS is required for direct access:** the Selkies web client needs a browser *secure context*, both for the WebCodecs video decoder it streams through and for **seamless clipboard** (copy on your PC, paste straight into JD). Opening `http://<unraid-ip>:3000/` therefore stops at a *"This application requires a secure connection (HTTPS)"* error and never loads the desktop. Port `3000` exists for a reverse proxy that terminates TLS in front of the container and forwards plain HTTP to it.
 
 The JDownloader GUI appears automatically once the install completes.
 
@@ -203,16 +203,16 @@ services:
 |---|---|---|
 | `MAX_RES` | `15360x8640` | Virtual screen the container serves, picked from a dropdown of presets in the template. This is where most of the container's memory goes, see below. |
 | `MAX_RES_CUSTOM` | *(empty)* | Your own `WIDTHxHEIGHT` instead of a preset, e.g. `3440x1440`. Wins over `MAX_RES` when set. |
-| `JD_THEME` | `Dark` | UI theme — `Dark` = monochrome Carbon `#161616`, `Light` = FlatLaf light, `JDDEFAULT` = classic official JDownloader look (Synthetica). Default stays `Dark`; existing themes are unchanged. |
-| `JD_SELFUPDATE` | `true` | `false` disables JD's periodic self-update checks (opt-in "frozen appliance"). **Note:** the same update channel delivers the hoster plugins, which go stale within weeks — downloads may start failing. First install always uses the updater. |
-| `JD_ENABLE_BROWSER` | `false` | `true` enables JD's "solve captcha in browser" flow: reCAPTCHA/hCaptcha/Turnstile open in a bundled **Firefox** (with **uBlock Origin**) on the web desktop, solved with one click from the container's own IP (tokens are IP-bound); the profile persists in `/config/.config/mozilla`. Off by default — no browser process runs. Only enable it if a hoster you use needs browser captchas (classic image captchas are auto-solved either way); enabling it runs a full browser (more resources + attack surface). |
+| `JD_THEME` | `Dark` | UI theme, `Dark` = monochrome Carbon `#161616`, `Light` = FlatLaf light, `JDDEFAULT` = classic official JDownloader look (Synthetica). Default stays `Dark`; existing themes are unchanged. |
+| `JD_SELFUPDATE` | `true` | `false` disables JD's periodic self-update checks (opt-in "frozen appliance"). The same update channel delivers the hoster plugins, which go stale within weeks, so downloads may start failing. First install always uses the updater. |
+| `JD_ENABLE_BROWSER` | `false` | `true` enables JD's "solve captcha in browser" flow: reCAPTCHA/hCaptcha/Turnstile open in a bundled **Firefox** (with **uBlock Origin**) on the web desktop, solved with one click from the container's own IP (tokens are IP-bound); the profile persists in `/config/.config/mozilla`. Off by default, and no browser process runs. Only enable it if a hoster you use needs browser captchas (classic image captchas are auto-solved either way); enabling it runs a full browser (more resources + attack surface). |
 | `JD_UI_SCALE` | _(empty)_ | Optional scaling for the whole JDownloader UI, e.g. `1.5` or `2`; empty keeps 1x. Renders the UI larger at full pixel density instead of browser zoom, which upscales the Selkies video stream and blurs it. It applies to every browser that opens the WebUI, so leave it empty if you use displays with different scaling. See Troubleshooting if text looks tiny or blurry. |
 | `JD_COMPACT_TOOLBAR` | _(empty)_ | `true` / `1` keeps JDownloader's stock ~32px toolbar row (icons with less vertical padding). Empty / `false` keeps this image's default: the speed-graph row is grown to 64px so the download graph has full height. |
-| `PUID` | `99` | User ID — Unraid's *nobody* |
-| `PGID` | `100` | Group ID — Unraid's *users* |
+| `PUID` | `99` | User ID, Unraid's *nobody* |
+| `PGID` | `100` | Group ID, Unraid's *users* |
 | `TZ` | `Europe/Vienna` | Timezone |
-| `CUSTOM_USER` | _(empty)_ | WebUI login username — leave empty with `PASSWORD` for no login |
-| `PASSWORD` | _(empty)_ | WebUI password — **set this if exposed beyond LAN** |
+| `CUSTOM_USER` | _(empty)_ | WebUI login username; leave empty with `PASSWORD` for no login |
+| `PASSWORD` | _(empty)_ | WebUI password, **set this if exposed beyond LAN** |
 | `UMASK` | `000` | File-creation mask. Keeps new files writable for other containers on the same shares |
 
 ### Screen size and memory use
@@ -235,12 +235,12 @@ the same window counts in physical pixels, 3200x2000.
 
 | Port | Purpose | | Volume | Purpose |
 |---|---|---|---|---|
-| `3001` | Selkies HTTPS *(self-signed)* — **default WebUI, needed for clipboard** | | `/config` | Persistent JDownloader config, links, session |
-| `3000` | Selkies HTTP *(reverse-proxy only — direct access needs HTTPS)* | | `/downloads` | Download destination |
+| `3001` | Selkies HTTPS *(self-signed)*, **default WebUI, needed for clipboard** | | `/config` | Persistent JDownloader config, links, session |
+| `3000` | Selkies HTTP *(reverse-proxy only; direct access needs HTTPS)* | | `/downloads` | Download destination |
 
-> **Web file transfers:** the Selkies sidebar's upload/download panel and the WebUI's `/files` browser both use the base image's `FILE_MANAGER_PATH`, which defaults to **`/config/Desktop`** — so anything you upload through the browser lands there, inside the persisted `/config` volume, and survives a container update. Point `FILE_MANAGER_PATH` somewhere else if you prefer (e.g. a folder under `/downloads`), but pick the directory deliberately: without `PASSWORD` set, `/files` serves it to anyone who can reach the WebUI.
+> **Web file transfers:** the Selkies sidebar's upload/download panel and the WebUI's `/files` browser both use the base image's `FILE_MANAGER_PATH`, which defaults to **`/config/Desktop`**, so anything you upload through the browser lands there, inside the persisted `/config` volume, and survives a container update. Point `FILE_MANAGER_PATH` somewhere else if you prefer (e.g. a folder under `/downloads`), but pick the directory deliberately: without `PASSWORD` set, `/files` serves it to anyone who can reach the WebUI.
 
-> **Language:** the UI is **English** by default. Change it any time in JDownloader's own language menu (top toolbar → the flag icon, or *Settings → Language*) — your choice is saved and persists across restarts.
+> **Language:** the UI is **English** by default. Change it any time in JDownloader's own language menu (top toolbar → the flag icon, or *Settings → Language*); your choice is saved and persists across restarts.
 
 <br>
 
@@ -260,7 +260,7 @@ On the **first start**, JDownloader installs itself into `/config/JDownloader/`.
 
 The env-driven setting `JD_THEME` is re-applied on **every start**, so you can change it at any time via the Unraid template.
 
-The base image also supports `/config/custom-cont-init.d/` for your own init scripts — see the [LinuxServer docs](https://docs.linuxserver.io/general/container-customization/).
+The base image also supports `/config/custom-cont-init.d/` for your own init scripts, see the [LinuxServer docs](https://docs.linuxserver.io/general/container-customization/).
 
 <br>
 
@@ -271,15 +271,15 @@ The base image also supports `/config/custom-cont-init.d/` for your own init scr
 
 - Make sure `shm_size` is at least `512mb` (Unraid template sets `1gb`)
 - Check the container log for Selkies startup errors
-- Make sure you opened **`https://<ip>:3001/`** and not `http://<ip>:3000/` — over plain HTTP the Selkies client aborts with *"requires a secure connection (HTTPS)"* and the desktop never appears
-- **First start takes a few minutes** — JDownloader installs itself + its dark theme; the screen stays black until done. Watch the container log for the **`JDOWNLOADER IS READY`** banner, then refresh. Don't restart the container.
-- **First start only:** JDownloader may ask once to install its design + a few extensions — click **OK** / **Install now**. Afterwards it stays dark with no prompts.
+- Make sure you opened **`https://<ip>:3001/`** and not `http://<ip>:3000/`; over plain HTTP the Selkies client aborts with *"requires a secure connection (HTTPS)"* and the desktop never appears
+- **First start takes a few minutes**: JDownloader installs itself + its dark theme; the screen stays black until done. Watch the container log for the **`JDOWNLOADER IS READY`** banner, then refresh. Don't restart the container.
+- **First start only:** JDownloader may ask once to install its design + a few extensions, click **OK** / **Install now**. Afterwards it stays dark with no prompts.
 </details>
 
 <details>
 <summary><b>Can't paste into JD / seamless clipboard doesn't work</b></summary>
 
-- Open the WebUI over **HTTPS** (`https://<ip>:3001/` — the template's WebUI button). Browsers only allow the seamless clipboard API in a **secure context**; over plain HTTP it's blocked.
+- Open the WebUI over **HTTPS** (`https://<ip>:3001/`, the template's WebUI button). Browsers only allow the seamless clipboard API in a **secure context**; over plain HTTP it's blocked.
 - If prompted, allow the browser's clipboard permission (lock icon → site settings).
 </details>
 
@@ -287,8 +287,8 @@ The base image also supports `/config/custom-cont-init.d/` for your own init scr
 <summary><b>JDownloader GUI doesn't appear after 2 minutes</b></summary>
 
 - Open the container log and look for `init-jdownloader` messages
-- If you see `JDownloader2.jar missing after installer run` — the installer needs an internet connection on first start. Ensure the container has internet access.
-- Restart the container once — the installer retries automatically
+- If you see `JDownloader2.jar missing after installer run`: the installer needs an internet connection on first start. Ensure the container has internet access.
+- Restart the container once; the installer retries automatically
 </details>
 
 <details>
@@ -296,7 +296,7 @@ The base image also supports `/config/custom-cont-init.d/` for your own init scr
 
 - Verify `JD_THEME=Dark` is set in your template
 - Check the container log for `[jdownloader-theme]` lines
-- The theme is applied at container start, not live — restart after changing `JD_THEME`
+- The theme is applied at container start, not live; restart after changing `JD_THEME`
 </details>
 
 <details>
@@ -318,7 +318,7 @@ The base image also supports `/config/custom-cont-init.d/` for your own init scr
 <details>
 <summary><b>WebUI password not accepted</b></summary>
 
-- Open in a private/incognito window once — your browser may have cached old credentials
+- Open in a private/incognito window once; your browser may have cached old credentials
 </details>
 
 <br>
@@ -356,7 +356,7 @@ ghcr.io/linuxserver/baseimage-selkies:ubunturesolute   (s6-overlay v3 · Selkies
 
 Pull requests welcome. Issues: <https://github.com/junkerderprovinz/jdownloader/issues>.
 
-**Licensing — dual:**
+**Licensing: dual:**
 
 - This **wrapper repository** (Dockerfile, `rootfs/`, scripts, Unraid template, README and banner/icon artwork) is licensed under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0).
 - **JDownloader 2** itself retains its own license (see [jdownloader.org/license](https://jdownloader.org/license)). When you run or redistribute the resulting container image, you must comply with JDownloader's license as well.
@@ -370,11 +370,11 @@ find . -name '*.xml' | xargs xmllint --noout
 
 ### Credits
 
-- [**JDownloader 2**](https://jdownloader.org) — AppWork GmbH & the JDownloader team
-- [**LinuxServer.io**](https://www.linuxserver.io) — for the excellent [`baseimage-selkies`](https://github.com/linuxserver/docker-baseimage-selkies)
-- [**Selkies**](https://github.com/selkies-project/selkies) — for a modern, actively-developed browser desktop stack
-- [**Icons8**](https://icons8.com) — the bundled "JD Plain" flat icon set uses JDownloader's Icons8 icons, redistributed verbatim under [CC BY-ND 3.0](https://icons8.com/license)
-- Inspiration: jlesage and jaymoulin JDownloader containers — they paved the way
+- [**JDownloader 2**](https://jdownloader.org), AppWork GmbH & the JDownloader team
+- [**LinuxServer.io**](https://www.linuxserver.io), for the excellent [`baseimage-selkies`](https://github.com/linuxserver/docker-baseimage-selkies)
+- [**Selkies**](https://github.com/selkies-project/selkies), for a modern, actively-developed browser desktop stack
+- [**Icons8**](https://icons8.com), the bundled "JD Plain" flat icon set uses JDownloader's Icons8 icons, redistributed verbatim under [CC BY-ND 3.0](https://icons8.com/license)
+- Inspiration: jlesage and jaymoulin JDownloader containers, they paved the way
 
 <br>
 
