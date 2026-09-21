@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.26
+# syntax=docker/dockerfile:1.26@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
 #
 # JDownloader 2 for Unraid on the LinuxServer Selkies base image.
 # https://github.com/junkerderprovinz/jdownloader
@@ -13,7 +13,7 @@ ARG BASE_TAG=ubunturesolute
 # It also enforces the dark chrome and guards two AppWork/jsyntaxpane NPEs that fire
 # under FlatLaf and break the Event Scripter editor; those bytecode guards need ASM,
 # shaded into the agent jar.
-FROM eclipse-temurin:25.0.4_7-jdk AS agent-builder
+FROM eclipse-temurin:25.0.4_7-jdk@sha256:97014c4b396021f9ddb7d592a7dbedb0c4e4215c29e03dc01c393558aefb71c2 AS agent-builder
 WORKDIR /build
 # ASM (BSD-3-Clause) is pinned and checked against its SHA-256, so a swapped
 # artifact fails the build.
