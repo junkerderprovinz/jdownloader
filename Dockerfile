@@ -6,7 +6,7 @@
 
 # The Selkies base breaks compatibility between flavors, so the flavor is pinned.
 # ubunturesolute is Ubuntu 25.10, the same flavor krusader uses.
-ARG BASE_TAG=ubunturesolute
+ARG BASE_TAG=ubunturesolute@sha256:468108db1ab73d876a718d40addbff0509bf29be413dae6b8da680bba109affd
 
 # The agent clicks through the first-run and update installer dialogs, which JD
 # forces whenever the GUI is visible (UpdateController) and no config can suppress.
