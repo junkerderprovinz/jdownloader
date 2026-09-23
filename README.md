@@ -201,8 +201,6 @@ services:
 
 | Variable | Default | Description |
 |---|---|---|
-| `MAX_RES` | `15360x8640` | Virtual screen the container serves, picked from a dropdown of presets in the template. This is where most of the container's memory goes, see below. |
-| `MAX_RES_CUSTOM` | *(empty)* | Your own `WIDTHxHEIGHT` instead of a preset, e.g. `3440x1440`. Wins over `MAX_RES` when set. |
 | `JD_THEME` | `Dark` | UI theme, `Dark` = monochrome Carbon `#161616`, `Light` = FlatLaf light, `JDDEFAULT` = classic official JDownloader look (Synthetica). Default stays `Dark`; existing themes are unchanged. |
 | `JD_SELFUPDATE` | `true` | `false` disables JD's periodic self-update checks (opt-in "frozen appliance"). The same update channel delivers the hoster plugins, which go stale within weeks, so downloads may start failing. First install always uses the updater. |
 | `JD_ENABLE_BROWSER` | `false` | `true` enables JD's "solve captcha in browser" flow: reCAPTCHA/hCaptcha/Turnstile open in a bundled **Firefox** (with **uBlock Origin**) on the web desktop, solved with one click from the container's own IP (tokens are IP-bound); the profile persists in `/config/.config/mozilla`. Off by default, and no browser process runs. Only enable it if a hoster you use needs browser captchas (classic image captchas are auto-solved either way); enabling it runs a full browser (more resources + attack surface). |
@@ -217,28 +215,18 @@ services:
 
 ### Screen size and memory use
 
-The X server reserves its whole virtual framebuffer up front, at roughly **4 bytes per pixel**, no
-matter how big your browser window actually is. At the full `15360x8640` that is 530 MB before
-anything else runs, which is most of what this container uses at idle.
-
-The image ships that full size, so every resolution stays available. If you would rather have the
-RAM back, pick a smaller screen in the template: the dropdown lists sizes from 1080p upwards with
-the cost of each, and the free field next to it takes anything not in the list. A value that is not
-a `WIDTHxHEIGHT` pair is ignored with a note in the container log rather than stopping the
-container.
-
-Pick a size at least as big as the largest browser window you open the WebUI in. A bigger window
-does not get a bigger desktop: the desktop keeps its last size in the top-left corner and the rest
-of the window stays black. This image streams at the size your browser reports, so a 1600x1000
-window on a laptop set to 200 % counts as 1600x1000. With HiDPI switched on in the Selkies sidebar
-the same window counts in physical pixels, 3200x2000.
+The desktop follows your browser window: Selkies resizes the screen to the size the browser
+reports, so there is no screen size to set and memory only grows with the window you actually use
+(about 500 MB at idle in a 1600x900 window). A 1600x1000 window on a laptop set to 200 % counts as
+1600x1000. With HiDPI switched on in the Selkies sidebar the same window counts in physical pixels,
+3200x2000.
 
 | Port | Purpose | | Volume | Purpose |
 |---|---|---|---|---|
 | `3001` | Selkies HTTPS *(self-signed)*, **default WebUI, needed for clipboard** | | `/config` | Persistent JDownloader config, links, session |
 | `3000` | Selkies HTTP *(reverse-proxy only; direct access needs HTTPS)* | | `/downloads` | Download destination |
 
-> **Web file transfers:** the Selkies sidebar's upload/download panel and the WebUI's `/files` browser both use the base image's `FILE_MANAGER_PATH`, which defaults to **`/config/Desktop`**, so anything you upload through the browser lands there, inside the persisted `/config` volume, and survives a container update. Point `FILE_MANAGER_PATH` somewhere else if you prefer (e.g. a folder under `/downloads`), but pick the directory deliberately: without `PASSWORD` set, `/files` serves it to anyone who can reach the WebUI.
+> **Web file transfers:** the Selkies sidebar's upload/download panel uses `FILE_MANAGER_PATH`, which defaults to **`/config/Desktop`**, so anything you upload through the browser lands there, inside the persisted `/config` volume, and survives a container update. Point `FILE_MANAGER_PATH` somewhere else if you prefer (e.g. a folder under `/downloads`), but pick the directory deliberately: without `PASSWORD` set, anyone who can reach the WebUI can browse and download it.
 
 > **Language:** the UI is **English** by default. Change it any time in JDownloader's own language menu (top toolbar → the flag icon, or *Settings → Language*); your choice is saved and persists across restarts.
 

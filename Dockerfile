@@ -5,8 +5,8 @@
 # AGPL-3.0-only for this wrapper; JDownloader 2 has its own licence.
 
 # The Selkies base breaks compatibility between flavors, so the flavor is pinned.
-# ubunturesolute is Ubuntu 25.10, the same flavor krusader uses.
-ARG BASE_TAG=ubunturesolute@sha256:468108db1ab73d876a718d40addbff0509bf29be413dae6b8da680bba109affd
+# ubunturesolute is Ubuntu 26.04 with Selkies 2.0.
+ARG BASE_TAG=ubunturesolute@sha256:6cfa54196b6e0dade64f5e51517fd12c4275ceda7519c0e18ad168cb4508c050
 
 # The agent clicks through the first-run and update installer dialogs, which JD
 # forces whenever the GUI is visible (UpdateController) and no config can suppress.
@@ -44,18 +44,10 @@ LABEL org.opencontainers.image.vendor="junkerderprovinz"
 # TITLE feeds the PWA manifest and SELKIES_UI_TITLE the tab and sidebar title
 # of the Selkies client; this base needs both.
 #
-# Selkies turns basic auth on by default with the well-known ubuntu/mypasswd
-# credentials, so SELKIES_ENABLE_BASIC_AUTH=false keeps a container without a
-# password free of a login. The base's nginx would still turn a set but empty
-# PASSWORD into one, which is why init-nologin drops an empty PASSWORD and
-# CUSTOM_USER before nginx starts. Selkies listens on localhost only, so a real
-# CUSTOM_USER/PASSWORD is enforced by nginx, the one reachable entry point.
-#
-# MAX_RES has no default here. The X server allocates its whole framebuffer up
-# front at about 4 bytes per pixel, so the base's 15360x8640 costs 530 MB
-# before anything else runs (1.19 GiB measured for the whole container). The
-# template offers a preset dropdown (MAX_RES) and a free field (MAX_RES_CUSTOM)
-# that wins, and init-screen-size settles the two before svc-xorg reads them.
+# Selkies turns basic auth on by default and will not start without a password,
+# so SELKIES_ENABLE_BASIC_AUTH=false keeps a container without one free of a
+# login. Selkies listens on localhost only, so a real CUSTOM_USER/PASSWORD is
+# enforced by nginx, the one reachable entry point.
 #
 # Unlike the sibling Selkies images, RESTART_APP stays unset: autostart
 # supervises JD itself, with a fast-exit counter, a capped backoff and a pause
@@ -149,16 +141,16 @@ ENV MOZ_CRASHREPORTER_DISABLE=1
 
 COPY rootfs/ /
 
-# rootfs/ adds svc-xorg/dependencies.d/init-screen-size so our oneshot settles
-# MAX_RES before Xvfb reads it. If a base update renamed that service, the COPY
-# above would create svc-xorg as a directory with a dependency and no `type` file.
+# rootfs/ adds svc-xorg/dependencies.d/init-dpi so our oneshot settles the DPI
+# before Xvfb starts. If a base update renamed that service, the COPY above
+# would create svc-xorg as a directory with a dependency and no `type` file.
 # s6-rc-compile would then abort in stage 2 and every container would exit at
 # boot while the build stays green, so the failure would only show up in users'
 # logs. Checking for the base's own `type` file makes it a build error instead.
 RUN set -eux; \
     t=/etc/s6-overlay/s6-rc.d/svc-xorg/type; \
-    [ -f "$t" ] || { echo "ERROR: $t missing: the selkies base renamed or dropped svc-xorg; re-point rootfs/etc/s6-overlay/s6-rc.d/svc-xorg/dependencies.d/init-screen-size at the new service"; exit 1; }; \
-    echo "jdownloader: screen-size oneshot ordered before svc-xorg"
+    [ -f "$t" ] || { echo "ERROR: $t missing: the selkies base renamed or dropped svc-xorg; re-point rootfs/etc/s6-overlay/s6-rc.d/svc-xorg/dependencies.d/init-dpi at the new service"; exit 1; }; \
+    echo "jdownloader: dpi oneshot ordered before svc-xorg"
 
 # The banner's source is .github/assets/banner-raw.txt. tr strips the Windows CRs
 # and is byte-safe for the block characters.
@@ -183,8 +175,6 @@ COPY --from=agent-builder /build/jd-dialog-agent.jar /opt/JDownloader/jd-dialog-
 
 RUN chmod +x \
     /usr/local/bin/ff-launch \
-    /usr/local/bin/selkies-resolution.sh \
-    /etc/s6-overlay/s6-rc.d/init-screen-size/run \
     /etc/s6-overlay/s6-rc.d/init-dpi/run \
     /usr/local/bin/jdownloader-language.sh \
     /usr/local/bin/jdownloader-theme.sh \
@@ -195,7 +185,6 @@ RUN chmod +x \
     /usr/local/bin/print-banner.sh \
     /etc/cont-init.d/10-jdownloader-setup \
     /etc/s6-overlay/s6-rc.d/init-jdownloader/run \
-    /etc/s6-overlay/s6-rc.d/init-nologin/run \
     /etc/s6-overlay/s6-rc.d/svc-de/finish \
     /defaults/autostart \
     /defaults/startwm.sh
