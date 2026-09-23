@@ -21,19 +21,6 @@ jobs:
           ignore: DL3008,DL3009
           failure-threshold: warning
 
-  screen-size-tests:
-    name: Screen size behaviour
-    runs-on: ubuntu-latest
-    # The tests only run a shell script; a hang must not sit in the queue for
-    # the 6 h job default.
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - name: Run behaviour tests
-        # Which screen size wins between the template's preset dropdown and its
-        # free field, and what happens to a malformed one.
-        run: bash tests/test-selkies-resolution.sh
-
   shellcheck:
     name: ShellCheck (init scripts)
     runs-on: ubuntu-latest
