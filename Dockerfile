@@ -5,8 +5,8 @@
 # AGPL-3.0-only for this wrapper; JDownloader 2 has its own licence.
 
 # The Selkies base breaks compatibility between flavors, so the flavor is pinned.
-# ubunturesolute is Ubuntu 25.10, the same flavor krusader uses.
-ARG BASE_TAG=ubunturesolute@sha256:468108db1ab73d876a718d40addbff0509bf29be413dae6b8da680bba109affd
+# ubunturesolute is Ubuntu 26.04 with Selkies 2.0.
+ARG BASE_TAG=ubunturesolute@sha256:6cfa54196b6e0dade64f5e51517fd12c4275ceda7519c0e18ad168cb4508c050
 
 # The agent clicks through the first-run and update installer dialogs, which JD
 # forces whenever the GUI is visible (UpdateController) and no config can suppress.
@@ -44,12 +44,10 @@ LABEL org.opencontainers.image.vendor="junkerderprovinz"
 # TITLE feeds the PWA manifest and SELKIES_UI_TITLE the tab and sidebar title
 # of the Selkies client; this base needs both.
 #
-# Selkies turns basic auth on by default with the well-known ubuntu/mypasswd
-# credentials, so SELKIES_ENABLE_BASIC_AUTH=false keeps a container without a
-# password free of a login. The base's nginx would still turn a set but empty
-# PASSWORD into one, which is why init-nologin drops an empty PASSWORD and
-# CUSTOM_USER before nginx starts. Selkies listens on localhost only, so a real
-# CUSTOM_USER/PASSWORD is enforced by nginx, the one reachable entry point.
+# Selkies turns basic auth on by default and will not start without a password,
+# so SELKIES_ENABLE_BASIC_AUTH=false keeps a container without one free of a
+# login. Selkies listens on localhost only, so a real CUSTOM_USER/PASSWORD is
+# enforced by nginx, the one reachable entry point.
 #
 # MAX_RES has no default here. The X server allocates its whole framebuffer up
 # front at about 4 bytes per pixel, so the base's 15360x8640 costs 530 MB
@@ -195,7 +193,6 @@ RUN chmod +x \
     /usr/local/bin/print-banner.sh \
     /etc/cont-init.d/10-jdownloader-setup \
     /etc/s6-overlay/s6-rc.d/init-jdownloader/run \
-    /etc/s6-overlay/s6-rc.d/init-nologin/run \
     /etc/s6-overlay/s6-rc.d/svc-de/finish \
     /defaults/autostart \
     /defaults/startwm.sh
