@@ -6,7 +6,7 @@
 
 # The Selkies base breaks compatibility between flavors, so the flavor is pinned.
 # ubunturesolute is Ubuntu 26.04 with Selkies 2.0.
-ARG BASE_TAG=ubunturesolute@sha256:168036621e732bcd8a9c5b1c3378eef8cd2fc77f30e363176fe9b7ece913d19a
+ARG BASE_TAG=ubunturesolute@sha256:e73f4ce644db0e9ba8deb33f03b559c880e3e3eec78046252a178c2ee3c2b6f6
 
 # The agent clicks through the first-run and update installer dialogs, which JD
 # forces whenever the GUI is visible (UpdateController) and no config can suppress.
