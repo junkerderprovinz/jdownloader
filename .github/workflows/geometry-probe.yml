@@ -27,7 +27,9 @@ jobs:
           set -uo pipefail
           ready=""
           for i in $(seq 1 90); do
-            if docker logs jd 2>&1 | grep -q "IS READY"; then
+            # Matched on a captured copy: `docker logs | grep -q` under pipefail dies of
+            # SIGPIPE once more log follows the match, and the banner then reads as missing.
+            if grep -q "IS READY" <<< "$(docker logs jd 2>&1)"; then
               echo "READY after ~$((i*10))s"; ready=1; break
             fi
             if [ -z "$(docker ps -q --filter name=jd)" ]; then
