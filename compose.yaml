@@ -1,0 +1,28 @@
+# Built from the Unraid template in junkerderprovinz/unraid-apps by
+# .github/gen-compose.py. Change the template there, not this file.
+#
+# Folders are created next to this file on the first start. Point the ones
+# that hold your own files (downloads, storage and the like) at real folders
+# first, and fill in every value marked "required".
+
+services:
+  jdownloader:
+    image: junkerderprovinz/jdownloader:latest
+    container_name: jdownloader
+    restart: unless-stopped
+    shm_size: 1gb
+    ports:
+      - "3000:3000"
+      - "3001:3001"
+    volumes:
+      - "./appdata:/config"
+      - "./downloads:/downloads"
+    environment:
+      JD_THEME: Dark
+      JD_ACCENT: "#ffee00"
+      JD_SELFUPDATE: "true"
+      JD_ENABLE_BROWSER: auto
+      TZ: Europe/Vienna
+      PUID: "1000"
+      PGID: "1000"
+      UMASK: "022"
