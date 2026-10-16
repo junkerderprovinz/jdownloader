@@ -10,6 +10,8 @@ REPO = "jdownloader"
 BUTTONS = {
     "unraid": "https://ca.unraid.net/apps/jdownloader-18m0vwh17mexzh",
     "mos": "https://mos-official.net/apps.html?search=JDownloader",
+    "zimaos": "https://github.com/junkerderprovinz/zimaos-apps#install",
+    "umbrel": "https://github.com/junkerderprovinz/umbrel-apps#install",
     "compose": "https://raw.githubusercontent.com/junkerderprovinz/jdownloader/main/compose.yaml",
     # A release's "Source code (zip)" is the whole repository at that tag, and
     # GitHub gives the newest one no fixed address, so this leads to the release
