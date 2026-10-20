@@ -1,7 +1,7 @@
 /**
  * Generates the JDownloader README banners as a theme-adaptive pair:
  *   jdownloader-banner.svg / .png      : light 1600x500, the globe on the left, then the
- *                                        "JDOWNLOADER" wordmark and a cheeky claim.
+ *                                        "JDOWNLOADER 2" wordmark and a cheeky claim.
  *   jdownloader-banner-dark.svg / .png : the same layout on GitHub-dark #0d1117, light text.
  * The README serves the pair through <picture> (prefers-color-scheme).
  *
@@ -93,6 +93,9 @@ function runWidth(font, text, size) {
 let wordmarkPath = runPath(semi, J_RUN.text, J_RUN.x, J_RUN.y, J_RUN.size);
 for (const [text, dx, ls] of DL_RUNS)
   wordmarkPath += runPath(black, text, DL_BASE.x + dx, DL_BASE.y, DL_BASE.size, ls);
+const TWO_X = SRC_VB.w + 40;
+wordmarkPath += runPath(black, "2", TWO_X, DL_BASE.y, DL_BASE.size);
+SRC_VB.w = TWO_X + runWidth(black, "2", DL_BASE.size);
 const crossbarPath = `M${CROSSBAR.x} ${CROSSBAR.y} h${CROSSBAR.w} v${CROSSBAR.h} h${-CROSSBAR.w} Z`;
 if ((wordmarkPath + crossbarPath).includes("NaN")) throw new Error("NaN path");
 
@@ -106,7 +109,7 @@ const bb = new Resvg(
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${Math.ceil(SRC_VB.w) + 40} ${Math.ceil(SRC_VB.h) + 40}"><path d="${wordmarkPath}${crossbarPath}"/></svg>`,
   { fitTo: { mode: "original" } },
 ).getBBox();
-const s2 = Math.min(WM_TARGET / bb.height, (W - textX - 80) / bb.width);   // height target, width-capped so JDOWNLOADER can't overflow
+const s2 = Math.min(WM_TARGET / bb.height, (W - textX - 80) / bb.width);   // height target, width-capped so the wordmark cannot overflow
 const wmH = bb.height * s2;
 const wmWFit = bb.width * s2;
 const claimAsc = lato.ascender * claimSize / lato.unitsPerEm;
@@ -128,7 +131,7 @@ const logoLight = placeLogo(iconRaw);
 const logoDark = placeLogo(iconRaw.replace(/#161616/gi, "#2d333b").replace(/#0b0b0b/gi, "#21262d"));
 
 for (const t of THEMES) {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="JDownloader">
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="JDownloader 2">
   <rect width="${W}" height="${H}" fill="${t.bg}"/>
   ${t.suffix === "-dark" ? logoDark : logoLight}
   <g transform="translate(${wmX.toFixed(2)} ${wmTop.toFixed(2)}) scale(${s2.toFixed(5)})">
