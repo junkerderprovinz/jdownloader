@@ -12,15 +12,19 @@ on:
         required: false
         default: 'ghcr.io/junkerderprovinz/jdownloader:v3-preview'
 
+permissions: {}
+
 jobs:
   probe:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
       - name: Boot the container
+        env:
+          IMAGE: ${{ github.event.inputs.image || 'ghcr.io/junkerderprovinz/jdownloader:v3-preview' }}
         run: |
           docker run -d --name jd -e JD_DEBUG_GEO=1 -p 3000:3000 -p 3001:3001 \
-            "${{ github.event.inputs.image || 'ghcr.io/junkerderprovinz/jdownloader:v3-preview' }}"
+            "$IMAGE"
 
       - name: Wait for the JD GUI (READY banner, up to 15 min)
         run: |

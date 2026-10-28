@@ -17,6 +17,8 @@ name: "Experiment: headless first boot"
 on:
   workflow_dispatch:
 
+permissions: {}
+
 jobs:
   headless-first-boot:
     runs-on: ubuntu-latest
