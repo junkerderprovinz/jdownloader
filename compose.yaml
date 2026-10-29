@@ -7,7 +7,7 @@
 
 services:
   jdownloader:
-    image: junkerderprovinz/jdownloader:latest@sha256:f91062d4b1aead7eaad6176b0d16817f5059b13863585d9c94017dbb5ec74fbb
+    image: junkerderprovinz/jdownloader:latest
     container_name: jdownloader
     restart: unless-stopped
     shm_size: 1gb
