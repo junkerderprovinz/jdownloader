@@ -20,15 +20,21 @@ HELPERS_PATH = ROOT / "rootfs" / "usr" / "local" / "bin" / "jdownloader-laf-help
 THEME_SH = ROOT / "rootfs" / "usr" / "local" / "bin" / "jdownloader-theme.sh"
 AUTOSTART = ROOT / "rootfs" / "defaults" / "autostart"
 SETUP = ROOT / "rootfs" / "etc" / "cont-init.d" / "10-jdownloader-setup"
-AGENT_JAVA = (
-    ROOT
-    / "agent"
-    / "src"
-    / "io"
-    / "github"
-    / "junkerderprovinz"
-    / "DialogConfirmAgent.java"
-)
+AGENT_PKG = ROOT / "agent" / "src" / "io" / "github" / "junkerderprovinz"
+AGENT_ENTRY = "DialogConfirmAgent.java"
+
+
+def agent_source() -> str:
+    """All agent classes as one text, the entry class first so premain and tick come before the rest."""
+    files = sorted(AGENT_PKG.glob("*.java"), key=lambda p: (p.name != AGENT_ENTRY, p.name))
+    assert files and files[0].name == AGENT_ENTRY
+    return "\n".join(p.read_text(encoding="utf-8") for p in files)
+
+
+def method_text(src: str, signature: str) -> str:
+    """From the first declaration that contains signature to its closing brace."""
+    start = src.index(signature)
+    return src[start:src.index("\n    }\n", start)]
 
 
 def load_helpers():
@@ -115,7 +121,7 @@ def test_heal_only_touches_core_synthetica_jar():
 
 def test_asm_progressbar_uses_short_getter_names():
     """LAFOptions getters are getColorForProgressbarN, without Foreground."""
-    src = AGENT_JAVA.read_text(encoding="utf-8")
+    src = agent_source()
     # ASM invoke uses short names
     assert re.search(r'getColorForProgressbar"\s*\+\s*\(i\s*\+\s*1\)', src) or \
            'getColorForProgressbar" + (i + 1)' in src
@@ -127,7 +133,7 @@ def test_asm_progressbar_uses_short_getter_names():
 
 
 def test_seed_classic_uses_putcfg_and_conditional_latch():
-    src = AGENT_JAVA.read_text(encoding="utf-8")
+    src = agent_source()
     assert 'putCfgStringIfBlank(cfg,\n                        "getColorForProgressbarForeground"' in src \
         or 'putCfgStringIfBlank(cfg,\n                        "getColorForProgressbarForeground" + i' in src \
         or 'putCfgStringIfBlank(cfg,' in src and "getColorForProgressbarForeground" in src
@@ -138,7 +144,7 @@ def test_seed_classic_uses_putcfg_and_conditional_latch():
 
 
 def test_agent_shares_laf_class_writer():
-    src = AGENT_JAVA.read_text(encoding="utf-8")
+    src = agent_source()
     assert "lafClassWriter(" in src
     assert src.count("lafClassWriter(") >= 5
 
@@ -229,19 +235,19 @@ def test_classic_colors_use_hash():
 
 
 def test_get_disabled_icon_uses_get_super_name():
-    src = AGENT_JAVA.read_text(encoding="utf-8")
+    src = agent_source()
     assert "cr.getSuperName()" in src
     assert "skip getDisabledIcon patch" in src
 
 
 def test_progress_painter_skips_cache_on_fallback():
-    src = AGENT_JAVA.read_text(encoding="utf-8")
+    src = agent_source()
     assert "skipCache" in src
 
 
 def _want_dark_laf_method(src: str) -> str:
     m = re.search(
-        r"private static boolean wantDarkLaf\(\)\s*\{(.*?)\n    \}",
+        r"\bstatic boolean wantDarkLaf\(\)\s*\{(.*?)\n    \}",
         src,
         re.S,
     )
@@ -251,7 +257,7 @@ def _want_dark_laf_method(src: str) -> str:
 
 def test_want_dark_laf_light_and_jd_plain_are_false():
     """JD_THEME=Light / JD_Plain must not want dark chrome (#161616 remaps)."""
-    src = AGENT_JAVA.read_text(encoding="utf-8")
+    src = agent_source()
     body = _want_dark_laf_method(src)
     assert 'wantClassicLaf()' in body
     assert '"light".equals(n)' in body
@@ -263,7 +269,7 @@ def test_want_dark_laf_light_and_jd_plain_are_false():
 
 def test_tick_gates_enforce_dark_chrome_behind_want_dark_laf():
     """tick() must call enforceDarkChrome / Kayn / progress retint only when wantDarkLaf()."""
-    src = AGENT_JAVA.read_text(encoding="utf-8")
+    src = agent_source()
     # Flat path in tick: wantDarkLaf() { enforceDarkChrome(); themeKaynExtras(); retintProgressBars(); }
     assert re.search(
         r"if\s*\(\s*wantDarkLaf\s*\(\s*\)\s*\)\s*\{\s*"
@@ -274,12 +280,10 @@ def test_tick_gates_enforce_dark_chrome_behind_want_dark_laf():
         re.S,
     ), "tick() must gate dark chrome trio behind wantDarkLaf()"
     # enforceDarkChrome itself must early-return when not dark
-    chrome = src.split("private static void enforceDarkChrome()")[1].split(
-        "private static", 1
-    )[0]
+    chrome = method_text(src, "static void enforceDarkChrome()")
     assert "if (!wantDarkLaf()) return;" in chrome
     # premain: installProgressBarDefaults always (clears dark overrides on Light)
-    premain = src.split("public static void premain")[1].split("public static void watch")[0]
+    premain = method_text(src, "public static void premain")
     assert "installProgressBarDefaults();" in premain
     # LAF listener: always refresh defaults; retint only on Dark
     assert "installProgressBarDefaults();" in src.split("ensureLafChangeListener")[1]
@@ -290,9 +294,7 @@ def test_tick_gates_enforce_dark_chrome_behind_want_dark_laf():
         re.S,
     )
     # applyCustomDefaults skips dark re-apply on Light
-    acd = src.split("private static void applyCustomDefaults()")[1].split(
-        "// -------------------------------------------------------- speed graph"
-    )[0]
+    acd = method_text(src, "static void applyCustomDefaults()")
     assert "if (!wantDarkLaf())" in acd and "lafRefreshDone = true" in acd
 
 
@@ -401,11 +403,9 @@ def test_flatlaf_parking_gated_classic_only_and_restorable():
 
 def test_agent_light_skips_dark_chrome_classic_skips_flat():
     """Light gets no dark chrome and classic no FlatLaf path, while Dark keeps the chrome."""
-    src = AGENT_JAVA.read_text(encoding="utf-8")
+    src = agent_source()
     # tick() classic branch
-    tick = src.split("private static void tick()")[1].split(
-        "// ------------------------------------------------------ Kayn plain-dark fixes"
-    )[0]
+    tick = method_text(src, "static void tick()")
     assert "wantClassicLaf()" in tick
     assert "exposeSyntheticaToSystemLoader" in tick
     assert "enforceDarkChrome" in tick
@@ -417,9 +417,7 @@ def test_agent_light_skips_dark_chrome_classic_skips_flat():
     assert "wantDarkLaf()" in flat_arm
     assert "enforceDarkChrome" in flat_arm
     # wantClassicLaf is exact jddefault (trim + lower)
-    w = src.split("private static boolean wantClassicLaf()")[1].split(
-        "private static boolean wantDarkLaf()"
-    )[0]
+    w = method_text(src, "static boolean wantClassicLaf()")
     assert "trim()" in w
     assert '"jddefault".equals' in w
 
