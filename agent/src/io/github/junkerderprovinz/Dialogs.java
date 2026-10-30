@@ -78,6 +78,10 @@ final class Dialogs {
         w.validate();
     }
 
+    private static boolean isWarningRed(Color c) {
+        return c != null && c.getRed() > 200 && c.getGreen() < 80 && c.getBlue() < 80;
+    }
+
     /** Gives AppWork dialogs the theme's surface, field and button fills and removes their framing
      *  borders. Runs on every tick so content built later is caught; icons are handled by monoChromeIcons. */
     private static void styleDialogContent(Container c, Color bg) {
@@ -117,6 +121,10 @@ final class Dialogs {
                             : javax.swing.BorderFactory.createCompoundBorder(new RoundCornerMaskBorder(UPDATER_BG, UI_RADIUS), ob));
                         ab.putClientProperty("jdp.updBtnMask", Boolean.TRUE);
                     }
+                } else if (ch instanceof javax.swing.JLabel && isWarningRed(ch.getForeground())) {
+                    // AppWork marks empty required fields with a pure red label, which barely reads on the
+                    // dark surface; the field placeholder already says what is missing.
+                    ch.setForeground(SIDEBAR_TEXT);
                 } else if (ch instanceof javax.swing.JLabel && ((javax.swing.JLabel) ch).getIcon() != null) {
                     javax.swing.JLabel l = (javax.swing.JLabel) ch;
                     if (l.getClass().getName().endsWith(".ProgressLogo")) {

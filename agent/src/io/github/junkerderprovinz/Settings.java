@@ -150,6 +150,17 @@ final class Settings {
                     } else if (isCheckLike(ch) && ch instanceof JComponent) {
                         // The check glyph keeps its own CheckBox.icon border.
                         stripFramingBorder((JComponent) ch);
+                        // A setting's box fills JD's whole control column; at its start it floats in
+                        // the middle of the card, so it moves to the right edge where fields end.
+                        if (ch instanceof javax.swing.AbstractButton && ch.getClass().getName().endsWith("settings.components.Checkbox")) {
+                            javax.swing.AbstractButton b = (javax.swing.AbstractButton) ch;
+                            String t = b.getText();
+                            if ((t == null || t.isEmpty()) && b.getHorizontalAlignment() != javax.swing.SwingConstants.TRAILING)
+                                b.setHorizontalAlignment(javax.swing.SwingConstants.TRAILING);
+                        }
+                    } else if (ch instanceof javax.swing.JTabbedPane && !DIALOG_BG.equals(ch.getBackground())) {
+                        // FlatLaf fills the tab area with the base colour, a dark box on the card.
+                        ch.setBackground(DIALOG_BG);
                     }
                 } catch (Throwable ignore) { }
             }

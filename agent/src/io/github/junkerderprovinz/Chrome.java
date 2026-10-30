@@ -204,15 +204,11 @@ final class Chrome {
         if (!(b.getUI() instanceof HlOverviewCornerUI)) {
             try { b.setUI(new HlOverviewCornerUI()); b.setBorder(null); } catch (Throwable ignore) { }
         }
+        // The header behind the glyphs reports the base colour but is not painted, so any fill would be a
+        // dark box on the overview card.
+        if (b.isOpaque()) b.setOpaque(false);
     }
     private static final class HlOverviewCornerUI extends javax.swing.plaf.basic.BasicButtonUI {
-        @Override public void update(Graphics g, JComponent c) {
-            Color bg = (c.getParent() != null && c.getParent().getBackground() != null)
-                    ? c.getParent().getBackground() : PAL_BASE;
-            g.setColor(bg);
-            g.fillRect(0, 0, c.getWidth(), c.getHeight());
-            paint(g, c);
-        }
         @Override public void paint(Graphics g, JComponent c) {
             AbstractButton b = (AbstractButton) c;
             javax.swing.Icon ic = b.getIcon();

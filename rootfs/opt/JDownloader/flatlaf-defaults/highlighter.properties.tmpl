@@ -32,6 +32,9 @@ CheckBox.icon.checkmarkColor     = @@ACCENT@@
 RadioButton.icon.centerColor     = @@ACCENT@@
 # An unchecked box on the dark chrome needs a light enough border to be seen at a glance.
 CheckBox.icon.borderColor            = #a8a8a8
+# Component.borderWidth 0 below would take the box's frame too.
+CheckBox.icon.borderWidth            = 1
+RadioButton.icon.borderWidth         = 1
 CheckBox.icon.background             = #2a2a2a
 CheckBox.icon.selectedBorderColor    = @@ACCENT@@
 CheckBox.icon.selectedBackground     = #2a2a2a
@@ -139,6 +142,8 @@ MenuItem.selectionBackground      = @@ACCENT@@
 MenuItem.selectionForeground      = @@ACCENT_FG@@
 MenuItem.acceleratorForeground          = #8d8d8d
 MenuItem.acceleratorSelectionForeground = @@ACCENT_FG@@
+# A checked item shows its state as a badge on the glyph, so the slot behind the icon stays clear.
+MenuItem.checkBackground          = #00000000
 # Menu rows follow the roughly 30px rhythm of the settings buttons.
 MenuItem.margin                    = 6,16,6,16
 Menu.margin                        = 6,16,6,16

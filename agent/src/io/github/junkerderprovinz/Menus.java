@@ -377,11 +377,10 @@ final class Menus {
         mi.getModel().addChangeListener(new javax.swing.event.ChangeListener() {
             public void stateChanged(javax.swing.event.ChangeEvent e) {
                 javax.swing.ButtonModel m = mi.getModel();
-                // FlatLaf paints a dark slot behind the icon of a checked item, so that glyph stays light
-                // even when armed. A JMenu is selected but not armed while its submenu is open,
-                // and its row keeps the accent then.
+                // A JMenu is selected but not armed while its submenu is open, and its row keeps the
+                // accent then.
                 boolean open = mi instanceof javax.swing.JMenu && m.isSelected();
-                boolean hot = mi.isEnabled() && (open || m.isArmed() && (mi instanceof javax.swing.JMenu || !m.isSelected()));
+                boolean hot = mi.isEnabled() && (open || m.isArmed());
                 Object want = mi.getClientProperty(hot ? "jdp.miDark" : "jdp.miLight");
                 if (want instanceof javax.swing.Icon) {
                     javax.swing.Icon wi = (javax.swing.Icon) want;

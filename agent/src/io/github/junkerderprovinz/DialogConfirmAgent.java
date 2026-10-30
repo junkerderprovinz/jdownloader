@@ -268,7 +268,7 @@ public class DialogConfirmAgent {
 
     private static final java.util.Map<String, javax.swing.Icon> CHROME_CLEAN =
             new java.util.concurrent.ConcurrentHashMap<String, javax.swing.Icon>();
-    /** Called from NewTheme.getIcon; replaces the column-lock and extract glyphs and passes everything else through. */
+    /** Called from NewTheme.getIcon; replaces a few chrome glyphs and passes everything else through. */
     public static javax.swing.Icon cleanChromeIcon(javax.swing.Icon original, String key, int size) {
         try {
             if (original == null || key == null || !isHighlighter()) return original;
@@ -278,6 +278,10 @@ public class DialogConfirmAgent {
                 tab = "lock"; tint = EXPANDER_LIGHT;
             } else if (k.equals("extract")) {
                 tab = "extract"; tint = SIDEBAR_TEXT;
+            } else if (k.equals("search") || k.equals("image")) {
+                // Search fields and the hoster chooser's logo column paint a fresh AbstractIcon, which
+                // nothing else reaches.
+                tab = k; tint = SIDEBAR_TEXT;
             } else {
                 return original;
             }
@@ -292,6 +296,28 @@ public class DialogConfirmAgent {
             CHROME_CLEAN.put(ck, clean);
             return clean;
         } catch (Throwable t) { return original; }
+    }
+
+    /** Called from the patched FavIcons.createDefaultFavIcon. JD letters the stand-in logo of a hoster
+     *  without a favicon in black on the panel header colour, which is dark here, so the letters turn
+     *  light and the tile a step lighter than the cards. */
+    public static java.awt.Image lightFavIcon(java.awt.Image img) {
+        try {
+            if (!isHighlighter() || !(img instanceof java.awt.image.BufferedImage)) return img;
+            java.awt.image.BufferedImage src = (java.awt.image.BufferedImage) img;
+            int w = src.getWidth(), h = src.getHeight();
+            java.awt.image.BufferedImage out = new java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+            int tile = PAL_SURFACE.getRed(), text = SIDEBAR_TEXT.getRed(), lit = 0x33;
+            for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) {
+                int p = src.getRGB(x, y), a = p >>> 24;
+                if (a == 0) continue;
+                // The letters are black blended into the tile, so their share is how far below the tile they are.
+                float ink = Math.max(0f, Math.min(1f, (tile - ((p >> 16) & 0xff)) / (float) tile));
+                int v = Math.round(lit + (text - lit) * ink);
+                out.setRGB(x, y, (a << 24) | (v << 16) | (v << 8) | v);
+            }
+            return out;
+        } catch (Throwable t) { return img; }
     }
 
     // JD's status rings (update check, extraction, link crawler) are CircledProgressBars that paint

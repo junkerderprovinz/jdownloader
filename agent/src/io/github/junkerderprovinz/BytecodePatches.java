@@ -75,6 +75,7 @@ final class BytecodePatches {
                             // render path itself is wrapped.
                             if (EXT_TABLE.equals(className)) return patchExtTableRenderer(classfileBuffer, loader);
                             if (SEARCH_CAT.equals(className)) return patchSearchCategory(classfileBuffer, loader);
+                            if (FAV_ICONS.equals(className)) return patchFavIcons(classfileBuffer, loader);
                             if (FLAT_MI_RENDERER.equals(className)) return patchMenuItemRenderer(classfileBuffer, loader);
                         }
                         // Registered before JD's setLookAndFeel, the defaults reach the first paint.
@@ -460,6 +461,7 @@ final class BytecodePatches {
     private static final String NEW_THEME = "org/jdownloader/images/NewTheme";
     private static final String EXT_TABLE = "org/appwork/swing/exttable/ExtTable";
     private static final String SEARCH_CAT = "org/jdownloader/gui/views/components/LinktablesSearchCategory";
+    private static final String FAV_ICONS = "jd/controlling/faviconcontroller/FavIcons";
     // FlatLaf paints a hovered top-level menu's text in the menu bar's foreground and switches to
     // selectionForeground only when the item is armed, which rollover is not, so the hover text ends
     // up light on the accent.
@@ -721,6 +723,42 @@ final class BytecodePatches {
             return null;
         }
         System.out.println("[jd-dialog-agent] patched LinktablesSearchCategory.getIcon -> mono search icons");
+        return cw.toByteArray();
+    }
+
+    // The stand-in logo for a hoster without a favicon is drawn once per size and cached, so it is
+    // recoloured where it is created.
+    private static byte[] patchFavIcons(byte[] original, final ClassLoader loader) {
+        ClassReader cr = new ClassReader(original);
+        ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES) {
+            @Override
+            protected ClassLoader getClassLoader() { return loader != null ? loader : super.getClassLoader(); }
+        };
+        final int[] n = { 0 };
+        ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
+            @Override
+            public MethodVisitor visitMethod(int access, String name, String desc, String sig, String[] ex) {
+                MethodVisitor mv = super.visitMethod(access, name, desc, sig, ex);
+                if (!("createDefaultFavIcon".equals(name)
+                        && "(Lorg/appwork/utils/logging2/LogSource;Ljava/lang/String;II)Ljava/awt/Image;".equals(desc))) return mv;
+                n[0]++;
+                return new MethodVisitor(Opcodes.ASM9, mv) {
+                    @Override
+                    public void visitInsn(int op) {
+                        if (op == Opcodes.ARETURN)
+                            super.visitMethodInsn(Opcodes.INVOKESTATIC, AGENT_INTERNAL, "lightFavIcon",
+                                    "(Ljava/awt/Image;)Ljava/awt/Image;", false);
+                        super.visitInsn(op);
+                    }
+                };
+            }
+        };
+        cr.accept(cv, 0);
+        if (n[0] == 0) {
+            System.out.println("[jd-dialog-agent] FavIcons.createDefaultFavIcon not found, stand-in logos left as-is");
+            return null;
+        }
+        System.out.println("[jd-dialog-agent] patched FavIcons.createDefaultFavIcon -> light stand-in logos");
         return cw.toByteArray();
     }
 }

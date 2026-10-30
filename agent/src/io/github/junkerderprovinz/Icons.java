@@ -253,6 +253,8 @@ final class Icons {
         ACTION_ICON.put("SettingsAction",                "settings");
         ACTION_ICON.put("AddLinksAction",                "add");
         ACTION_ICON.put("AddContainerAction",            "addContainer");
+        // The linkgrabber's start button paints a keyless merge of play and add.
+        ACTION_ICON.put("ConfirmSelectionBarAction",     "media-playback-start");
     }
 
     // ExtButton derives its private disabledIcon from the first icon it paints, keeps it and ignores
@@ -306,6 +308,8 @@ final class Icons {
             b.putClientProperty("jdp.monoBtn", mono);
             // Hover, pressed and selected states paint the accent background, so their glyphs are dark.
             b.setRolloverIcon(tablerForButton(b, cur, accentFg()));
+            // AppWork's ExtButton fills its hover itself and leaves rollover off, which hides this icon.
+            b.setRolloverEnabled(true);
             javax.swing.Icon pi = b.getPressedIcon();
             if (pi != null && pi != mono) b.setPressedIcon(tablerForButton(b, pi, accentFg()));
             javax.swing.Icon dim = tintSolid(mono, DISABLED_TONE);
@@ -373,6 +377,8 @@ final class Icons {
                 if (base != null) return tintIcon(base, tone, b);
             }
         }
+        // A merged glyph such as the linkgrabber's add-and-start reports no key of its own.
+        if (isMergedIcon(icon)) return monoMergedIcon(icon, tone);
         return tablerIcon(icon, tone, b);
     }
 

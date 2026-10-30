@@ -416,7 +416,7 @@ final class Tables {
         return m;
     }
 
-    private static boolean isMergedIcon(javax.swing.Icon ic) {
+    static boolean isMergedIcon(javax.swing.Icon ic) {
         for (Class<?> k = ic.getClass(); k != null; k = k.getSuperclass())
             if (k.getName().equals("org.appwork.swing.components.ExtMergedIcon")) return true;
         return false;
@@ -426,7 +426,7 @@ final class Tables {
     // greyed out stay dim.
     private static final java.util.Map<javax.swing.Icon, java.util.Map<Integer, javax.swing.Icon>> MERGED_MONO =
             java.util.Collections.synchronizedMap(new java.util.WeakHashMap<javax.swing.Icon, java.util.Map<Integer, javax.swing.Icon>>());
-    private static javax.swing.Icon monoMergedIcon(javax.swing.Icon ic, Color fg) {
+    static javax.swing.Icon monoMergedIcon(javax.swing.Icon ic, Color fg) {
         if (isSiteLogo(ic)) return ic;
         Color tone = fg != null ? fg : SIDEBAR_TEXT;
         Integer tk = Integer.valueOf(tone.getRGB());
@@ -535,8 +535,9 @@ final class Tables {
                 java.awt.Point pt = javax.swing.SwingUtilities.convertPoint(c.getParent(), c.getLocation(), win);
                 boolean rightCol = pt.x + c.getWidth() > winW - 90;
                 // The overview panel's settings and close buttons derive their glyph on every paint and ignore
-                // setIcon, so they get their own ButtonUI instead.
-                if (rightCol && (c instanceof AbstractButton) && c.getClass().getName().contains(".overviewpanel.")) {
+                // setIcon, so they get their own ButtonUI instead. In the linkgrabber the views column takes
+                // the right edge, so they are found by class wherever they sit.
+                if ((c instanceof AbstractButton) && c.getClass().getName().contains(".overviewpanel.")) {
                     hlInstallOverviewCornerButton((AbstractButton) c);
                 } else if (rightCol && pt.y > winH - 40) {
                     if (c instanceof javax.swing.JLabel) {
