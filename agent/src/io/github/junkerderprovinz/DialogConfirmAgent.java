@@ -321,14 +321,36 @@ public class DialogConfirmAgent {
     }
 
     private static volatile java.lang.reflect.Method favIconCall;
-    /** Called from the patched hoster list of the account dialog in place of DomainInfo.getFavIcon(fetch). */
+    private static volatile boolean logoRepaintQueued;
+    /** Called from the patched DomainInfo.setFavIcon; repaints the open windows once per batch of logos. */
+    public static void favIconArrived() {
+        if (logoRepaintQueued || !isHighlighter()) return;
+        logoRepaintQueued = true;
+        SwingUtilities.invokeLater(() -> {
+            logoRepaintQueued = false;
+            for (java.awt.Window w : java.awt.Window.getWindows()) if (w.isShowing()) w.repaint();
+        });
+    }
+
+    /** Called from patched GUI classes in place of DomainInfo.getFavIcon(fetch). */
     public static javax.swing.Icon chooserFavIcon(Object domainInfo, boolean fetch) {
         try {
             java.lang.reflect.Method m = favIconCall;
-            if (m == null) favIconCall = m = domainInfo.getClass().getMethod("getFavIcon", boolean.class);
-            return (javax.swing.Icon) m.invoke(domainInfo, fetch || isHighlighter());
+            if (m == null) {
+                favIconCall = m = domainInfo.getClass().getMethod("getFavIcon", boolean.class);
+                // ASM loads DomainInfo itself while it patches the first caller, and the JVM does not run
+                // a transformer for classes loaded inside one, so the arrival hook is added afterwards.
+                if (INSTRUMENTATION != null && INSTRUMENTATION.isModifiableClass(domainInfo.getClass()))
+                    INSTRUMENTATION.retransformClasses(domainInfo.getClass());
+            }
+            javax.swing.Icon ic = (javax.swing.Icon) m.invoke(domainInfo, fetch || isHighlighter());
+            if (ic != null) SITE_LOGOS.add(ic);
+            return ic;
         } catch (Throwable t) { return null; }
     }
+    /** Logos handed out for hosters, which keep their colours in every renderer. */
+    static final java.util.Set<javax.swing.Icon> SITE_LOGOS =
+            java.util.Collections.synchronizedSet(java.util.Collections.newSetFromMap(new java.util.WeakHashMap<javax.swing.Icon, Boolean>()));
 
     /** Called from the patched CustomizeableActionBar.createDropdownImage: the glyph in the text colour and
      *  a small chevron in place of JD's arrow. */

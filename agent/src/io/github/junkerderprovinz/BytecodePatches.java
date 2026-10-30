@@ -77,7 +77,10 @@ final class BytecodePatches {
                             if (SEARCH_CAT.equals(className)) return patchSearchCategory(classfileBuffer, loader);
                             if (FAV_ICONS.equals(className)) return patchFavIcons(classfileBuffer, loader);
                             if (ACTION_BAR.equals(className)) return patchDropdownImage(classfileBuffer, loader);
-                            if (HOSTER_CHOOSER_ICON.equals(className)) return patchHosterChooserIcon(classfileBuffer, loader);
+                            if (DOMAIN_INFO.equals(className)) return patchFavIconArrival(classfileBuffer, loader);
+                            if (className != null && (className.startsWith("jd/gui/") || className.startsWith("org/jdownloader/gui/"))
+                                    && contains(classfileBuffer, GET_FAV_ICON))
+                                return patchFavIconCalls(classfileBuffer, loader, className);
                             if (FLAT_MI_RENDERER.equals(className)) return patchMenuItemRenderer(classfileBuffer, loader);
                         }
                         // Registered before JD's setLookAndFeel, the defaults reach the first paint.
@@ -464,7 +467,8 @@ final class BytecodePatches {
     private static final String EXT_TABLE = "org/appwork/swing/exttable/ExtTable";
     private static final String SEARCH_CAT = "org/jdownloader/gui/views/components/LinktablesSearchCategory";
     private static final String FAV_ICONS = "jd/controlling/faviconcontroller/FavIcons";
-    private static final String HOSTER_CHOOSER_ICON = "jd/gui/swing/dialog/HosterChooserTableModel$3";
+    private static final String DOMAIN_INFO = "org/jdownloader/DomainInfo";
+    private static final byte[] GET_FAV_ICON = "getFavIcon".getBytes(java.nio.charset.StandardCharsets.US_ASCII);
     private static final String ACTION_BAR = "org/jdownloader/gui/views/downloads/bottombar/CustomizeableActionBar";
     // FlatLaf paints a hovered top-level menu's text in the menu bar's foreground and switches to
     // selectionForeground only when the item is armed, which rollover is not, so the hover text ends
@@ -804,9 +808,19 @@ final class BytecodePatches {
         return cw.toByteArray();
     }
 
-    // The account dialog's hoster list asks for a logo without leave to fetch it, so it only ever shows
-    // logos some other view loaded before. The call is routed through the agent, which lets it fetch.
-    private static byte[] patchHosterChooserIcon(byte[] original, final ClassLoader loader) {
+    private static boolean contains(byte[] hay, byte[] needle) {
+        outer:
+        for (int i = 0; i + needle.length <= hay.length; i++) {
+            for (int j = 0; j < needle.length; j++) if (hay[i + j] != needle[j]) continue outer;
+            return true;
+        }
+        return false;
+    }
+
+    // Many lists, such as the account dialog's hosters, ask for a logo without leave to fetch it, so they
+    // only ever show logos some other view loaded before. Their calls are routed through the agent, which
+    // lets them fetch.
+    private static byte[] patchFavIconCalls(byte[] original, final ClassLoader loader, final String className) {
         ClassReader cr = new ClassReader(original);
         ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES) {
             @Override
@@ -833,11 +847,42 @@ final class BytecodePatches {
             }
         };
         cr.accept(cv, 0);
+        if (n[0] == 0) return null;
+        System.out.println("[jd-dialog-agent] patched " + className + " -> fetches hoster logos");
+        return cw.toByteArray();
+    }
+
+    // A fetched logo reaches its DomainInfo in the background, and nothing repaints the views showing the
+    // stand-in, so the agent is told when one arrives.
+    private static byte[] patchFavIconArrival(byte[] original, final ClassLoader loader) {
+        ClassReader cr = new ClassReader(original);
+        ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES) {
+            @Override
+            protected ClassLoader getClassLoader() { return loader != null ? loader : super.getClassLoader(); }
+        };
+        final int[] n = { 0 };
+        ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
+            @Override
+            public MethodVisitor visitMethod(int access, String name, String desc, String sig, String[] ex) {
+                MethodVisitor mv = super.visitMethod(access, name, desc, sig, ex);
+                if (!("setFavIcon".equals(name) && "(Ljavax/swing/Icon;)Ljavax/swing/Icon;".equals(desc))) return mv;
+                n[0]++;
+                return new MethodVisitor(Opcodes.ASM9, mv) {
+                    @Override
+                    public void visitInsn(int op) {
+                        if (op == Opcodes.ARETURN)
+                            super.visitMethodInsn(Opcodes.INVOKESTATIC, AGENT_INTERNAL, "favIconArrived", "()V", false);
+                        super.visitInsn(op);
+                    }
+                };
+            }
+        };
+        cr.accept(cv, 0);
         if (n[0] == 0) {
-            System.out.println("[jd-dialog-agent] HosterChooserTableModel favicon call not found, account dialog logos left as-is");
+            System.out.println("[jd-dialog-agent] DomainInfo.setFavIcon not found, fetched logos show on the next repaint");
             return null;
         }
-        System.out.println("[jd-dialog-agent] patched HosterChooserTableModel -> account dialog loads hoster logos");
+        System.out.println("[jd-dialog-agent] patched DomainInfo.setFavIcon -> repaint when a logo arrives");
         return cw.toByteArray();
     }
 }

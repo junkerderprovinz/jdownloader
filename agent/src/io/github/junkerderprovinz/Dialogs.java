@@ -125,6 +125,33 @@ final class Dialogs {
         }
     }
 
+    // A keyless picture with real colour in a dialog is a hoster logo or a captcha, not a glyph: the
+    // glyphs arrive keyed or already toned grey by the agent.
+    private static final java.util.Map<javax.swing.Icon, Boolean> COLOURFUL =
+            java.util.Collections.synchronizedMap(new java.util.WeakHashMap<javax.swing.Icon, Boolean>());
+    private static boolean isColourful(javax.swing.Icon ic) {
+        Boolean known = COLOURFUL.get(ic);
+        if (known != null) return known;
+        int w = ic.getIconWidth(), h = ic.getIconHeight(), seen = 0, coloured = 0;
+        if (w > 0 && h > 0) {
+            java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g = img.createGraphics();
+            try { ic.paintIcon(null, g, 0, 0); } catch (Throwable ignore) { }
+            g.dispose();
+            for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) {
+                int p = img.getRGB(x, y);
+                if ((p >>> 24) < 128) continue;
+                seen++;
+                int r = (p >> 16) & 0xff, gr = (p >> 8) & 0xff, b = p & 0xff;
+                int max = Math.max(r, Math.max(gr, b)), min = Math.min(r, Math.min(gr, b));
+                if (max > 60 && (max - min) * 10 > max * 3) coloured++;
+            }
+        }
+        boolean result = seen > 0 && coloured * 8 > seen;
+        COLOURFUL.put(ic, result);
+        return result;
+    }
+
     private static boolean isWarningRed(Color c) {
         return c != null && c.getRed() > 200 && c.getGreen() < 80 && c.getBlue() < 80;
     }
@@ -180,7 +207,7 @@ final class Dialogs {
                     javax.swing.JLabel l = (javax.swing.JLabel) ch;
                     if (l.getClass().getName().endsWith(".ProgressLogo")) {
                         tameProgressLogo(l);
-                    } else {
+                    } else if (!isSiteLogo(l.getIcon()) && !(iconKey(l.getIcon()) == null && isColourful(l.getIcon()))) {
                         javax.swing.Icon cur = l.getIcon();
                         // monoChromeIcons may have toned the glyph already at JD's size.
                         boolean big = cur.getIconWidth() > 18 && cur.getIconWidth() <= 26;
@@ -334,24 +361,17 @@ final class Dialogs {
         }
     }
 
-    // Logos the hoster list asked for arrive in the background, and the table does not repaint for them.
-    static void repaintHosterChooser() {
-        for (Window w : Window.getWindows())
-            if (w.isShowing() && w instanceof Dialog) repaintChooserIn(w);
-    }
-    private static void repaintChooserIn(Container c) {
-        for (Component ch : c.getComponents()) {
-            if (ch instanceof javax.swing.JTable && ch.getClass().getName().contains("HosterChooserTable")) ch.repaint();
-            else if (ch instanceof Container) repaintChooserIn((Container) ch);
-        }
-    }
-
     // JD's FlatLaf fills buttons square whatever arc it is given, so the fill is painted here and
     // FlatLaf's own UI only draws the label and icon on top. Arrow buttons inside combos, spinners and
     // scroll bars keep their look.
     static void roundButton(JComponent jc) {
         if (!(jc instanceof javax.swing.AbstractButton)) return;
         javax.swing.AbstractButton b = (javax.swing.AbstractButton) jc;
+        // The column chooser above a table's scroll bar is a 12px glyph, where any fill reads as a dark box.
+        if (b.getWidth() > 0 && b.getWidth() <= 16 && b.getHeight() <= 16) {
+            if (b.isContentAreaFilled()) b.setContentAreaFilled(false);
+            return;
+        }
         javax.swing.plaf.ButtonUI ui = b.getUI();
         if (ui == null || ui instanceof RoundButtonUI || !ui.getClass().getName().endsWith("FlatButtonUI")) return;
         Container p = b.getParent();

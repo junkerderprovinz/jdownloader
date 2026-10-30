@@ -460,7 +460,11 @@ final class Tables {
 
     // Site favicons keep their colours. Generic renderers such as the plugin settings list show them too,
     // so the check looks at the icon class and any icon it wraps rather than at the renderer.
-    static boolean isSiteLogo(javax.swing.Icon ic) { return isSiteLogoIn(ic, 0); }
+    static boolean isSiteLogo(javax.swing.Icon ic) {
+        if (SITE_LOGOS.contains(ic)) return true;
+        String k = iconKey(ic);
+        return (k != null && k.startsWith("fav/")) || isSiteLogoIn(ic, 0);
+    }
     private static boolean isSiteLogoIn(javax.swing.Icon ic, int depth) {
         if (ic == null || depth > 3) return false;
         String cn = ic.getClass().getName().toLowerCase();
@@ -702,6 +706,12 @@ final class Tables {
                 javax.swing.JScrollPane s = (javax.swing.JScrollPane) sp;
                 if (s.getBorder() != NO_BORDER) s.setBorder(NO_BORDER);
                 if (s.getViewportBorder() != NO_BORDER) s.setViewportBorder(NO_BORDER);
+                // The column chooser's corner sits in the header row and takes its colour.
+                Component corner = s.getCorner(javax.swing.ScrollPaneConstants.UPPER_RIGHT_CORNER);
+                if (corner instanceof JComponent) {
+                    if (!DIALOG_BG.equals(corner.getBackground())) corner.setBackground(DIALOG_BG);
+                    if (!corner.isOpaque()) ((JComponent) corner).setOpaque(true);
+                }
                 // The table background fills the viewport, so the card reaches down to the sidebar's bottom.
                 if (!t.getFillsViewportHeight()) t.setFillsViewportHeight(true);
                 javax.swing.JViewport vp = s.getViewport();
