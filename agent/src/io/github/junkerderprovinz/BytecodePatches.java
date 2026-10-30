@@ -22,42 +22,26 @@ import static io.github.junkerderprovinz.LafDefaults.*;
 /** Load-time ASM patches for AppWork, jsyntaxpane, JD and FlatLaf classes. */
 final class BytecodePatches {
 
-    // --- BUG 4: Event Scripter script editor won't open under FlatLaf ------------------
-    // AppWork's org.appwork.swing.components.circlebar.BasicCircleProgressBarUI has a latent bug:
-    // getPreferredSize(JComponent c) reads the FIELD circleBar (not the passed component), and
-    // uninstallUI() nulls circleBar BEFORE uninstallListeners(). Under FlatLaf a second updateUI/
-    // setUI pass runs on the transient CircledProgressBar rubber-stamp widget, leaving a UI delegate
-    // whose circleBar is null; the next layout — the Event Scripter script-editor dialog's pack() —
-    // calls getPreferredSize -> NPE in getValueClipPainter -> the dialog's layout aborts -> it never
-    // opens ("edit does nothing"; JD then throws IllegalStateException "Dialog has not been closed yet").
-    // JD's non-FlatLaf LAFs set the LAF once before the GUI is built, so the order bug never fires there.
-    //
-    // This is unreachable by reflection (the widget is a transient renderer, never a persistent tree
-    // child) and by UIManager (CircledProgressBar.updateUI hardcodes setUI(new BasicCircleProgressBarUI())
-    // and never consults a UI key). So we fix it at the root with a LOAD-TIME bytecode transform that
-    // prepends a null-guard to getPreferredSize: if circleBar == null, return a 0x0 Dimension instead of
-    // dereferencing null. Real bars keep circleBar set and size exactly as before; only the broken/
-    // transient null ones are guarded. FAIL-SAFE: any transform error, or a future AppWork rename, leaves
-    // the original bytes untouched — i.e. exactly today's behaviour, never a boot regression.
+    // AppWork's BasicCircleProgressBarUI reads its circleBar field instead of the component it is
+    // given, and uninstallUI clears that field before uninstallListeners. Under FlatLaf a second
+    // setUI on the transient CircledProgressBar renderer leaves a delegate with a null circleBar,
+    // so the Event Scripter editor's pack() throws and the dialog never opens. Neither reflection
+    // nor UIManager reaches that renderer, so the class is patched at load time; any error in the
+    // transform leaves the original bytes.
     private static final String CPB_UI = "org/appwork/swing/components/circlebar/BasicCircleProgressBarUI";
     private static final String CPB_FIELD_OWNER = "org/appwork/swing/components/circlebar/CircledProgressBar";
     private static final String CPB_FIELD_DESC = "L" + CPB_FIELD_OWNER + ";";
-    // BUG 4 issue #2: jsyntaxpane's ScriptAction has a STATIC ScriptEngine `engine` that is null when the
-    // JVM has no javax.script JavaScript engine (Nashorn was removed in Java 15). Its install()/getScriptFromURL()
-    // then deref that null engine -> NPE while the Event Scripter's JavaScriptEditorDialog installs its code-editor
-    // kit (JEditorPane.setEditorKit -> DefaultSyntaxKit.install -> addActions -> ScriptAction.install). That NPE is
-    // swallowed by AppWork's fire-and-forget EDTRunner (logged to LogV3/stderr, not Log.L), so layoutDialogContent
-    // aborts, the modal dialog never maps, and JD throws "Dialog has not been closed yet". Guard both methods to
-    // no-op when engine is null: the (non-functional-anyway) scripted editor action is simply skipped and the
-    // editor opens normally. Same load-time transform technique + fail-safe as the CircledProgressBar fix.
+    // jsyntaxpane's ScriptAction keeps a static ScriptEngine that is null on a JVM without a
+    // JavaScript engine (Java 15 and later), so its install() throws while the Event Scripter sets
+    // up its editor kit. AppWork swallows the exception and the dialog never opens.
     private static final String SA_CLASS = "jsyntaxpane/actions/ScriptAction";
     private static final String FLAT_LAF = "com/formdev/flatlaf/FlatLaf";
-    /** Classic JDDEFAULT: JDDefaultLookAndFeel lives on the App CL (via syntheticaJDCustom.jar)
-     *  and cannot see Core's NewTheme — getDisabledIcon then printStackTrace-spams CNFE on every
-     *  disabled icon. Force the Synthetica super path; disabled icons still render. */
+    /** JDDefaultLookAndFeel sits on the app class loader and cannot see NewTheme, so its
+     *  getDisabledIcon prints a ClassNotFoundException for every disabled icon. The patch calls
+     *  the Synthetica super method instead. */
     private static final String JD_DEFAULT_LAF = "org/jdownloader/gui/laf/jddefault/JDDefaultLookAndFeel";
-    /** Classic painters call LAFOptions.getInstance() during early paints (settings scrollbar)
-     *  before JD has initialized the singleton → WTFException spam. Guard with stock colours. */
+    /** Classic painters call LAFOptions.getInstance() in early paints, before JD has set up the
+     *  singleton, and throw WTFException. The patch falls back to stock colours. */
     private static final String JD_SCROLLBAR_PAINTER = "org/jdownloader/gui/laf/jddefault/CustomScrollbarPainter";
     private static final String JD_PROGRESS_PAINTER = "org/jdownloader/gui/laf/jddefault/CustomProgressbarPainter";
     private static boolean circleBarPatchLogged = false;
@@ -93,21 +77,18 @@ final class BytecodePatches {
                             if (SEARCH_CAT.equals(className)) return patchSearchCategory(classfileBuffer, loader);
                             if (FLAT_MI_RENDERER.equals(className)) return patchMenuItemRenderer(classfileBuffer, loader);
                         }
-                        // theme robustness: the instant FlatLaf's base class loads (before JD's
-                        // setLookAndFeel), register our custom-defaults source so the FIRST paint
-                        // already carries our colours -> removes the reliance on the fragile
-                        // live-re-apply fallback that lost the race on cold/slow boots (grey chrome).
+                        // Registered before JD's setLookAndFeel, the defaults reach the first paint.
                         if (FLAT_LAF.equals(className)) registerDefaultsOnFlatLafLoad(loader);
                         return null;
                     } catch (Throwable err) {
                         System.out.println("[jd-dialog-agent] bytecode transform skipped for " + className
                                 + " (" + err + ")");
-                        return null;   // fail-safe: original bytes, no regression
+                        return null;   // keep the original bytes
                     }
                 }
             };
             inst.addTransformer(t, true);
-            System.out.println("[jd-dialog-agent] bytecode guards armed (BUG 4: CircledProgressBar + ScriptAction"
+            System.out.println("[jd-dialog-agent] bytecode guards armed (CircledProgressBar + ScriptAction"
                     + (wantClassicLaf() ? " + classic JDDEFAULT painters" : "") + ")");
         } catch (Throwable err) {
             System.out.println("[jd-dialog-agent] could not arm bytecode guards (" + err + ")");
@@ -123,7 +104,7 @@ final class BytecodePatches {
         };
     }
 
-    /** getColor / getColorMouseOver: if LAFOptions not ready or colour null, return stock classic blues. */
+    /** getColor and getColorMouseOver return stock classic blues while LAFOptions is not ready or has no colour. */
     private static byte[] patchCustomScrollbarPainter(byte[] original, final ClassLoader loader) {
         ClassReader cr = new ClassReader(original);
         ClassWriter cw = lafClassWriter(cr, loader);
@@ -170,7 +151,7 @@ final class BytecodePatches {
                 mv.visitLabel(catchH);
                 mv.visitVarInsn(Opcodes.ASTORE, 1); // discard
                 mv.visitLabel(fallback);
-                // return new Color(fallbackArgb, true);  // do NOT cache — retry when LAFOptions ready
+                // return new Color(fallbackArgb, true); uncached, so the next call asks LAFOptions again
                 mv.visitTypeInsn(Opcodes.NEW, "java/awt/Color");
                 mv.visitInsn(Opcodes.DUP);
                 mv.visitLdcInsn(Integer.valueOf(fallbackArgb));
@@ -185,16 +166,16 @@ final class BytecodePatches {
         cr.accept(cv, 0);
         if (hits[0] == 0) {
             if (!jdScrollbarPatchLogged) { jdScrollbarPatchLogged = true;
-                System.out.println("[jd-dialog-agent] CustomScrollbarPainter colour getters not found — left as-is"); }
+                System.out.println("[jd-dialog-agent] CustomScrollbarPainter colour getters not found, left as-is"); }
             return null;
         }
         if (!jdScrollbarPatchLogged) { jdScrollbarPatchLogged = true;
             System.out.println("[jd-dialog-agent] patched CustomScrollbarPainter (" + hits[0]
-                    + " getters) — no LAFOptions-not-ready scrollbar crash"); }
+                    + " getters): no LAFOptions-not-ready scrollbar crash"); }
         return cw.toByteArray();
     }
 
-    /** getColorArray: never return null entries (LinearGradientPaint NPE). Use stock blues if LAFOptions missing. */
+    /** getColorArray fills null entries with stock blues, since LinearGradientPaint throws on a null colour. */
     private static byte[] patchCustomProgressbarPainter(byte[] original, final ClassLoader loader) {
         ClassReader cr = new ClassReader(original);
         ClassWriter cw = lafClassWriter(cr, loader);
@@ -237,9 +218,8 @@ final class BytecodePatches {
                 mv.visitLabel(catchH);
                 mv.visitVarInsn(Opcodes.ASTORE, 2); // ignore
                 mv.visitLabel(ensure);
-                // Replace any null slot with stock colour; track whether any fallback was used
-                // (local 2 = usedFallback int 0/1). Only cache colorArray when ALL slots came
-                // from LAFOptions — same fail-open retry as scrollbar painters.
+                // Null slots get the stock colour and local 2 flags the fallback. colorArray is
+                // cached only when all five came from LAFOptions, so a later call tries again.
                 mv.visitInsn(Opcodes.ICONST_0);
                 mv.visitVarInsn(Opcodes.ISTORE, 2);
                 for (int i = 0; i < 5; i++) {
@@ -277,25 +257,24 @@ final class BytecodePatches {
         cr.accept(cv, 0);
         if (!hit[0]) {
             if (!jdProgressPatchLogged) { jdProgressPatchLogged = true;
-                System.out.println("[jd-dialog-agent] CustomProgressbarPainter.getColorArray not found — left as-is"); }
+                System.out.println("[jd-dialog-agent] CustomProgressbarPainter.getColorArray not found, left as-is"); }
             return null;
         }
         if (!jdProgressPatchLogged) { jdProgressPatchLogged = true;
-            System.out.println("[jd-dialog-agent] patched CustomProgressbarPainter.getColorArray — no null gradient NPE"); }
+            System.out.println("[jd-dialog-agent] patched CustomProgressbarPainter.getColorArray: no null gradient NPE"); }
         return cw.toByteArray();
     }
 
-    /** Replace getDisabledIcon with: return super.getDisabledIcon(component, icon);
-     *  Avoids Class.forName/loadClass(NewTheme) + printStackTrace spam when JDCustom is on App CL.
-     *  INVOKESPECIAL must target the real superclass from the class bytes (getSuperName),
-     *  not a hard-coded SyntheticaLookAndFeel — a wrong owner fails verification. */
+    /** Replaces getDisabledIcon with return super.getDisabledIcon(component, icon). INVOKESPECIAL
+     *  names the superclass read from the class bytes, because a hard-coded SyntheticaLookAndFeel
+     *  fails verification when it is the wrong owner. */
     private static byte[] patchJdDefaultGetDisabledIcon(byte[] original, final ClassLoader loader) {
         ClassReader cr = new ClassReader(original);
         final String superName = cr.getSuperName();
         if (superName == null || superName.isEmpty() || "java/lang/Object".equals(superName)) {
             if (!jdDefaultLafPatchLogged) { jdDefaultLafPatchLogged = true;
                 System.out.println("[jd-dialog-agent] JDDefaultLookAndFeel: unexpected superName="
-                        + superName + " — skip getDisabledIcon patch (keep original bytes)"); }
+                        + superName + ", skip getDisabledIcon patch (keep original bytes)"); }
             return null;
         }
         ClassWriter cw = lafClassWriter(cr, loader);
@@ -328,23 +307,20 @@ final class BytecodePatches {
         cr.accept(cv, 0);
         if (!hit[0]) {
             if (!jdDefaultLafPatchLogged) { jdDefaultLafPatchLogged = true;
-                System.out.println("[jd-dialog-agent] JDDefaultLookAndFeel.getDisabledIcon not found — left as-is"); }
+                System.out.println("[jd-dialog-agent] JDDefaultLookAndFeel.getDisabledIcon not found, left as-is"); }
             return null;
         }
         if (!jdDefaultLafPatchLogged) { jdDefaultLafPatchLogged = true;
-            System.out.println("[jd-dialog-agent] patched JDDefaultLookAndFeel.getDisabledIcon → super "
+            System.out.println("[jd-dialog-agent] patched JDDefaultLookAndFeel.getDisabledIcon -> super "
                     + superName + " (no NewTheme CNFE spam)"); }
         return cw.toByteArray();
     }
 
-    /** For every entry method that dereferences the (possibly-null) circleBar field and receives the
-     *  component, prepend:
+    /** Prepends to getPreferredSize, paint, update and uninstallUI:
      *      if (circleBar == null && c instanceof CircledProgressBar) circleBar = (CircledProgressBar) c;
      *      if (circleBar == null) return <0x0 Dimension | void>;
-     *  So the delegate always rebinds to its component (real bars size/paint exactly as before) and
-     *  can never NPE (broken/transient null bars degrade to zero-size / no-paint instead of crashing).
-     *  Covers getPreferredSize (getMinimum/Maximum delegate to it) + paint(g,c) + update(g,c).
-     *  Returns patched bytes, or null (= use original) if none of the expected methods are present. */
+     *  Real bars rebind to their component and behave as before, a bar without one sizes to zero
+     *  and paints nothing. Returns null, keeping the original, when none of the methods exists. */
     private static byte[] patchCircleBarUI(byte[] original, final ClassLoader loader) {
         ClassReader cr = new ClassReader(original);
         ClassWriter cw = lafClassWriter(cr, loader);
@@ -421,20 +397,19 @@ final class BytecodePatches {
         cr.accept(cv, 0);
         if (patchedCount[0] == 0) {
             if (!circleBarPatchLogged) { circleBarPatchLogged = true;
-                System.out.println("[jd-dialog-agent] BasicCircleProgressBarUI entry methods not found —"
+                System.out.println("[jd-dialog-agent] BasicCircleProgressBarUI entry methods not found,"
                         + " left as-is (AppWork changed?)"); }
-            return null;   // nothing matched -> do not touch (fail-safe)
+            return null;
         }
         if (!circleBarPatchLogged) { circleBarPatchLogged = true;
             System.out.println("[jd-dialog-agent] patched BasicCircleProgressBarUI (" + patchedCount[0]
-                    + " methods: getPreferredSize/paint/update, circleBar null-guard) — Event Scripter editor fixed"); }
+                    + " methods: getPreferredSize/paint/update, circleBar null-guard): Event Scripter editor fixed"); }
         return cw.toByteArray();
     }
 
-    /** Guard jsyntaxpane.actions.ScriptAction.install() + getScriptFromURL() to no-op when the static
-     *  ScriptEngine `engine` is null (no javax.script JS engine on modern Java — Nashorn removed in 15):
-     *  prevents the NPE that aborts the Event Scripter code-editor kit install. Returns patched bytes,
-     *  or null (= use original) if the expected methods are absent (jsyntaxpane changed). */
+    /** Makes ScriptAction.install() and getScriptFromURL() return early while the static engine is
+     *  null, so the Event Scripter editor kit installs. Returns null, keeping the original, when
+     *  the methods are absent. */
     private static byte[] patchScriptAction(byte[] original, final ClassLoader loader) {
         ClassReader cr = new ClassReader(original);
         ClassWriter cw = lafClassWriter(cr, loader);
@@ -466,12 +441,12 @@ final class BytecodePatches {
         cr.accept(cv, 0);
         if (patchedCount[0] == 0) {
             if (!scriptActionPatchLogged) { scriptActionPatchLogged = true;
-                System.out.println("[jd-dialog-agent] ScriptAction methods not found — left as-is (jsyntaxpane changed?)"); }
+                System.out.println("[jd-dialog-agent] ScriptAction methods not found, left as-is (jsyntaxpane changed?)"); }
             return null;
         }
         if (!scriptActionPatchLogged) { scriptActionPatchLogged = true;
             System.out.println("[jd-dialog-agent] patched jsyntaxpane ScriptAction (" + patchedCount[0]
-                    + " methods, null-engine guard) — Event Scripter code editor opens under FlatLaf"); }
+                    + " methods, null-engine guard): Event Scripter code editor opens under FlatLaf"); }
         return cw.toByteArray();
     }
 

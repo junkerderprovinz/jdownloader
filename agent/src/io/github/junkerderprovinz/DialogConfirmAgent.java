@@ -21,26 +21,10 @@ import static io.github.junkerderprovinz.SpeedMeter.*;
 import static io.github.junkerderprovinz.Tables.*;
 
 /**
- * Minimal JVM agent for the JDownloader container. Two jobs, both in-process on
- * the EDT, both unavoidable from outside the JVM:
- *
- *  1. Auto-confirms JD's mandatory installer dialogs so the user never clicks them.
- *     JD FORCES these GUI confirmations whenever its window is visible
- *     (org.jdownloader.updatev2.UpdateController: "if (handler.isGuiVisible() || ...)
- *     confirm(...)"), so no config can suppress them.
- *
- *  2. Enforces a pure #161616 monochrome dark chrome. JD's content areas are dark
- *     via its native colorfor* config, but the window chrome (menu/tool bars, frames,
- *     dialogs, tabs, scrollbars) is painted from FlatLaf's own UIManager colour
- *     defaults (a mid-grey) which colorfor* cannot reach. We remap those defaults to
- *     the Carbon greyscale (grey -> darkened onto the #161616 scale, blue accent ->
- *     grey #525252; functional red/amber left alone) and refresh every window.
- *     Patching FlatLaf's jar instead would trip JD's integrity check / crash loop;
- *     an in-process UIManager override has no such failure mode.
- *
- * It runs forever (daemon) so it also handles dialogs + re-applies the chrome after
- * JD's later self-updates, not just the first install. Hooked via
- *   JAVA_TOOL_OPTIONS=-javaagent:/opt/JDownloader/jd-dialog-agent.jar
+ * JVM agent for the JDownloader container, loaded through JAVA_TOOL_OPTIONS. It confirms the
+ * installer dialogs JD forces whenever its window is visible, which no config can suppress,
+ * and darkens the window chrome FlatLaf paints from its own UIManager defaults, out of reach
+ * of JD's colorfor* settings. It keeps running, so it also covers the JVM after a self-update.
  */
 public class DialogConfirmAgent {
 
@@ -64,7 +48,7 @@ public class DialogConfirmAgent {
     // tick() records the active one; the container always runs FlatLaf here.
     static volatile boolean desktopFlatLaf = false;
 
-    // --- Carbon greyscale (matches jdownloader-theme.sh content palette) ---
+    // Carbon greyscale, matching the content palette in jdownloader-theme.sh.
     static final ColorUIResource BG     = new ColorUIResource(0x16, 0x16, 0x16);
     static final ColorUIResource HEADER = new ColorUIResource(0x0b, 0x0b, 0x0b);
     static final ColorUIResource SEL    = new ColorUIResource(0x52, 0x52, 0x52);
@@ -95,11 +79,8 @@ public class DialogConfirmAgent {
     static final int UI_RADIUS = 8;
     static final int UI_ARC    = 2 * UI_RADIUS;
 
-    // --- Ground-truth markers for the container (autostart READY gate) -----------
-    // The launcher used to infer "themed" from a patched flatlaf.jar on disk — which
-    // says nothing about whether the LAF was actually APPLIED (a pending "restart to
-    // apply" dialog left the GUI white while the banner fired). These markers are the
-    // in-JVM truth: the agent's PID, and the class name of the ACTIVE look-and-feel.
+    // Markers for the autostart READY gate: the agent's PID and the class of the look and feel
+    // that is actually applied, which no file on disk can tell.
     private static final java.io.File PID_FILE        = new java.io.File("/tmp/.jd-agent.pid");
     private static final java.io.File LAF_FILE        = new java.io.File("/tmp/.jd-laf-applied");
     private static String lastLafWritten = null;
@@ -114,24 +95,22 @@ public class DialogConfirmAgent {
         if (started) return;
         started = true;
         if (wantClassicLaf()) {
-            System.out.println("[jd-dialog-agent] watching for installer dialogs (classic JDDEFAULT — no FlatLaf dark chrome)");
+            System.out.println("[jd-dialog-agent] watching for installer dialogs (classic JDDEFAULT, no FlatLaf dark chrome)");
         } else if (wantDarkLaf()) {
             System.out.println("[jd-dialog-agent] watching for installer dialogs + enforcing dark chrome");
         } else {
-            System.out.println("[jd-dialog-agent] watching for installer dialogs (Flat Light — no dark chrome remap)");
+            System.out.println("[jd-dialog-agent] watching for installer dialogs (Flat Light, no dark chrome remap)");
         }
         INSTRUMENTATION = inst;
-        // BUG 4: arm the load-time bytecode guards (AppWork CircledProgressBar UI + jsyntaxpane
-        // ScriptAction) BEFORE JD lazily loads them — fixes the Event Scripter script-editor under FlatLaf.
+        // The guards for AppWork's CircledProgressBar UI and jsyntaxpane's ScriptAction have to be
+        // in place before JD loads those classes, or the Event Scripter editor breaks under FlatLaf.
         installBytecodeGuards(inst);
         if (!wantClassicLaf()) {
             exposeFlatlafToSystemLoader();
-            // Put the light package-expander icons back BEFORE JD's GUI resolves them
-            // (premain runs before JD's main()); the tick loop keeps them in place.
+            // premain runs before JD's main(), so the icons are back before the GUI resolves them.
             restoreExpanderIcons();
-            // BUG 3: seed the progress-bar developer overrides + a LAF-change listener before JD
-            // installs its LAF, so the light fill is the render-time fallback from the first paint
-            // and is re-asserted on every reinstall (no scroll grey-flash). Dark fills only.
+            // Set up before JD installs its LAF, so the light progress fill holds from the first
+            // paint and after every reinstall.
             ensureLafChangeListener();
             installProgressBarDefaults();
         } else {
@@ -195,9 +174,9 @@ public class DialogConfirmAgent {
             restoreExpanderIcons();
             if (!isHighlighter()) healPackageToggle();   // rebuilds FileColumn's cached [+]/[-] toggle icons
             if (!DESKTOP) handleDialogs();
-            registerDefaultsSource();     // FlatDarkLaf.properties OR FlatLightLaf.properties
+            registerDefaultsSource();     // FlatDarkLaf.properties or FlatLightLaf.properties
             applyCustomDefaults();
-            // Dark chrome MUST NOT run on FlatLightLaf — left black panels on Light installs.
+            // On FlatLightLaf the dark chrome would leave black panels.
             if (wantDarkLaf()) {
                 enforceDarkChrome();
                 if (!isHighlighter()) themeKaynExtras();        // menu-toggle check and overview corner icons
@@ -215,7 +194,7 @@ public class DialogConfirmAgent {
         }
     }
 
-    /** Record the ACTIVE look-and-feel class every few seconds (ground truth for READY). */
+    /** Records the active look-and-feel class for the READY gate. */
     private static void writeLafMarker() {
         LookAndFeel laf = UIManager.getLookAndFeel();
         if (laf == null) return;
@@ -231,7 +210,7 @@ public class DialogConfirmAgent {
             java.nio.file.Files.write(f.toPath(),
                     content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
         } catch (Exception e) {
-            // /tmp unwritable — markers are best-effort, the launcher has fallbacks
+            // the markers are best effort, the launcher has fallbacks
         }
     }
 

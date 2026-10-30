@@ -19,38 +19,25 @@ import static io.github.junkerderprovinz.DialogConfirmAgent.*;
 import static io.github.junkerderprovinz.LafDefaults.*;
 import static io.github.junkerderprovinz.Tables.*;
 
-/** Fixes for plain dark: package expander icons, the merged toggle icons and the forum visibility gaps. */
+/** Fixes for plain dark: package expander icons, the merged toggle icons, the menu toggles and the overview corner buttons. */
 final class PlainDark {
 
-    // --- Kayn (JD_Plain_Dark visibility, 2026-08-04) ---
-    // Neutral (no accent: plain dark has none) light-on-dark tones for the two forum fixes below.
+    // Plain dark has no accent, so the toggle check and the corner glyphs use neutral greys.
     private static final Color K_CHECK_DISC   = new Color(0xc6, 0xc6, 0xc6);   // light disc behind the toggle check (== BAR_FILL)
     private static final Color K_CHECK_MARK   = new Color(0x16, 0x16, 0x16);   // dark check on the light disc
     private static final Color K_CORNER_LIGHT = new Color(0xd0, 0xd0, 0xd0);   // light glyph for the overview-panel corner icons
-    // A 16x16 fully transparent icon so a checkbox menu item that ships NO icon (e.g. "Sidebar visible")
-    // still gets an icon slot to carry the check badge.
+    // Gives a checkbox menu item without an icon, such as "Sidebar visible", a slot for the check badge.
     private static final javax.swing.Icon K_BLANK16 = new javax.swing.Icon() {
         public int getIconWidth()  { return 16; }
         public int getIconHeight() { return 16; }
         public void paintIcon(Component c, Graphics g, int x, int y) { }
     };
 
-    // --- Package-expander icons (Linkgrabber + download list) --------------------
-    // JD's ExtTable draws the package [+]/[-] toggle from the iconset keys
-    // tree_plus / tree_minus (IconKey.ICON_PLUS/ICON_MINUS -> FileColumn, shared by
-    // the download table and the linkgrabber). JD's own bundled "flat" iconset does
-    // NOT contain those two files, so the image ships light-grey ones and the boot
-    // script seeds them to /config/JDownloader/themes/flat/... . But JD self-updates
-    // its core on every start and re-provisions that on-disk iconset dir AFTER the
-    // boot seed, dropping exactly the two files it does not ship itself — so the
-    // handle falls back to JD's dark bundled default and vanishes on #161616 (the
-    // recurring "black [+]" report). The boot seed can't win that in-process race;
-    // the agent runs in EVERY JVM via JAVA_TOOL_OPTIONS, INCLUDING the post-self-
-    // update GUI JVM, so restoring the files here — once at premain (before the GUI
-    // resolves them) and every tick (self-heal if JD wipes them mid-run) — puts them
-    // back before FileColumn reads them, and NewTheme's disk-first lookup finds the
-    // light copy. (The Swing Tree.collapsedIcon override elsewhere only covers real
-    // JTrees in JD dialogs; it never touched this ExtTable handle.)
+    // The download list and the linkgrabber draw the package toggle from the iconset's
+    // tree_plus and tree_minus. JD's bundled flat iconset lacks both, so the image ships light
+    // copies, but JD's self-update re-provisions the iconset directory after the boot seed and
+    // drops them, leaving a dark default that vanishes on #161616. The agent runs in every JVM,
+    // including the one after a self-update, so it puts them back at premain and on each tick.
     private static final java.io.File EXPANDER_SRC_DIR =
             DESKTOP ? new java.io.File(HL_HOME, "icons")
                     : new java.io.File("/opt/JDownloader/themes-default/flat/org/jdownloader/images");
@@ -76,21 +63,14 @@ final class PlainDark {
                 java.nio.file.Files.copy(src.toPath(), dst.toPath(),
                         java.nio.file.StandardCopyOption.REPLACE_EXISTING);
                 System.out.println("[jd-dialog-agent] restored light theme icon: " + name);
-            } catch (Throwable ignore) { /* best effort — retried next tick */ }
+            } catch (Throwable ignore) { /* retried next tick */ }
         }
     }
 
-    // --- BUG 2: rebuild FileColumn's cached [+]/[-] merged toggle icons ---------------
-    // restoreExpanderIcons() keeps the LIGHT tree_plus/tree_minus SVGs on disk, but JD's
-    // FileColumn bakes the package toggle into four PRIVATE FINAL merged-icon fields in
-    // its constructor and never re-reads them, AND loads the toggle with useCache=false
-    // (so clearing NewTheme's cache never touches it either). Once JD resolved the DARK
-    // bundled fallback (a self-update dropped the two files after the boot seed), the light
-    // disk copy changes nothing on screen -> the recurring "black [+]" report. Fix: rebuild
-    // the four merged icons from the now-light SVGs (useCache=false = fresh disk read),
-    // exactly as FileColumn's ctor does, and overwrite the final fields on every live
-    // FileColumn. A non-static final INSTANCE field is writable after setAccessible(true)
-    // on JDK 21. Icons are built ONCE and cached; each tick only re-sets fields if reverted.
+    // FileColumn bakes the package toggle into four private final fields in its constructor,
+    // bypassing NewTheme's cache, so once it has picked up the dark fallback the restored SVGs
+    // change nothing on screen. The fields are overwritten on every live FileColumn instead;
+    // a final instance field is writable after setAccessible(true).
     private static Object[] toggleIcons = null;   // {packageOpen, packageClosed, archive, archiveOpen}
 
     static void healPackageToggle() {
@@ -103,10 +83,8 @@ final class PlainDark {
                     boolean changed = false;
                     for (Object col : extColumns(t)) {
                         if (col == null || !"FileColumn".equals(col.getClass().getSimpleName())) continue;
-                        // Build the light merged icons ONCE, using JD's OWN classloader (a live
-                        // FileColumn gives it to us) — Class.forName on the agent's system loader
-                        // can't see org.jdownloader.*/org.appwork.* (they live on JD's launcher
-                        // loader), which is why the disk-restore-only fix never fired.
+                        // JD's classes live on its launcher loader, which the agent's system
+                        // loader cannot see, so the loader comes from a live FileColumn.
                         if (toggleIcons == null) {
                             toggleIcons = buildToggleIcons(col.getClass().getClassLoader());
                             if (toggleIcons == null) return;   // not resolvable yet -> retry next tick
@@ -119,11 +97,9 @@ final class PlainDark {
         } catch (Throwable ignore) { /* best effort */ }
     }
 
-    /** Build FileColumn's four cell icons LIGHT by composing our OWN guaranteed-light [+]/[-]
-     *  boxIcon with JD's package/rar icon — instead of rebuilding from JD's tree_plus/tree_minus
-     *  (which can be dark-cached) via ExtMergedIcon. Only JD's package/rar icons are read (via
-     *  getIcon), so there is no dependency on the on-disk toggle SVG, a useCache overload, or
-     *  ExtMergedIcon's ctor signature. Returns null until NewTheme + the package icons resolve. */
+    /** Builds FileColumn's four cell icons from our light boxIcon and JD's package and rar icons,
+     *  so neither JD's possibly dark tree_plus/tree_minus nor ExtMergedIcon's constructor is
+     *  involved. Returns null until NewTheme and the package icons resolve. */
     private static boolean toggleWarnLogged = false;
 
     private static Object[] buildToggleIcons(ClassLoader cl) {
@@ -135,8 +111,7 @@ final class PlainDark {
             String kPClose = (String) iconKey.getField("ICON_PACKAGE_CLOSED").get(null);
             String kRar    = (String) iconKey.getField("ICON_RAR").get(null);
 
-            // getIcon(String,int) is the current API; an older AppWork snapshot also had a
-            // getIcon(String,int,boolean useCache) overload. Discover whichever exists.
+            // Older AppWork builds also have getIcon(String, int, boolean useCache).
             Method getIcon = null; boolean cacheArg = false;
             for (Method m : newThemeCls.getMethods()) {
                 if (!"getIcon".equals(m.getName())) continue;
@@ -210,16 +185,11 @@ final class PlainDark {
         } catch (Throwable ignore) { return false; }
     }
 
-    // ------------------------------------------------------ Kayn plain-dark fixes
-    // Two JD_Plain_Dark visibility gaps reported on the forum (kayn), reproduced live on the container:
-    //   #2  The LinkGrabber "Customize this Bottom Panel" toggle menu (ExtCheckBoxMenuItem items) shows NO
-    //       on/off state: FlatLaf's MenuItem.checkIcon is null for these items (they are not JCheckBoxMenuItem),
-    //       so a checked toggle is indistinguishable from an unchecked one. Overlay a neutral check badge on the
-    //       item's own glyph, painted only while it is selected (paint-time state -> no listener race).
-    //   #1  The download OverviewPanel corner buttons (settings wrench + close X) are a near-invisible dark grey.
-    //       Those buttons IGNORE setIcon (they re-derive their glyph each paint), so own their paint with a tiny
-    //       ButtonUI that draws the button's own glyph tinted light. Both are idempotent (guarded on a client
-    //       property) so the ~400ms tick never re-does work -> no CPU spin.
+    // Two visibility gaps on plain dark. The linkgrabber's bottom panel toggles are no
+    // JCheckBoxMenuItem, so FlatLaf draws no check for them; they get a badge while selected.
+    // The overview panel corner buttons rebuild a dark glyph on each paint and ignore setIcon,
+    // so a small ButtonUI tints that glyph light. A client property guards both, so the tick
+    // repeats no work.
     static void themeKaynExtras() {
         for (Window w : Window.getWindows()) {
             if (w.isShowing()) themeKaynExtrasIn(w);
@@ -238,9 +208,8 @@ final class PlainDark {
         }
     }
 
-    /** #2: give a checkbox-style toggle menu item a visible ON state on plain dark. Wrap its glyph (or a blank
-     *  slot, for items that ship no icon) in a paint-time icon that draws a neutral check badge only while the
-     *  item is selected. Idempotent: once our wrapper is the icon, the tick skips it. */
+    /** Wraps a checkbox menu item's glyph, or a blank slot when it has none, in an icon that draws
+     *  a check badge while the item is selected. */
     private static void markCheckToggle(javax.swing.JMenuItem mi) {
         boolean checkbox = (mi instanceof javax.swing.JCheckBoxMenuItem)
                 || mi.getClass().getSimpleName().contains("CheckBox");
@@ -255,8 +224,8 @@ final class PlainDark {
         mi.setSelectedIcon(wrapped);
     }
 
-    /** A menu-item icon that draws a neutral check BADGE (light disc + dark check, bottom-right) only while the
-     *  item is selected. Paint-time state check -> no listener/timing race. */
+    /** Adds a check badge (light disc, dark check, bottom right) while the item is selected. Reading
+     *  the state at paint time avoids a listener race. */
     private static javax.swing.Icon stateCheckIcon(final javax.swing.Icon base, final javax.swing.JMenuItem mi) {
         return new javax.swing.Icon() {
             public int getIconWidth()  { return base.getIconWidth(); }
@@ -282,9 +251,8 @@ final class PlainDark {
         };
     }
 
-    /** #1: the OverviewPanel corner buttons ignore setIcon (they re-derive a dark glyph each paint). Own their
-     *  paint with a tiny ButtonUI that floods the panel background then draws the button's OWN glyph tinted light.
-     *  Installed once and re-installed only if JD swaps the UI back; event-driven paint -> no tick, no spin. */
+    /** The corner buttons ignore setIcon, so a small ButtonUI fills the panel background and draws the
+     *  button's own glyph tinted light. It is installed again only when JD swaps the UI back. */
     private static void installOverviewCornerButton(final AbstractButton b) {
         if (!(b.getUI() instanceof OverviewCornerUI)) {
             try { b.setUI(new OverviewCornerUI()); b.setBorder(null); } catch (Throwable ignore) { }

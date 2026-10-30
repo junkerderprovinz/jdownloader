@@ -70,17 +70,12 @@ final class Tables {
         }
     }
 
-    // ------------------------------------------------------------ progress bars
-
     /**
-     * The download-list + account-traffic progress bars are AppWork RendererProgressBars
-     * (JProgressBars). Their fill colour is FlatLaf's runtime accent (ProgressBar.foreground
-     * = @accentSliderColor), computed at runtime — it cannot be set via static FlatLaf
-     * properties, nor reached by updateComponentTreeUI (cell renderers aren't in the tree).
-     * AppWork holds the bar instances in ExtProgressColumn fields and does NOT colour them
-     * per cell, so setting the colour directly on those instances sticks. We find them by
-     * walking tables -> columns -> any JProgressBar-typed field and recolour them. Cheap and
-     * idempotent; runs every tick so tables opened later (the account manager) are caught too.
+     * The download list and account traffic bars are AppWork RendererProgressBars. Their fill is
+     * FlatLaf's accent computed at runtime, and as cell renderers they sit outside the component
+     * tree. AppWork keeps the bar instances in ExtProgressColumn fields and does not colour them
+     * per cell, so a colour set on those instances sticks. It runs on every tick to catch tables
+     * opened later, such as the account manager.
      */
     static void retintProgressBars() {
         for (Window w : Window.getWindows()) {

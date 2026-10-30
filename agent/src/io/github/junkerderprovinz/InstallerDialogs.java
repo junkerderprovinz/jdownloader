@@ -26,8 +26,6 @@ final class InstallerDialogs {
     private static final java.util.Set<Window> RESTART_REQUESTED =
             java.util.Collections.newSetFromMap(new java.util.WeakHashMap<Window, Boolean>());
 
-    // --------------------------------------------------------------- dialogs
-
     private static boolean clickAllowed(Window w) {
         Long t = CLICKED_AT.get(w);
         return t == null || System.currentTimeMillis() - t > 5000L;
@@ -65,7 +63,7 @@ final class InstallerDialogs {
                 continue;
             }
 
-            // "Tray isn't supported!" error (belt-and-suspenders): dispose silently.
+            // JD's "Tray isn't supported!" error is closed silently.
             if (title.equalsIgnoreCase("Error") || title.equalsIgnoreCase("Fehler")) {
                 String text = collectText(w);
                 if (text.contains("Tray isn't supported") || text.contains("Tray wird nicht unterst")) {
@@ -104,10 +102,9 @@ final class InstallerDialogs {
                 }
             }
 
-            // After leaving JDDEFAULT, FlatLaf may be re-enabled on disk but JD still
-            // thinks FLATLAF_DARK/LIGHT is "not installed" and shows a one-shot install
-            // prompt. Accept FlatLaf install prompts (any FlatLaf wording); never while
-            // classic is selected, never on About.
+            // After leaving JDDEFAULT, JD can consider FlatLaf not installed although the jar is
+            // back, and asks once to install it. That prompt is accepted, except under classic
+            // and on About.
             if (w instanceof Dialog && !wantClassicLaf()) {
                 String body = collectText(w).toLowerCase();
                 boolean isInfoDialog = title.toLowerCase().contains("about")
@@ -145,21 +142,10 @@ final class InstallerDialogs {
                 }
             }
 
-            // Look-and-feel changed -> "restart to apply" prompt ("You have changed the
-            // look and feel to FlatLaf Dark ..."). Left unanswered it blocks the first
-            // start with a WHITE GUI (the LAF is registered but never applied). Matched
-            // on the BODY text (locale-tolerant), answered with the restart-AFFIRMING
-            // button — plain "OK" often just dismisses without restarting. Deliberate
-            // side effect: a user changing the LAF manually also gets the JD restart
-            // (which is what "apply" needs anyway).
-            //
-            // CRITICAL narrowing (community PR #2, @ahmed-abdelrazek): the LAF NAME also
-            // appears in purely informational dialogs — most notably Help -> About, which
-            // lists the active look and feel. Matching on the LAF name ALONE made the
-            // agent mistake the About dialog for this prompt, find no restart button, and
-            // fire the "no known button -> request restart" fallback below — so every time
-            // a user opened About, JD restarted and the desktop went black. Require an
-            // actual restart/apply INTENT in the body, and never touch an About-type dialog.
+            // A look-and-feel change asks for a restart, and left unanswered the first start
+            // stays white. The restart button is preferred because a plain "OK" often closes the
+            // dialog without restarting. About lists the active LAF too, so the body has to ask
+            // for a restart and About-type dialogs are skipped, or opening About restarts JD.
             if (w instanceof Dialog) {
                 String body = collectText(w).toLowerCase();
                 String lower = title.toLowerCase();
@@ -196,10 +182,9 @@ final class InstallerDialogs {
                         continue;
                     }
                     if (confirm == null && RESTART_REQUESTED.add(w)) {
-                        // No recognisable button — ask the launcher for a polite restart
-                        // (the LAF is already recorded in JD's config, a restart applies it).
+                        // JD's config already holds the new LAF, so a restart by the launcher applies it.
                         writeFile(RESTART_REQUEST, "laf-dialog-without-known-button");
-                        System.out.println("[jd-dialog-agent] LAF dialog has no known button — "
+                        System.out.println("[jd-dialog-agent] LAF dialog has no known button: "
                                 + "requested a container-side JD restart. title=\"" + title
                                 + "\" text=\"" + condense(collectText(w)) + "\"");
                         continue;
@@ -207,9 +192,8 @@ final class InstallerDialogs {
                     continue;
                 }
 
-                // Unmatched dialog: log it ONCE with its verbatim title + text, so the
-                // next "new forced dialog" bug report carries the exact strings we need
-                // to match it — instead of guessing from a user's paraphrase.
+                // An unmatched dialog is logged once with its exact title and text, so a new
+                // forced dialog can be matched from the log.
                 if (LOGGED.add(w)) {
                     System.out.println("[jd-dialog-agent] unmatched dialog: title=\"" + title
                             + "\" text=\"" + condense(collectText(w)) + "\"");

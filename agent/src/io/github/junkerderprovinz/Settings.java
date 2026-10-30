@@ -248,14 +248,10 @@ final class Settings {
     }
 
     /**
-     * Raise the Settings sidebar's row height. JD gives every entry a fixed size from a
-     * shared public-static Dimension on the list's cell renderer
-     * (jd...settings.sidebar.TreeRenderer.DIMENSION = new Dimension(0, 35)); there is no
-     * List.cellHeight / UIManager key. Mutating that one Dimension object raises every
-     * row at once. It is reached through a renderer instance found in the tree, so the
-     * static field resolves in JD's own classloader regardless of the agent's.
+     * Raises the settings sidebar rows. JD sizes all of them from one static Dimension on TreeRenderer
+     * and has no UIManager key for it, so that object is changed in place. It is reached through a
+     * renderer instance from the tree, which resolves it in JD's own class loader.
      */
-
     static void styleSidebar() {
         for (Window w : Window.getWindows()) {
             if (w.isShowing() && styleSidebarIn(w)) return;

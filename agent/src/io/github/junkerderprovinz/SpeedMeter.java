@@ -37,20 +37,12 @@ import static io.github.junkerderprovinz.Menus.*;
 /** The toolbar speed graph, its row height and the speed limit editors. */
 final class SpeedMeter {
 
-    // Opt-in geometry logging (JD_DEBUG_GEO=1). Off by default so a box test / the
-    // forum reporter get clean logs; flip it on to re-diagnose layout regressions.
+    // JD_DEBUG_GEO=1 logs the speed graph's layout every few seconds.
     static final boolean GEO_DEBUG =
             "1".equals(System.getenv("JD_DEBUG_GEO"))
             || "true".equalsIgnoreCase(System.getenv("JD_DEBUG_GEO"));
 
-    // ---------------------------------------------------------- geometry probe
-
-    /**
-     * Diagnostic ground truth for the persistent half-height-graph reports: every
-     * ~5s dump the real pixel geometry around the speed graph to stdout, so
-     * `docker logs` shows what the layout ACTUALLY did instead of what we assume.
-     * One compact line per window that contains a SpeedMeterPanel.
-     */
+    /** Logs the pixel geometry around the speed graph, one line per window with a SpeedMeterPanel. */
     static void dumpGeometry() {
         try {
             for (Window w : Window.getWindows()) {
@@ -132,20 +124,12 @@ final class SpeedMeter {
         return null;
     }
 
-    // -------------------------------------------------------- speed graph replacement
-
     /**
-     * AppWork's Graph paints every sample as `(int)(height * value * 0.9) / max` where
-     * value is the raw download speed in BYTES/s. `height * value` is an int*int
-     * product that silently overflows above ~2.1e9 - i.e. from ~34 MiB/s at our 64px
-     * row (~67 MiB/s at the stock 32px). Overflowed samples wrap low or clip below the
-     * widget, so at gigabit speeds the graph permanently paints at a fraction of its
-     * height. Nothing configurable fixes that, so we hide the native SpeedMeterPanel
-     * and paint our own graph with long arithmetic: full height at any speed, same
-     * look (colours from LAFOptions, texts reused from the native panel, limiter band
-     * included). Mouse events are forwarded to the hidden native panel so its
-     * speed-limit menu keeps working. JD's updateToolbar() rebuilds (removeAll) are
-     * healed by the tick: when the native panel reappears without ours, we re-attach.
+     * AppWork's Graph computes (int) (height * value * 0.9) / max with value in bytes per second,
+     * and the int product overflows from about 34 MiB/s at a 64 px row, so fast downloads paint
+     * at a fraction of the height. The native panel is hidden and this graph draws the same
+     * picture with long arithmetic. Mouse events go to the hidden panel so its speed limit menu
+     * keeps working, and the tick attaches the graph again after JD rebuilds the toolbar.
      */
     private static CarbonSpeedGraph ownGraph = null;
 
@@ -182,11 +166,8 @@ final class SpeedMeter {
                 nativePanel.setVisible(false);
             }
             if (!ourPresent) {
-                // a JD updateToolbar() rebuild re-added the (still hidden) native panel
-                // WITHOUT hidemode 3: at default hidemode 0 an invisible component still
-                // reserves its up-to-300px cell and squeezes our graph aside. ourPresent
-                // is false exactly once per rebuild (removeAll dropped us), so re-apply
-                // the exclusion here before adding our graph back.
+                // JD's toolbar rebuild adds the native panel back without hidemode 3, and at
+                // hidemode 0 a hidden component still reserves its cell next to our graph.
                 hideNativeInLayout(parent, nativePanel);
                 parent.add(ownGraph, "width 32:300:300,pushy,growy");
                 parent.revalidate();
@@ -210,10 +191,8 @@ final class SpeedMeter {
     }
 
     /**
-     * Minimal, overflow-free speed graph: ring buffer of long samples polled from
-     * DownloadWatchDog (reflection - the agent compiles against the JDK alone), the
-     * same visual language as the native one (current-speed gradient polygon,
-     * semi-transparent average overlay, limiter band, right-aligned text lines).
+     * A ring buffer of long samples drawn in the native graph's style: gradient polygon for the
+     * current speed, translucent average, limiter band and right-aligned text.
      */
     private static final class CarbonSpeedGraph extends JComponent {
         private static final int SAMPLES = 90;
@@ -377,7 +356,7 @@ final class SpeedMeter {
                 for (long v : asnap) if (v > max) max = v;
                 if (lim > max) max = lim;
 
-                // polygons, oldest -> newest, LONG math: h * value never overflows
+                // oldest to newest; long arithmetic keeps h * value from overflowing
                 final Polygon poly = new Polygon();
                 final Polygon apoly = new Polygon();
                 poly.addPoint(0, h);
@@ -440,22 +419,11 @@ final class SpeedMeter {
         }
     }
 
-    // -------------------------------------------------------- speed graph height
-
     /**
-     * JD's download graph (SpeedMeterPanel) lives in the MainToolBar whose single
-     * MigLayout row is HARDCODED to 32px ("[grow,32!]") - there is no config key for
-     * it. With the premium banner disabled the corner looks half-empty and the graph
-     * cramped, so we grow the toolbar row at runtime; the speedmeter is added with
-     * "pushy,growy" and follows, the 32px tool buttons stay centered (the toolbar is
-     * docked NORTH, so the frame grants it its preferred height - no clipping).
-     *
-     * Guard granularity matters: JD's updateToolbar() rebuild does removeAll() and
-     * installs a brand-NEW MigLayout instance hardcoded back to "[grow,32!]", so a
-     * per-component guard (client property) blocks forever after the first rebuild,
-     * while re-applying on a height heuristic fights JD's layout every tick. Grow
-     * exactly ONCE PER LayoutManager INSTANCE instead: each rebuild's fresh MigLayout
-     * gets grown once, an already-grown instance is left alone.
+     * JD's MainToolBar hardcodes its single MigLayout row to 32 px, which leaves the speed graph
+     * cramped, so the row is grown at runtime and the graph follows through "pushy,growy". JD's
+     * toolbar rebuild installs a new MigLayout with the 32 px row again, so the guard is per
+     * layout instance; a per-component guard would block after the first rebuild.
      */
     private static final int SPEEDMETER_ROW_PX = 64;
     private static final Set<LayoutManager> GROWN_LAYOUTS =
@@ -496,21 +464,16 @@ final class SpeedMeter {
                 tb.repaint();
                 System.out.println("[jd-dialog-agent] grew the speed graph row to " + SPEEDMETER_ROW_PX + "px");
             } catch (Exception ignore) {
-                // setRowConstraints absent -> leave the toolbar as-is; the marker stays
-                // so the same broken instance isn't retried every 400ms tick
+                // setRowConstraints is missing; the marker stays so the tick skips this instance
             }
         }
         pinToolbarHeight(tb);
     }
 
     /**
-     * Growing the toolbar's OWN row is not enough: the CI geometry probe showed the
-     * content pane keeps granting the toolbar its pre-grow strip (row=[grow,64!],
-     * tbPref=68, but MainToolBar bounds stuck at 36px -> the graph's bottom half is
-     * clipped). JD adds the toolbar to the frame with "dock NORTH" (a MigLayout dock
-     * whose measurement does not follow the child's later growth), so pin the height
-     * explicitly in the PARENT's component constraint for the toolbar. Idempotent:
-     * skipped once the current constraint already carries our height pin.
+     * Growing the toolbar's row is not enough: JD docks the toolbar north in the content pane's
+     * MigLayout, which keeps the old 36 px strip and clips the graph. So the height is pinned in
+     * the parent's constraint for the toolbar as well.
      */
     private static void pinToolbarHeight(JComponent tb) {
         Container cp = tb.getParent();
@@ -535,17 +498,11 @@ final class SpeedMeter {
         }
     }
 
-    // -------------------------------------------------------- speed editor width
-
     /**
-     * JD's speed-limit menu field (jd.gui.swing.jdgui.menu.SpeedlimitEditor) is laid
-     * out with a FIXED MigLayout width: MenuEditor.getEditorWidth() hardcodes it to
-     * fit "500.00 KB/s" (+30px), so a higher limit such as "10.216,00 MiB/s" is
-     * clipped and the value can't be read. We relax the spinner's width constraint at
-     * runtime and grow the enclosing popup so the whole value shows. The editor is
-     * rebuilt every time the menu opens, so this re-applies on each open; a per-
-     * instance client-property guard keeps it from relaying an already-widened editor
-     * on every tick. All reflection so the agent still compiles against the JDK alone.
+     * MenuEditor.getEditorWidth() sizes the speed limit field for "500.00 KB/s", so a higher
+     * limit such as "10.216,00 MiB/s" is clipped. The spinner's width constraint is relaxed and
+     * the popup grown to match. JD builds a new editor each time the menu opens, and a client
+     * property marks the ones already widened.
      */
     private static final String WIDENED = "jdp.speedWidened";
 
@@ -565,8 +522,7 @@ final class SpeedMeter {
         }
     }
 
-    /** True if the class IS or EXTENDS jd...menu.SpeedlimitEditor (JD adds it as an
-     *  anonymous subclass, so we must check the whole superclass chain). */
+    /** JD adds SpeedlimitEditor as an anonymous subclass, so the whole superclass chain is checked. */
     private static boolean isSpeedEditor(Class<?> k) {
         for (; k != null && k != Object.class; k = k.getSuperclass()) {
             if (k.getName().endsWith(".SpeedlimitEditor")) return true;
@@ -606,7 +562,7 @@ final class SpeedMeter {
                 pm.setPopupSize(pref.width, pref.height);
             }
         } catch (Exception ignore) {
-            // setComponentConstraints absent / layout differs -> leave the field as-is
+            // setComponentConstraints is missing or the layout differs; leave the field as it is
         }
     }
 }
