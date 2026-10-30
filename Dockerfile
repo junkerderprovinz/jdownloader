@@ -174,6 +174,13 @@ RUN set -eux; \
         sed -i -e '/To support LSIO projects visit:/d' -e '\#linuxserver\.io/donate#d' "$run"; \
     fi
 
+# The JD Highlighter themes render over the Plain control defaults in place, so the
+# theme script needs the shipped files to bring Plain Dark and Plain Light back.
+RUN mkdir -p /opt/JDownloader/flatlaf-defaults/plain && \
+    cp /opt/JDownloader/flatlaf-defaults/FlatDarkLaf.properties \
+       /opt/JDownloader/flatlaf-defaults/FlatLightLaf.properties \
+       /opt/JDownloader/flatlaf-defaults/plain/
+
 # autostart loads the agent through JAVA_TOOL_OPTIONS.
 COPY --from=agent-builder /build/jd-dialog-agent.jar /opt/JDownloader/jd-dialog-agent.jar
 
@@ -212,8 +219,9 @@ ENV S6_KILL_GRACETIME=30000 \
 
 # Defaults the Unraid template can override:
 # JD_LANG       UI language as an ISO code (de, en, fr, ...)
-# JD_THEME      Dark (Carbon #161616), Light, JDDEFAULT or jd-highlighter
-# JD_ACCENT     accent colour for jd-highlighter, any hex
+# JD_THEME      jd-highlighter-dark (also Dark), jd-highlighter-light, plain-dark
+#               (Carbon #161616), Light or JDDEFAULT
+# JD_ACCENT     accent colour for both JD Highlighter themes, any hex
 # JD_SELFUPDATE false turns off JD's self-update checks. The same channel delivers
 #               the hoster plugins, which go stale within weeks.
 # JD_INST_DIR   install path, only worth changing for debugging
@@ -221,7 +229,7 @@ ENV S6_KILL_GRACETIME=30000 \
 #               larger at full pixel density, so text stays sharp where browser
 #               zoom would blur it by scaling up the Selkies H.264 stream.
 ENV JD_LANG=en \
-    JD_THEME=Dark \
+    JD_THEME=jd-highlighter-dark \
     JD_ACCENT=#ffee00 \
     JD_SELFUPDATE=true \
     JD_INST_DIR=/config/JDownloader \

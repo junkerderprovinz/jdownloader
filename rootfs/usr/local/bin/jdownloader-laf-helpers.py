@@ -3,6 +3,7 @@
 
 CLI:
   resolve <theme>     -> prints KEY=VALUE lines (laf, expect_laf, expect_classic, is_classic)
+  canonical <theme>   -> prints the theme name the container runs with (Dark -> jd-highlighter-dark)
   jar-valid <path> <entry>  -> exit 0 if zip readable and entry present
   classic-jars-ready <laf_dir>  -> exit 0 if synthetica.jar + syntheticaJDCustom.jar valid
   should-heal-classic --classic 0|1 --matches 0|1 --synthetica 0|1 --license 0|1
@@ -18,6 +19,14 @@ import zipfile
 
 def normalize_theme(theme: str | None) -> str:
     return (theme or "Dark").strip().lower()
+
+
+def canonical_theme(theme: str | None) -> str:
+    """The JD_THEME every later stage sees. Dark, an empty value and the short jd-highlighter all
+    mean JD Highlighter Dark; the plain Carbon look is plain-dark. Other values pass unchanged."""
+    if normalize_theme(theme) in ("dark", "jd-highlighter"):
+        return "jd-highlighter-dark"
+    return (theme or "").strip()
 
 
 def is_classic_theme(theme: str | None) -> bool:
@@ -259,6 +268,9 @@ def main(argv: list[str]) -> int:
     cmd = argv[1]
     if cmd == "resolve":
         return _cmd_resolve(argv[2] if len(argv) > 2 else "Dark")
+    if cmd == "canonical":
+        print(canonical_theme(argv[2] if len(argv) > 2 else ""))
+        return 0
     if cmd == "jar-valid":
         return _cmd_jar_valid(argv[2], argv[3])
     if cmd == "flatlaf-valid":

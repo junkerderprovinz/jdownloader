@@ -8,6 +8,14 @@ CONFIG_HOME="/config/.config"
 JD_DIR="${JD_INST_DIR:-/config/JDownloader}"
 JD_CFG="${JD_DIR}/cfg"
 
+# Dark, which the Unraid template fills in by default, means JD Highlighter Dark; the plain
+# Carbon look is plain-dark. The services and the JVM read the canonical name from the
+# container environment, so the mapping lives in this one place.
+JD_THEME="$(python3 /usr/local/bin/jdownloader-laf-helpers.py canonical "${JD_THEME:-}")"
+export JD_THEME
+printf '%s' "${JD_THEME}" > /run/s6/container_environment/JD_THEME
+log "JD_THEME=${JD_THEME}"
+
 # Copied on every start so openbox never reads a stale autostart.
 mkdir -p "${CONFIG_HOME}/openbox"
 cp -f /defaults/autostart "${CONFIG_HOME}/openbox/autostart"
@@ -58,7 +66,7 @@ if [[ -f /config/.profile.d/jdownloader-lang.sh ]]; then
     log "locale → s6 env: LANG=${_L:-unchanged}"
 fi
 
-/usr/local/bin/jdownloader-theme.sh "${JD_THEME:-JD_Plain_Dark}" || log "theme hook failed (non-fatal)"
+/usr/local/bin/jdownloader-theme.sh "${JD_THEME:-jd-highlighter-dark}" || log "theme hook failed (non-fatal)"
 
 # Firefox for JD's captcha "solve in browser" flow is in the image but stays unused
 # unless JD_ENABLE_BROWSER is truthy. Only then is it the URL handler (mimeapps
@@ -225,4 +233,4 @@ fi
 
 chown -R "${PUID:-911}:${PGID:-911}" /config 2>/dev/null || true
 
-log "setup done (JD_LANG=${JD_LANG:-en}, JD_THEME=${JD_THEME:-JD_Plain_Dark})"
+log "setup done (JD_LANG=${JD_LANG:-en}, JD_THEME=${JD_THEME:-jd-highlighter-dark})"

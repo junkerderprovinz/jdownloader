@@ -484,3 +484,33 @@ def test_theme_sh_renders_the_light_template_into_flatlightlaf():
     assert "highlighter-light.properties.tmpl" in branch
     assert 'DEF="${FLATLAF_DEFAULTS_DIR}/FlatLightLaf.properties"' in branch
     assert "laf/FlatLightLaf.json" in branch
+
+
+@pytest.mark.parametrize(
+    "theme,expected",
+    [
+        ("Dark", "jd-highlighter-dark"),
+        (" dark ", "jd-highlighter-dark"),
+        ("", "jd-highlighter-dark"),
+        (None, "jd-highlighter-dark"),
+        ("jd-highlighter", "jd-highlighter-dark"),
+        ("jd-highlighter-light", "jd-highlighter-light"),
+        ("plain-dark", "plain-dark"),
+        ("Light", "Light"),
+        ("JDDEFAULT", "JDDEFAULT"),
+    ],
+)
+def test_dark_and_empty_theme_mean_highlighter_dark(theme, expected):
+    assert h.canonical_theme(theme) == expected
+
+
+def test_plain_dark_stays_the_plain_carbon_look():
+    r = h.resolve_jd_theme("plain-dark")
+    assert r["laf"] == "FLATLAF_DARK"
+
+
+def test_setup_publishes_the_canonical_theme_to_every_service():
+    setup = SETUP.read_text(encoding="utf-8")
+    pos = setup.index("canonical")
+    assert "/run/s6/container_environment/JD_THEME" in setup[pos:pos + 400]
+    assert pos < setup.index("jdownloader-theme.sh")

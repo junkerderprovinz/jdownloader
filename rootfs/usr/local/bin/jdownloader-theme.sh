@@ -59,6 +59,14 @@ mkdir -p "${JD_CFG}/laf"
 chmod 644 "${JD_CFG}/laf/"*.json 2>/dev/null || true
 chmod 644 "${JD_CFG}/org.jdownloader.settings.GraphicalUserInterfaceSettings.json" 2>/dev/null || true
 
+# A JD Highlighter run leaves its rendered defaults in place of the Plain ones, which
+# outlive a theme change on a restarted container. The Highlighter branches below render
+# theirs again, so the shipped Plain files go back first.
+for f in FlatDarkLaf FlatLightLaf; do
+    [ -f "${FLATLAF_DEFAULTS_DIR}/plain/$f.properties" ] && \
+        cp -f "${FLATLAF_DEFAULTS_DIR}/plain/$f.properties" "${FLATLAF_DEFAULTS_DIR}/$f.properties"
+done
+
 # The helper resolves every casing of JDDEFAULT the same way autostart does.
 HELPERS="/usr/local/bin/jdownloader-laf-helpers.py"
 if [ -f "${HELPERS}" ]; then
