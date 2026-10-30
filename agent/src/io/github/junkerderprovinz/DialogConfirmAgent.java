@@ -256,7 +256,7 @@ public class DialogConfirmAgent {
                                 return patchCustomScrollbarPainter(classfileBuffer, loader);
                             if (JD_PROGRESS_PAINTER.equals(className))
                                 return patchCustomProgressbarPainter(classfileBuffer, loader);
-                        } else if (isHighlighter()) {
+                        } else if (HIGHLIGHTER) {
                             if (TASK_COL.equals(className) || AVAIL_COL.equals(className) || FILE_COL.equals(className))
                                 return patchStatusColumn(classfileBuffer, loader, className);
                             if (FLAT_TABUI.equals(className)) return patchTabbedPaneUI(classfileBuffer, loader);
@@ -1267,6 +1267,10 @@ public class DialogConfirmAgent {
             growSpeedMeter();
             replaceSpeedGraph();
         } else {
+            if (DESKTOP) {
+                LookAndFeel laf = UIManager.getLookAndFeel();
+                desktopFlatLaf = laf != null && laf.getClass().getName().startsWith("com.formdev.flatlaf.");
+            }
             exposeFlatlafToSystemLoader();
             restoreExpanderIcons();
             if (!isHighlighter()) healPackageToggle();   // rebuilds FileColumn's cached [+]/[-] toggle icons
@@ -3605,7 +3609,12 @@ public class DialogConfirmAgent {
     private static final boolean HIGHLIGHTER = DESKTOP
             || System.getenv().getOrDefault("JD_THEME", "").toLowerCase(java.util.Locale.ROOT).contains("highlight");
 
-    private static boolean isHighlighter() { return HIGHLIGHTER; }
+    // A desktop JD can still run another look and feel (FlatLaf arrives with JD's own
+    // design download), and the polish on top of it would leave a half-themed window.
+    // tick() records the active one; the container always runs FlatLaf here.
+    private static volatile boolean desktopFlatLaf = false;
+
+    private static boolean isHighlighter() { return HIGHLIGHTER && (!DESKTOP || desktopFlatLaf); }
 
     // jdownloader-theme.sh renders the accent into the defaults as "@accentColor = #rrggbb".
     // UIManager is no source for it, because enforceDarkChrome greys a blue accent there.
