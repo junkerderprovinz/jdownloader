@@ -281,9 +281,8 @@ final class Cards {
                 for (Component ch : tb.getComponents()) if (ch.getWidth() > 0 && (first == null || ch.getX() < first.getX())) first = ch;
                 if (first == null) continue;
                 boolean changed = false;
-                // JD's toolbar layout adds 3px before the first button, so this border puts its hover
-                // pill on EDGE with the tabs and cards.
-                final int TB_LEFT = EDGE - 3;
+                // The first button's hover pill starts on EDGE with the tabs and cards.
+                final int TB_LEFT = EDGE;
                 java.awt.Insets bi = tbj.getInsets();
                 if (bi != null && bi.left != TB_LEFT) {
                     tbj.setBorder(javax.swing.BorderFactory.createEmptyBorder(bi.top, TB_LEFT, bi.bottom, bi.right));
