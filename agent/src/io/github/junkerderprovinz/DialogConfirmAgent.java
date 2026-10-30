@@ -149,7 +149,7 @@ public class DialogConfirmAgent {
         while (true) {
             try {
                 Thread.sleep(400);
-                SwingUtilities.invokeAndWait(DialogConfirmAgent::tick);
+                SwingUtilities.invokeAndWait(TICK_TIMING ? DialogConfirmAgent::timedTick : DialogConfirmAgent::tick);
             } catch (InterruptedException e) {
                 return;
             } catch (Exception e) {
@@ -158,39 +158,22 @@ public class DialogConfirmAgent {
         }
     }
 
-    // Each step runs on its own, so one that throws on an odd component cannot starve the rest.
-    // JD re-renders popup rows lazily, which is why open popups are styled again on every tick.
-    private static final Runnable[] HL_STEPS = {
-        Settings::styleSidebar,
-        Settings::stripSectionUnderlines,
-        Chrome::recolorMainTabs,
-        Menus::flushMenuBarItems,
-        Chrome::darkenChromeBars,
-        Icons::monoChromeIcons,
-        Chrome::roundToolbarButtons,
-        Views::badgeViewsMenu,
-        Views::badgeViewsPanel,
-        Menus::fixMenuArrow,
-        Menus::styleMenuFields,
-        Menus::wireMenuPopups,
-        Menus::styleVisibleMenuPopups,
-        Cards::cardSettingsSections,
-        Tables::borderlessConfigTables,
-        Settings::unifyConfigFields,
-        Tables::monoTableRowIcons,
-        Tables::indentNameColumns,
-        Cards::cardMainTables,
-        Cards::cardBottomArea,
-        Cards::alignToolbarLeft,
-        Tables::monoConfigTableIcons,
-        Tables::fixWidthLockIcon,
-        Settings::stylePropertiesPanel,
-        Settings::monoSectionHeaders,
-        Tables::monoCornerIcons,
-        Tables::growTableHeaders,
-        Dialogs::recolorDialogs,
-        Dialogs::dimModalBackdrops,
-    };
+    // -Djd.agent.tickTiming=true logs the average cost of a tick and of each jd-highlighter step
+    // every 25 ticks (10 s).
+    private static final boolean TICK_TIMING = Boolean.getBoolean("jd.agent.tickTiming");
+    private static long tickNanos;
+    private static int  timedTicks;
+
+    private static void timedTick() {
+        long start = System.nanoTime();
+        tick();
+        tickNanos += System.nanoTime() - start;
+        if (++timedTicks < 25) return;
+        System.out.println(String.format(java.util.Locale.ROOT, "[jd-dialog-agent] tick %.3f ms average over %d ticks, %s",
+                tickNanos / 1e6 / timedTicks, timedTicks, HighlighterPass.report()));
+        tickNanos = 0;
+        timedTicks = 0;
+    }
 
     private static void tick() {
         if (wantClassicLaf()) {
@@ -223,11 +206,7 @@ public class DialogConfirmAgent {
             widenSpeedEditors();
             growSpeedMeter();
             replaceSpeedGraph();
-            if (isHighlighter()) {
-                for (Runnable step : HL_STEPS) {
-                    try { step.run(); } catch (Throwable ignore) { }
-                }
-            }
+            if (isHighlighter()) HighlighterPass.run(TICK_TIMING);
         }
         if (++lafTick >= 12) {   // every ~5s (ticks run every 400ms)
             lafTick = 0;
