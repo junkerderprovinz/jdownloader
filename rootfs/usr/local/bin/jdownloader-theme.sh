@@ -9,7 +9,8 @@
 #
 #   Dark  = JD_Plain (flat) icons and the IBM Carbon #161616 monochrome palette
 #   Light = JD_Plain (flat) icons and JD's default light colours
-#   jd-highlighter = the Dark palette, borderless, with one accent colour (JD_ACCENT)
+#   jd-highlighter-dark = the Dark palette, borderless, with one accent colour (JD_ACCENT)
+#   jd-highlighter-light = the same design on a light Carbon palette
 #
 # The file is always overwritten, since the env var wins over whatever JD wrote on
 # the previous run, and then locked read-only like the tray cfg in autostart. JD's
@@ -66,7 +67,7 @@ else
     THEME_LC=$(printf '%s' "${THEME}" | tr '[:upper:]' '[:lower:]')
     case "${THEME_LC}" in
         jddefault) LAF="DEFAULT" ;;
-        light|jd_plain) LAF="FLATLAF_LIGHT" ;;
+        light|jd_plain|jd-highlighter-light) LAF="FLATLAF_LIGHT" ;;
         *dark*) LAF="FLATLAF_DARK" ;;
         *) LAF="FLATLAF_DARK" ;;
     esac
@@ -244,6 +245,70 @@ PYEOF
     fi
     # Keeps JD's unprivileged process from resetting the file (see the header).
     chmod 444 "${JD_CFG}/laf/FlatDarkLaf.json" 2>/dev/null || true
+elif [ "${LAF}" = "FLATLAF_LIGHT" ] && [ "${HL}" = "1" ]; then
+    # jd-highlighter-light: the dark branch's layout on the light Carbon greys. The
+    # lists, overview and views column sit on a white card on the #f4f4f4 base.
+    DEF="${FLATLAF_DEFAULTS_DIR}/FlatLightLaf.properties"
+    TMPL="${FLATLAF_DEFAULTS_DIR}/highlighter-light.properties.tmpl"
+    if [ -f "${TMPL}" ]; then
+        render_properties "${TMPL}" "${ACCENT}" "${DEF}"
+        log "jd-highlighter-light: wrote accented FlatLaf defaults (accent=${ACCENT}) -> ${DEF}"
+    fi
+    ACC_HEX=$(printf '%s' "${ACCENT}" | sed 's/^#//')
+    ACC_FG=$(accent_fg "${ACCENT}" | sed 's/^#//')
+    python3 - "${JD_CFG}/laf/FlatLightLaf.json" "${ICONSET}" "${ACC_HEX}" "${ACC_FG}" <<'PYEOF'
+import json, os, sys
+path, iconset, acc, accfg = sys.argv[1:5]
+card = "#ffffffff"
+d = {
+    "iconsetid": iconset,
+    "colorforpanelbackground":                    "#fff4f4f4",
+    "colorforpanelborders":                       "#fff4f4f4",
+    "colorforpanelheaderbackground":              card,
+    "colorforpanelheaderforeground":              "#ff161616",
+    "colorforconfigheadertextcolor":              "#ff161616",
+    "colorforconfigpaneldescriptiontext":         "#ff161616",
+    "configlabelenabledtextcolor":                "#ff161616",
+    "configlabeldisabledtextcolor":               "#ffa8a8a8",
+    "colorfortablepackagerowbackground":          card,
+    "colorfortablepackagerowforeground":          "#ff161616",
+    "colorfortablealternaterowbackground":        card,
+    "colorfortablealternaterowforeground":        "#ff161616",
+    "colorfortableselectedrowsbackground":        "#ffd0d0d0",
+    "colorfortableselectedrowsforeground":        "#ff161616",
+    "colorfortablemouseoverrowbackground":        "#ff" + acc,
+    "colorfortablemouseoverrowforeground":        "#ff" + accfg,
+    "colorfortablerowgap":                        card,
+    "colorfortablesortedcolumnview":              "#ffe0e0e0",
+    "colorfortablefilteredview":                  "#ff6f6f6f",
+    "colorfortooltipforeground":                  "#ff161616",
+    # Carbon's light-theme red and amber, a shade deeper than the dark theme's so they read on white.
+    "colorforerrorforeground":                    "#ffda1e28",
+    "colorforlinkgrabberdupehighlighter":         "#33da1e28",
+    "colorfortableaccounterrorrowbackground":     "#40da1e28",
+    "colorfortableaccounterrorrowforeground":     "#ff161616",
+    "colorfortableaccounttemperrorrowbackground": "#40f1c21b",
+    "colorfortableaccounttemperrorrowforeground": "#ff161616",
+    "colorforprogressbarforeground1":             "#ff8d8d8d",
+    "colorforprogressbarforeground2":             "#ff8d8d8d",
+    "colorforprogressbarforeground3":             "#ff8d8d8d",
+    "colorforprogressbarforeground4":             "#ff8d8d8d",
+    "colorforprogressbarforeground5":             "#ff8d8d8d",
+    "colorforspeedmetertext":                     "#ff161616",
+    "colorforspeedmeteraveragetext":              "#ff525252",
+    "colorforscrollbarsnormalstate":              "#ffc6c6c6",
+    "colorforscrollbarsmouseoverstate":           "#ffa8a8a8",
+    "tablealternaterowhighlightenabled":          False,
+    "textantialiasenabled":                       True,
+    "linktablehorizontalrowlineweight":           0,
+    "paintstatusbartopborder":                    False,
+    "windowdecorationenabled":                    False,
+}
+os.makedirs(os.path.dirname(path), exist_ok=True)
+json.dump(d, open(path, "w"), indent=2)
+print("[jdownloader-theme] jd-highlighter-light: light Carbon colorfor* + iconsetid=%s -> %s" % (iconset, path))
+PYEOF
+    chmod 444 "${JD_CFG}/laf/FlatLightLaf.json" 2>/dev/null || true
 elif [ "${LAF}" = "FLATLAF_LIGHT" ]; then
     python3 - "${JD_CFG}/laf/FlatLightLaf.json" "${ICONSET}" <<'PYEOF'
 import json, os, sys

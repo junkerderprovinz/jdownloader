@@ -24,6 +24,7 @@ import static io.github.junkerderprovinz.Tables.*;
 final class Cards {
 
     private static final Color MAIN_CARD = PAL_SURFACE;
+    private static final String MAIN_CARD_HEX = String.format("#%06x", MAIN_CARD.getRGB() & 0xffffff);
     private static final int   CARD_GAP  = 10;
     private static final int   CARD_ARC  = UI_RADIUS;
     // The left line that menu, toolbar, tabs, cards and the bottom bar all start on.
@@ -175,7 +176,7 @@ final class Cards {
                 if (corner != null && !MAIN_CARD.equals(corner.getBackground())) corner.setBackground(MAIN_CARD);
                 javax.swing.JScrollBar vsb = sp.getVerticalScrollBar();
                 if (vsb != null && vsb.getClientProperty("FlatLaf.style") == null)
-                    vsb.putClientProperty("FlatLaf.style", "track: #242424; hoverTrackColor: #242424");
+                    vsb.putClientProperty("FlatLaf.style", "track: " + MAIN_CARD_HEX + "; hoverTrackColor: " + MAIN_CARD_HEX);
                 if (vsb != null && !MAIN_CARD.equals(vsb.getBackground())) vsb.setBackground(MAIN_CARD);
                 if (sp.getClientProperty("jdp.mainCard") == null) {
                     sp.setOpaque(true);

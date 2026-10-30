@@ -43,6 +43,12 @@ public class DialogConfirmAgent {
     static final boolean HIGHLIGHTER = DESKTOP
             || System.getenv().getOrDefault("JD_THEME", "").toLowerCase(java.util.Locale.ROOT).contains("highlight");
 
+    // JD Highlighter Light runs on FlatLightLaf with the same layout and a light palette. The
+    // container picks it by JD_THEME, the desktop installer by -Djd.highlighter.variant.
+    static final boolean LIGHT = HIGHLIGHTER && (DESKTOP
+            ? "light".equalsIgnoreCase(System.getProperty("jd.highlighter.variant", "").trim())
+            : System.getenv().getOrDefault("JD_THEME", "").toLowerCase(java.util.Locale.ROOT).contains("highlighter-light"));
+
     // A desktop JD can still run another look and feel (FlatLaf arrives with JD's own
     // design download), and the polish on top of it would leave a half-themed window.
     // tick() records the active one; the container always runs FlatLaf here.
@@ -55,17 +61,26 @@ public class DialogConfirmAgent {
 
     // Neutral greys of the theme. The template .properties and the JD colorfor* JSON mirror these
     // values; the accent is the one configurable colour and is read from the LAF at runtime.
-    static final Color PAL_BASE      = new Color(0x16, 0x16, 0x16); // window chrome
-    static final Color PAL_FIELD     = new Color(0x1a, 0x1a, 0x1a); // input fill
-    static final Color PAL_HEADER    = new Color(0x1e, 0x1e, 0x1e); // table and section headers
-    static final Color PAL_TRACK     = new Color(0x26, 0x26, 0x26); // progress track, unselected tile
-    static final Color PAL_SURFACE   = new Color(0x24, 0x24, 0x24); // cards, dialogs, chips, lists
-    static final Color PAL_BUTTON    = new Color(0x2a, 0x2a, 0x2a); // buttons, menu fields
-    static final Color PAL_DIVIDER   = new Color(0x39, 0x39, 0x39); // scrollbar thumb, dividers
-    static final Color PAL_SELECTION = new Color(0x52, 0x52, 0x52); // row selection
-    static final Color PAL_MONO      = new Color(0xb0, 0xb0, 0xb0); // mono icons
-    static final Color PAL_DISABLED  = new Color(0x6f, 0x6f, 0x6f); // disabled text
-    static final Color PAL_TEXT      = new Color(0xf4, 0xf4, 0xf4); // text, light icons
+    static final Color PAL_BASE      = grey(0x16, 0xf4); // window chrome
+    static final Color PAL_FIELD     = grey(0x1a, 0xec); // input fill
+    static final Color PAL_HEADER    = grey(0x1e, 0xe8); // table and section headers
+    static final Color PAL_TRACK     = grey(0x26, 0xe0); // progress track, unselected tile
+    static final Color PAL_SURFACE   = grey(0x24, 0xff); // cards, dialogs, chips, lists
+    static final Color PAL_BUTTON    = grey(0x2a, 0xe0); // buttons, menu fields
+    static final Color PAL_DIVIDER   = grey(0x39, 0xc6); // scrollbar thumb, dividers
+    static final Color PAL_SELECTION = grey(0x52, 0xd0); // row selection
+    static final Color PAL_MONO      = grey(0xb0, 0x52); // mono icons
+    static final Color PAL_DISABLED  = grey(0x6f, 0xa8); // disabled text
+    static final Color PAL_TEXT      = grey(0xf4, 0x16); // text and glyphs
+
+    // Text on the accent fill does not follow the palette: it is dark or light by the accent alone.
+    static final Color INK_DARK  = new Color(0x16, 0x16, 0x16);
+    static final Color INK_LIGHT = new Color(0xf4, 0xf4, 0xf4);
+
+    private static Color grey(int dark, int light) {
+        int v = LIGHT ? light : dark;
+        return new Color(v, v, v);
+    }
 
     // Plain (non-UIResource) colours set directly on the table progress-bar instances so a
     // later updateUI cannot override them. Plain Dark uses the light #c6c6c6 of the
@@ -167,7 +182,7 @@ public class DialogConfirmAgent {
             // The container fixes are made for FlatLaf Dark, so a desktop in another look and feel
             // is left alone entirely.
             if (DESKTOP) {
-                desktopFlatLaf = isFlatDark(UIManager.getLookAndFeel());
+                desktopFlatLaf = isThemeLaf(UIManager.getLookAndFeel());
                 if (!desktopFlatLaf) return;
             }
             exposeFlatlafToSystemLoader();
@@ -221,7 +236,8 @@ public class DialogConfirmAgent {
         return "jddefault".equals(t.trim().toLowerCase());
     }
 
-    /** Carbon #161616 chrome / dark progress retints are Dark-only. Light keeps FlatLight. */
+    /** Carbon chrome and progress retints. Plain Light keeps stock FlatLight; JD Highlighter Light
+     *  runs through here too and brings its own light palette. */
     static boolean wantDarkLaf() {
         if (wantClassicLaf()) return false;
         String t = System.getenv("JD_THEME");
@@ -234,10 +250,11 @@ public class DialogConfirmAgent {
 
     static boolean isHighlighter() { return HIGHLIGHTER && (!DESKTOP || desktopFlatLaf); }
 
-    static boolean isFlatDark(LookAndFeel laf) {
+    /** Whether laf is the FlatLaf the theme is built for: FlatLightLaf for Light, FlatDarkLaf otherwise. */
+    static boolean isThemeLaf(LookAndFeel laf) {
         try {
             return laf != null && laf.getClass().getName().startsWith("com.formdev.flatlaf.")
-                    && Boolean.TRUE.equals(laf.getClass().getMethod("isDark").invoke(laf));
+                    && Boolean.valueOf(!LIGHT).equals(laf.getClass().getMethod("isDark").invoke(laf));
         } catch (Throwable t) { return false; }
     }
 

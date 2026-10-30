@@ -24,8 +24,8 @@ final class Dialogs {
 
     // Dialogs use the card surface, with fields and buttons styled like the settings.
     static final Color DIALOG_BG = PAL_SURFACE;
-    // The updater window sits on top of the download list card, so it needs a lighter shade than the card.
-    private static final Color UPDATER_BG = new Color(0x30, 0x30, 0x30);
+    // The updater window sits on top of the download list card, so it needs a shade that sets it apart.
+    private static final Color UPDATER_BG = LIGHT ? new Color(0xe8, 0xe8, 0xe8) : new Color(0x30, 0x30, 0x30);
 
     static void recolorDialogs() {
         for (Window w : Window.getWindows()) {

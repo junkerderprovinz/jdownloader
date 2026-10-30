@@ -34,7 +34,7 @@ def resolve_jd_theme(theme: str | None) -> dict:
             "expect_classic": "1",
             "is_classic": True,
         }
-    if t in ("light", "jd_plain"):
+    if t in ("light", "jd_plain", "jd-highlighter-light"):
         return {
             "laf": "FLATLAF_LIGHT",
             "expect_laf": "flatlight",

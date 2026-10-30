@@ -62,6 +62,8 @@ h = load_helpers()
         ("light", "FLATLAF_LIGHT", False),
         ("JD_Plain_Dark", "FLATLAF_DARK", False),
         ("JD_Plain", "FLATLAF_LIGHT", False),
+        ("jd-highlighter-dark", "FLATLAF_DARK", False),
+        ("jd-highlighter-light", "FLATLAF_LIGHT", False),
         ("SomethingElse", "FLATLAF_DARK", False),
     ],
 )
@@ -461,3 +463,24 @@ def test_autostart_classic_bootstrap_before_gui_on_template_switch():
     assert "headless" in body.lower()
     assert "classic_jars_ready" in body
     assert "/tmp/.jd-classic-bootstrap-tried" in auto
+
+
+def _template_keys(name: str) -> list[str]:
+    path = ROOT / "rootfs" / "opt" / "JDownloader" / "flatlaf-defaults" / name
+    lines = path.read_text(encoding="utf-8").splitlines()
+    return [l.split("=")[0].strip() for l in lines if l.strip() and not l.lstrip().startswith("#")]
+
+
+def test_light_template_sets_every_key_of_the_dark_one():
+    dark = _template_keys("highlighter.properties.tmpl")
+    light = _template_keys("highlighter-light.properties.tmpl")
+    assert set(dark) <= set(light)
+    assert len(light) == len(set(light))
+
+
+def test_theme_sh_renders_the_light_template_into_flatlightlaf():
+    sh = THEME_SH.read_text(encoding="utf-8")
+    branch = sh.split('elif [ "${LAF}" = "FLATLAF_LIGHT" ] && [ "${HL}" = "1" ]; then')[1].split("\nelif ")[0]
+    assert "highlighter-light.properties.tmpl" in branch
+    assert 'DEF="${FLATLAF_DEFAULTS_DIR}/FlatLightLaf.properties"' in branch
+    assert "laf/FlatLightLaf.json" in branch

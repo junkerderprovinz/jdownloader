@@ -193,7 +193,7 @@ final class LafDefaults {
 
         if (defaultsRegistered) {
             Color bg = UIManager.getColor("Panel.background");
-            if (wantDarkLaf() && bg != null && (bg.getRGB() & 0xFFFFFF) == 0x161616) {
+            if (wantDarkLaf() && bg != null && (bg.getRGB() & 0xFFFFFF) == (PAL_BASE.getRGB() & 0xFFFFFF)) {
                 lafRefreshDone = true;
                 System.out.println("[jd-dialog-agent] custom defaults active from first paint (no re-apply needed)");
                 return;
@@ -334,7 +334,7 @@ final class LafDefaults {
         lafListenerAdded = true;
         UIManager.addPropertyChangeListener(evt -> {
             if ("lookAndFeel".equals(evt.getPropertyName())) {
-                if (DESKTOP) desktopFlatLaf = isFlatDark(UIManager.getLookAndFeel());
+                if (DESKTOP) desktopFlatLaf = isThemeLaf(UIManager.getLookAndFeel());
                 SwingUtilities.invokeLater(() -> {
                     installProgressBarDefaults();
                     if (wantDarkLaf()) retintProgressBars();
@@ -394,7 +394,7 @@ final class LafDefaults {
         for (String k : new String[] {
                 "Tree.icon.expandedColor", "Tree.icon.collapsedColor",
                 "Tree.icon.leafColor", "Tree.icon.closedColor", "Tree.icon.openColor" }) {
-            d.put(k, new ColorUIResource(0xb0, 0xb0, 0xb0));
+            d.put(k, new ColorUIResource(PAL_MONO));
         }
         installProgressBarDefaults();
         chromeDone = true;   // set before the refresh so a throw can never cause a retry storm
@@ -450,7 +450,7 @@ final class LafDefaults {
     // jdownloader-theme.sh renders the accent into the defaults as "@accentColor = #rrggbb".
     // UIManager is no source for it, because enforceDarkChrome greys a blue accent there.
     private static final java.io.File RENDERED_DEFAULTS =
-            new java.io.File(DEFAULTS_DIR, "FlatDarkLaf.properties");
+            new java.io.File(DEFAULTS_DIR, LIGHT ? "FlatLightLaf.properties" : "FlatDarkLaf.properties");
     private static Color   accentCache = null;
     private static boolean accentRead  = false;
     static Color accentColor() {
@@ -482,6 +482,6 @@ final class LafDefaults {
         if (sel != null) return new Color(sel.getRGB());
         Color a = accentColor();
         double lum = 0.299 * a.getRed() + 0.587 * a.getGreen() + 0.114 * a.getBlue();
-        return lum > 140 ? PAL_BASE : PAL_TEXT;
+        return lum > 140 ? INK_DARK : INK_LIGHT;
     }
 }
