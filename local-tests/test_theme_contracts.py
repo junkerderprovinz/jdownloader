@@ -268,6 +268,7 @@ def test_tick_gates_enforce_dark_chrome_behind_want_dark_laf():
     assert re.search(
         r"if\s*\(\s*wantDarkLaf\s*\(\s*\)\s*\)\s*\{\s*"
         r"enforceDarkChrome\s*\(\s*\)\s*;\s*"
+        r"(?:if\s*\(\s*!\s*isHighlighter\s*\(\s*\)\s*\)\s*)?"
         r"themeKaynExtras\s*\(\s*\)\s*;.*?retintProgressBars\s*\(\s*\)\s*;",
         src,
         re.S,

@@ -113,6 +113,44 @@ esac
 # /config/JDownloader/downloads, leaving a folder the user picked alone.
 /usr/local/bin/jdownloader-downloaddir.sh || log "download-dir hook failed (non-fatal)"
 
+# The Selkies web desktop drops uploads into $FILE_MANAGER_PATH. JD's folderwatchV2
+# extension imports link containers (.dlc, .ccf, .rsdf) and .crawljob files from
+# there, so a dropped .dlc ends up in the LinkGrabber. The switch is only seeded
+# when missing, so turning it off in the GUI sticks.
+WATCH_DIR="${JD_WATCH_DIR:-${FILE_MANAGER_PATH:-/config/Desktop}}"
+mkdir -p "${WATCH_DIR}"
+FOLDERWATCH_CFG="${JD_CFG}/org.jdownloader.extensions.folderwatchV2.FolderWatchExtension.json"
+FOLDERWATCH_FOLDERS="${JD_CFG}/org.jdownloader.extensions.folderwatchV2.FolderWatchExtension.folders.json"
+if [ ! -f "${FOLDERWATCH_CFG}" ]; then
+    python3 - "${FOLDERWATCH_CFG}" <<'PYEOF'
+import json, sys
+# freshinstall=false keeps JD's first run from resetting "enabled" to the
+# extension default. Keys are the lowercased getter names.
+path = sys.argv[1]
+json.dump({"enabled": True, "freshinstall": False, "checkinterval": 5000, "debugenabled": False},
+          open(path, "w"), indent=2)
+print("[jdownloader-setup] folderwatch enabled -> %s" % path)
+PYEOF
+fi
+# AppWork's StorageHandler keeps array getters in their own <Class>.<key>.json, and a
+# "folders" key in the main file is ignored. Appending keeps folders the user added.
+python3 - "${FOLDERWATCH_FOLDERS}" "${WATCH_DIR}" <<'PYEOF'
+import json, os, sys
+path, watch = sys.argv[1], sys.argv[2]
+folders = []
+if os.path.exists(path):
+    try:
+        folders = json.load(open(path))
+        if not isinstance(folders, list):
+            folders = []
+    except Exception:
+        folders = []
+if watch not in folders:
+    folders.append(watch)
+    json.dump(folders, open(path, "w"), indent=2)
+    print("[jdownloader-setup] folderwatch watching -> %s (%s)" % (watch, path))
+PYEOF
+
 # A fresh install would open JD at its built-in 1024x728 with black desktop around it.
 # JDGui.internalInitLocationAndDimension applies the saved extendedState right before
 # setVisible, and a frame maximised by the window manager then follows Selkies'
@@ -138,6 +176,20 @@ if [[ ! -f "${FFPROBE_CFG}" && -x /usr/bin/ffprobe ]]; then
     printf '%s' '"/usr/bin/ffprobe"' > "${FFPROBE_CFG}"
     log "seeded ffprobe path: /usr/bin/ffprobe"
 fi
+
+# jd-highlighter starts with a leaner download list: no "Save to" and "Comment"
+# columns, and a wider progress column. ExtTable falls back to each column's default
+# for keys that are missing, and JD rewrites the whole file on shutdown, so it is
+# only seeded on a fresh install. VISABLE is JD's spelling.
+case "${JD_THEME:-Dark}" in
+    jd-highlighter|*[Hh]ighlight*)
+        DLTABLE_CFG="${JD_CFG}/ExtTable_downloadstable3.json"
+        if [ ! -f "${DLTABLE_CFG}" ]; then
+            printf '%s' '{"VISABLE_COL_ExtTextColumn.org.jdownloader.gui.views.downloads.columns.DownloadFolderColumn":false,"VISABLE_COL_ExtTextAreaColumn.org.jdownloader.gui.views.components.packagetable.columns.CommentColumn":false,"WIDTH_COL_ExtProgressColumn.org.jdownloader.gui.views.downloads.columns.ProgressColumn":260}' > "${DLTABLE_CFG}"
+            log "seeded downloads-table columns: hide Save to and Comment, progress width 260"
+        fi
+        ;;
+esac
 
 # A container has no system tray, and the extension would raise an error popup on
 # every start.

@@ -78,13 +78,26 @@ public class DialogConfirmAgent {
     private static final ColorUIResource HEADER = new ColorUIResource(0x0b, 0x0b, 0x0b);
     private static final ColorUIResource SEL    = new ColorUIResource(0x52, 0x52, 0x52);
 
+    // Neutral greys of the theme. The template .properties and the JD colorfor* JSON mirror these
+    // values; the accent is the one configurable colour and is read from the LAF at runtime.
+    private static final Color PAL_BASE      = new Color(0x16, 0x16, 0x16); // window chrome
+    private static final Color PAL_FIELD     = new Color(0x1a, 0x1a, 0x1a); // input fill
+    private static final Color PAL_HEADER    = new Color(0x1e, 0x1e, 0x1e); // table and section headers
+    private static final Color PAL_TRACK     = new Color(0x26, 0x26, 0x26); // progress track, unselected tile
+    private static final Color PAL_SURFACE   = new Color(0x24, 0x24, 0x24); // cards, dialogs, chips, lists
+    private static final Color PAL_BUTTON    = new Color(0x2a, 0x2a, 0x2a); // buttons, menu fields
+    private static final Color PAL_DIVIDER   = new Color(0x39, 0x39, 0x39); // scrollbar thumb, dividers
+    private static final Color PAL_SELECTION = new Color(0x52, 0x52, 0x52); // row selection
+    private static final Color PAL_MONO      = new Color(0xb0, 0xb0, 0xb0); // mono icons
+    private static final Color PAL_DISABLED  = new Color(0x6f, 0x6f, 0x6f); // disabled text
+    private static final Color PAL_TEXT      = new Color(0xf4, 0xf4, 0xf4); // text, light icons
+
     // Plain (non-UIResource) colours set directly on the table progress-bar instances so a
-    // later updateUI cannot override them. The fill is the LIGHT #c6c6c6 the registered
-    // FlatDarkLaf.properties already uses (@accentBaseColor) — same value as the UIManager
-    // fallback (installProgressBarDefaults) so the two mechanisms can never disagree into a
-    // grey flash on scroll (BUG 3). % text is dark over the fill, white over the track.
+    // later updateUI cannot override them. Plain Dark uses the light #c6c6c6 of the
+    // registered FlatDarkLaf.properties, the same value installProgressBarDefaults puts
+    // into UIManager, so the two never disagree into a grey flash on scroll.
     private static final Color BAR_FILL  = new Color(0xc6, 0xc6, 0xc6);
-    private static final Color BAR_TRACK = new Color(0x26, 0x26, 0x26);
+    private static final Color BAR_TRACK = PAL_TRACK;
 
     // --- Kayn (JD_Plain_Dark visibility, 2026-08-04) ---
     // Neutral (no accent: plain dark has none) light-on-dark tones for the two forum fixes below.
@@ -233,6 +246,15 @@ public class DialogConfirmAgent {
                                 return patchCustomScrollbarPainter(classfileBuffer, loader);
                             if (JD_PROGRESS_PAINTER.equals(className))
                                 return patchCustomProgressbarPainter(classfileBuffer, loader);
+                        } else if (isHighlighter()) {
+                            if (TASK_COL.equals(className) || AVAIL_COL.equals(className) || FILE_COL.equals(className))
+                                return patchStatusColumn(classfileBuffer, loader, className);
+                            if (FLAT_TABUI.equals(className)) return patchTabbedPaneUI(classfileBuffer, loader);
+                            if (NEW_THEME.equals(className)) return patchNewTheme(classfileBuffer, loader);
+                            // Config-panel ExtTables ignore renderers set on them, so the
+                            // render path itself is wrapped.
+                            if (EXT_TABLE.equals(className)) return patchExtTableRenderer(classfileBuffer, loader);
+                            if (FLAT_MI_RENDERER.equals(className)) return patchMenuItemRenderer(classfileBuffer, loader);
                         }
                         // theme robustness: the instant FlatLaf's base class loads (before JD's
                         // setLookAndFeel), register our custom-defaults source so the FIRST paint
@@ -501,9 +523,14 @@ public class DialogConfirmAgent {
                 } else if (("paint".equals(name) || "update".equals(name))
                         && "(Ljava/awt/Graphics;Ljavax/swing/JComponent;)V".equals(desc)) {
                     cIdx = 2; isVoid = true;
+                } else if ("uninstallUI".equals(name) && "(Ljavax/swing/JComponent;)V".equals(desc)) {
+                    // On a LAF re-apply uninstallListeners calls circleBar.removePropertyChangeListener; with a
+                    // null circleBar that throws and leaves the animation timer running, so rebind it here too.
+                    cIdx = 1; isVoid = true;
                 } else {
                     return mv;
                 }
+                final boolean isPaint = "paint".equals(name);
                 patchedCount[0]++;
                 return new MethodVisitor(Opcodes.ASM9, mv) {
                     @Override
@@ -538,6 +565,18 @@ public class DialogConfirmAgent {
                             visitInsn(Opcodes.ARETURN);
                         }
                         visitLabel(proceed);
+                        // if (paintCleanRing(g, c)) return;
+                        // paintCleanRing returns false outside Highlighter, which leaves JD's own painting.
+                        if (isPaint) {
+                            visitVarInsn(Opcodes.ALOAD, 1);
+                            visitVarInsn(Opcodes.ALOAD, cIdx);
+                            visitMethodInsn(Opcodes.INVOKESTATIC, AGENT_INTERNAL, "paintCleanRing",
+                                    "(Ljava/awt/Graphics;Ljava/awt/Component;)Z", false);
+                            Label jdPaint = new Label();
+                            visitJumpInsn(Opcodes.IFEQ, jdPaint);
+                            visitInsn(Opcodes.RETURN);
+                            visitLabel(jdPaint);
+                        }
                     }
                 };
             }
@@ -599,6 +638,314 @@ public class DialogConfirmAgent {
         return cw.toByteArray();
     }
 
+    // The status columns return pre-composited coloured glyphs from getIcon(AbstractNode), and
+    // fillColumnHelper builds fresh MergedIcons on every call, so no field sweep can reach them. The
+    // return value goes through cleanTaskIcon instead, which JD's parent-first class loaders resolve
+    // from the agent jar on the system class path.
+    private static final String TASK_COL  = "org/jdownloader/gui/views/downloads/columns/TaskColumn";
+    private static final String AVAIL_COL = "org/jdownloader/gui/views/downloads/columns/AvailabilityColumn";
+    private static final String FILE_COL  = "org/jdownloader/gui/views/downloads/columns/FileColumn";
+    private static final String NEW_THEME = "org/jdownloader/images/NewTheme";
+    private static final String EXT_TABLE = "org/appwork/swing/exttable/ExtTable";
+    // FlatLaf paints a hovered top-level menu's text in the menu bar's foreground and switches to
+    // selectionForeground only when the item is armed, which rollover is not, so the hover text ends
+    // up light on the accent.
+    private static final String FLAT_MI_RENDERER = "com/formdev/flatlaf/ui/FlatMenuItemRenderer";
+    private static final String STATUS_GETICON_DESC =
+            "(Ljd/controlling/packagecontroller/AbstractNode;)Ljavax/swing/Icon;";
+    private static final String AGENT_INTERNAL = "io/github/junkerderprovinz/DialogConfirmAgent";
+    private static byte[] patchStatusColumn(byte[] original, final ClassLoader loader, final String cn) {
+        ClassReader cr = new ClassReader(original);
+        ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES) {
+            @Override
+            protected ClassLoader getClassLoader() { return loader != null ? loader : super.getClassLoader(); }
+        };
+        final int[] n = { 0 };
+        ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
+            @Override
+            public MethodVisitor visitMethod(int access, String name, String desc, String sig, String[] ex) {
+                MethodVisitor mv = super.visitMethod(access, name, desc, sig, ex);
+                if (!("getIcon".equals(name) && STATUS_GETICON_DESC.equals(desc))) return mv;
+                n[0]++;
+                return new MethodVisitor(Opcodes.ASM9, mv) {
+                    @Override
+                    public void visitInsn(int op) {
+                        if (op == Opcodes.ARETURN) {
+                            // return cleanTaskIcon(this, icon);
+                            super.visitVarInsn(Opcodes.ALOAD, 0);
+                            super.visitInsn(Opcodes.SWAP);
+                            super.visitMethodInsn(Opcodes.INVOKESTATIC, AGENT_INTERNAL, "cleanTaskIcon",
+                                    "(Ljava/lang/Object;Ljavax/swing/Icon;)Ljavax/swing/Icon;", false);
+                        }
+                        super.visitInsn(op);
+                    }
+                };
+            }
+        };
+        cr.accept(cv, 0);
+        if (n[0] == 0) {
+            System.out.println("[jd-dialog-agent] " + cn + ".getIcon(AbstractNode) not found, status icons left as-is");
+            return null;   // null leaves the class unchanged
+        }
+        System.out.println("[jd-dialog-agent] patched " + cn + ".getIcon -> clean Tabler status icons");
+        return cw.toByteArray();
+    }
+
+    // FlatLaf paints tab backgrounds edge to edge and the agent cannot subclass FlatTabbedPaneUI, so
+    // paintTabBackground gets its fill rect inset at entry to leave a gap between the tabs.
+    private static final String FLAT_TABUI = "com/formdev/flatlaf/ui/FlatTabbedPaneUI";
+    private static final int TAB_GAP = 4;
+    public static int tabGap() { return isHighlighter() ? TAB_GAP : 0; }
+    private static byte[] patchTabbedPaneUI(byte[] original, final ClassLoader loader) {
+        ClassReader cr = new ClassReader(original);
+        ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES) {
+            @Override
+            protected ClassLoader getClassLoader() { return loader != null ? loader : super.getClassLoader(); }
+        };
+        final int[] n = { 0 };
+        final java.util.List<String> methods = new java.util.ArrayList<String>();
+        ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
+            @Override
+            public MethodVisitor visitMethod(int access, String name, String desc, String sig, String[] ex) {
+                methods.add(name + desc);
+                MethodVisitor mv = super.visitMethod(access, name, desc, sig, ex);
+                if (!("paintTabBackground".equals(name) && "(Ljava/awt/Graphics;IIIIIIZ)V".equals(desc))) return mv;
+                n[0]++;
+                return new MethodVisitor(Opcodes.ASM9, mv) {
+                    @Override
+                    public void visitCode() {
+                        super.visitCode();
+                        // x = x + tabGap();
+                        super.visitVarInsn(Opcodes.ILOAD, 4);
+                        super.visitMethodInsn(Opcodes.INVOKESTATIC, AGENT_INTERNAL, "tabGap", "()I", false);
+                        super.visitInsn(Opcodes.IADD);
+                        super.visitVarInsn(Opcodes.ISTORE, 4);
+                        // w = w - 2 * tabGap();
+                        super.visitVarInsn(Opcodes.ILOAD, 6);
+                        super.visitInsn(Opcodes.ICONST_2);
+                        super.visitMethodInsn(Opcodes.INVOKESTATIC, AGENT_INTERNAL, "tabGap", "()I", false);
+                        super.visitInsn(Opcodes.IMUL);
+                        super.visitInsn(Opcodes.ISUB);
+                        super.visitVarInsn(Opcodes.ISTORE, 6);
+                    }
+                };
+            }
+        };
+        cr.accept(cv, 0);
+        if (n[0] == 0) {
+            System.out.println("[jd-dialog-agent] FlatTabbedPaneUI.paintTabBackground not found, methods: " + methods);
+            return null;
+        }
+        System.out.println("[jd-dialog-agent] patched FlatTabbedPaneUI.paintTabBackground -> tab gap");
+        return cw.toByteArray();
+    }
+
+    // Prepends to FlatMenuItemRenderer.isArmedOrSelected:
+    //   if (menuItem instanceof JMenu && ((JMenu) menuItem).isTopLevelMenu() && menuItem.getModel().isRollover())
+    //       return true;
+    private static byte[] patchMenuItemRenderer(byte[] original, final ClassLoader loader) {
+        ClassReader cr = new ClassReader(original);
+        ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES) {
+            @Override
+            protected ClassLoader getClassLoader() { return loader != null ? loader : super.getClassLoader(); }
+        };
+        final int[] n = { 0 };
+        ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
+            @Override
+            public MethodVisitor visitMethod(int access, String name, String desc, String sig, String[] ex) {
+                MethodVisitor mv = super.visitMethod(access, name, desc, sig, ex);
+                if (!("isArmedOrSelected".equals(name) && "(Ljavax/swing/JMenuItem;)Z".equals(desc))) return mv;
+                n[0]++;
+                return new MethodVisitor(Opcodes.ASM9, mv) {
+                    @Override
+                    public void visitCode() {
+                        super.visitCode();
+                        Label orig = new Label();
+                        visitVarInsn(Opcodes.ALOAD, 0);
+                        visitTypeInsn(Opcodes.INSTANCEOF, "javax/swing/JMenu");
+                        visitJumpInsn(Opcodes.IFEQ, orig);
+                        visitVarInsn(Opcodes.ALOAD, 0);
+                        visitTypeInsn(Opcodes.CHECKCAST, "javax/swing/JMenu");
+                        visitMethodInsn(Opcodes.INVOKEVIRTUAL, "javax/swing/JMenu", "isTopLevelMenu", "()Z", false);
+                        visitJumpInsn(Opcodes.IFEQ, orig);
+                        visitVarInsn(Opcodes.ALOAD, 0);
+                        visitMethodInsn(Opcodes.INVOKEVIRTUAL, "javax/swing/AbstractButton", "getModel",
+                                "()Ljavax/swing/ButtonModel;", false);
+                        visitMethodInsn(Opcodes.INVOKEINTERFACE, "javax/swing/ButtonModel", "isRollover", "()Z", true);
+                        visitJumpInsn(Opcodes.IFEQ, orig);
+                        visitInsn(Opcodes.ICONST_1);
+                        visitInsn(Opcodes.IRETURN);
+                        visitLabel(orig);
+                    }
+                };
+            }
+        };
+        cr.accept(cv, 0);
+        if (n[0] == 0) {
+            System.out.println("[jd-dialog-agent] FlatMenuItemRenderer.isArmedOrSelected not found, menu hover text left as-is");
+            return null;
+        }
+        System.out.println("[jd-dialog-agent] patched FlatMenuItemRenderer.isArmedOrSelected -> dark hover text on menubar menus");
+        return cw.toByteArray();
+    }
+
+
+    // JD caches chrome icons such as the column lock in memory at startup, before the light files are
+    // restored on disk, and they are not column fields the reflective sweep could reach. Routing
+    // NewTheme.getIcon through cleanChromeIcon catches them at lookup; the hook returns early for other keys.
+    private static byte[] patchNewTheme(byte[] original, final ClassLoader loader) {
+        ClassReader cr = new ClassReader(original);
+        ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES) {
+            @Override
+            protected ClassLoader getClassLoader() { return loader != null ? loader : super.getClassLoader(); }
+        };
+        final int[] n = { 0 };
+        ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
+            @Override
+            public MethodVisitor visitMethod(int access, String name, String desc, String sig, String[] ex) {
+                MethodVisitor mv = super.visitMethod(access, name, desc, sig, ex);
+                boolean twoArg = "getIcon".equals(name) && "(Ljava/lang/String;I)Ljavax/swing/Icon;".equals(desc);
+                boolean oneArg = "getIcon".equals(name) && "(Ljava/lang/String;)Ljavax/swing/Icon;".equals(desc);
+                if (!twoArg && !oneArg) return mv;
+                boolean stat = (access & Opcodes.ACC_STATIC) != 0;
+                final int keyIdx = stat ? 0 : 1;
+                final int sizeIdx = twoArg ? (stat ? 1 : 2) : -1;
+                n[0]++;
+                return new MethodVisitor(Opcodes.ASM9, mv) {
+                    @Override
+                    public void visitInsn(int op) {
+                        if (op == Opcodes.ARETURN) {
+                            super.visitVarInsn(Opcodes.ALOAD, keyIdx);
+                            if (sizeIdx >= 0) super.visitVarInsn(Opcodes.ILOAD, sizeIdx);
+                            else super.visitInsn(Opcodes.ICONST_0);
+                            super.visitMethodInsn(Opcodes.INVOKESTATIC, AGENT_INTERNAL, "cleanChromeIcon",
+                                    "(Ljavax/swing/Icon;Ljava/lang/String;I)Ljavax/swing/Icon;", false);
+                        }
+                        super.visitInsn(op);
+                    }
+                };
+            }
+        };
+        cr.accept(cv, 0);
+        if (n[0] == 0) {
+            System.out.println("[jd-dialog-agent] NewTheme.getIcon(String,int) not found, chrome icons left as-is");
+            return null;
+        }
+        System.out.println("[jd-dialog-agent] patched NewTheme.getIcon -> light chrome icons");
+        return cw.toByteArray();
+    }
+
+    // Config-panel ExtTables render from their own ExtColumns and ignore renderers set through
+    // TableColumn or setDefaultRenderer. wrapExtCellRenderer only wraps tables the tick marked as config
+    // panels (jdp.extCfg), so the busy download and linkgrabber tables pass straight through.
+    private static byte[] patchExtTableRenderer(byte[] original, final ClassLoader loader) {
+        ClassReader cr = new ClassReader(original);
+        ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES) {
+            @Override
+            protected ClassLoader getClassLoader() { return loader != null ? loader : super.getClassLoader(); }
+        };
+        final int[] n = { 0 };
+        ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
+            @Override
+            public MethodVisitor visitMethod(int access, String name, String desc, String sig, String[] ex) {
+                MethodVisitor mv = super.visitMethod(access, name, desc, sig, ex);
+                if (!("getCellRenderer".equals(name) && "(II)Ljavax/swing/table/TableCellRenderer;".equals(desc)))
+                    return mv;
+                n[0]++;
+                return new MethodVisitor(Opcodes.ASM9, mv) {
+                    @Override
+                    public void visitInsn(int op) {
+                        if (op == Opcodes.ARETURN) {
+                            // return wrapExtCellRenderer(this, renderer);
+                            super.visitVarInsn(Opcodes.ALOAD, 0);
+                            super.visitInsn(Opcodes.SWAP);
+                            super.visitMethodInsn(Opcodes.INVOKESTATIC, AGENT_INTERNAL, "wrapExtCellRenderer",
+                                    "(Ljava/lang/Object;Ljavax/swing/table/TableCellRenderer;)Ljavax/swing/table/TableCellRenderer;", false);
+                        }
+                        super.visitInsn(op);
+                    }
+                };
+            }
+        };
+        cr.accept(cv, 0);
+        if (n[0] == 0) {
+            System.out.println("[jd-dialog-agent] ExtTable.getCellRenderer(II) not found, config table icons left as-is");
+            return null;   // null leaves the class unchanged
+        }
+        System.out.println("[jd-dialog-agent] patched ExtTable.getCellRenderer -> mono config table icons");
+        return cw.toByteArray();
+    }
+
+    // The width-lock padlock comes from ExtTableHeaderRenderer's private lockedWidth field, which no
+    // getIcon call returns. Swapped on every tick so it survives header rebuilds; replacements are marked.
+    private static void fixWidthLockIcon() {
+        if (!isHighlighter()) return;
+        try {
+            for (Window w : Window.getWindows()) {
+                if (!w.isShowing()) continue;
+                List<JTable> tabs = new ArrayList<JTable>();
+                collectTables(w, tabs);
+                for (JTable t : tabs) {
+                    javax.swing.table.TableColumnModel cm = t.getColumnModel();
+                    for (int i = 0; i < cm.getColumnCount(); i++) {
+                        Object hr = cm.getColumn(i).getHeaderRenderer();
+                        if (hr instanceof HoverHeaderRenderer) hr = ((HoverHeaderRenderer) hr).base;
+                        swapLockedWidth(hr);
+                    }
+                }
+            }
+        } catch (Throwable ignore) { }
+    }
+    private static void swapLockedWidth(Object hr) {
+        if (hr == null || !hr.getClass().getName().contains("ExtTableHeaderRenderer")) return;
+        for (Class<?> c = hr.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
+            Field f;
+            try { f = c.getDeclaredField("lockedWidth"); } catch (NoSuchFieldException e) { continue; }
+            try {
+                f.setAccessible(true);
+                Object v = f.get(hr);
+                if (!(v instanceof javax.swing.Icon)) return;
+                javax.swing.Icon ic = (javax.swing.Icon) v;
+                if (EXT_MONO_MARK.containsKey(ic)) return;
+                int s = Math.max(8, Math.min(ic.getIconWidth(), ic.getIconHeight()));
+                javax.swing.Icon base = tablerBase("lock", s, s);
+                if (base == null) return;
+                javax.swing.Icon lock = tintIcon(base, EXPANDER_LIGHT, null);
+                f.set(hr, lock);
+                EXT_MONO_MARK.put(lock, Boolean.TRUE);
+            } catch (Throwable ignore) { }
+            return;
+        }
+    }
+
+    private static final java.util.Map<String, javax.swing.Icon> CHROME_CLEAN =
+            new java.util.concurrent.ConcurrentHashMap<String, javax.swing.Icon>();
+    /** Called from NewTheme.getIcon; replaces the column-lock and extract glyphs and passes everything else through. */
+    public static javax.swing.Icon cleanChromeIcon(javax.swing.Icon original, String key, int size) {
+        try {
+            if (original == null || key == null || !isHighlighter()) return original;
+            String k = key.toLowerCase();
+            String tab; Color tint;
+            if (k.contains("lock") || k.contains("columnbutton") || k.contains("widthlocked")) {
+                tab = "lock"; tint = EXPANDER_LIGHT;
+            } else if (k.equals("extract")) {
+                tab = "extract"; tint = SIDEBAR_TEXT;
+            } else {
+                return original;
+            }
+            int w = original.getIconWidth() > 0 ? original.getIconWidth() : size;
+            int h = original.getIconHeight() > 0 ? original.getIconHeight() : size;
+            int s = Math.min(w, h); if (s <= 0) s = Math.max(w, h);
+            String ck = tab + "@" + s;
+            javax.swing.Icon cached = CHROME_CLEAN.get(ck);
+            if (cached != null) return cached;
+            javax.swing.Icon base = tablerBase(tab, s, s);
+            javax.swing.Icon clean = (base != null) ? tintIcon(base, tint, null) : tintSolid(original, tint);
+            CHROME_CLEAN.put(ck, clean);
+            return clean;
+        } catch (Throwable t) { return original; }
+    }
+
     // --- Package-expander icons (Linkgrabber + download list) --------------------
     // JD's ExtTable draws the package [+]/[-] toggle from the iconset keys
     // tree_plus / tree_minus (IconKey.ICON_PLUS/ICON_MINUS -> FileColumn, shared by
@@ -619,19 +966,26 @@ public class DialogConfirmAgent {
             new java.io.File("/opt/JDownloader/themes-default/flat/org/jdownloader/images");
     private static final java.io.File EXPANDER_DST_DIR =
             new java.io.File("/config/JDownloader/themes/flat/org/jdownloader/images");
-    private static final String[] EXPANDER_ICONS = { "tree_plus.svg", "tree_minus.svg" };
+    // JD ships the two exttable lock icons black, which vanishes on the jd-highlighter
+    // header. The image carries light copies, and JD's re-provisioning puts the black ones
+    // back, so they need the same heal as the expanders.
+    private static final String[] EXPANDER_ICONS = {
+        "tree_plus.svg", "tree_minus.svg",
+        "exttable/lockColumn.svg", "exttable/widthLocked.svg",
+    };
 
     private static void restoreExpanderIcons() {
         for (String name : EXPANDER_ICONS) {
+            if (name.indexOf('/') >= 0 && !isHighlighter()) continue;
             java.io.File src = new java.io.File(EXPANDER_SRC_DIR, name);
             java.io.File dst = new java.io.File(EXPANDER_DST_DIR, name);
             if (!src.isFile()) continue;                          // source missing (older image) -> nothing to do
             if (dst.isFile() && dst.length() == src.length()) continue; // already the shipped light copy
             try {
-                EXPANDER_DST_DIR.mkdirs();
+                dst.getParentFile().mkdirs();                     // name may carry a subdir (exttable/)
                 java.nio.file.Files.copy(src.toPath(), dst.toPath(),
                         java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-                System.out.println("[jd-dialog-agent] restored light package-expander icon: " + name);
+                System.out.println("[jd-dialog-agent] restored light theme icon: " + name);
             } catch (Throwable ignore) { /* best effort — retried next tick */ }
         }
     }
@@ -904,19 +1258,50 @@ public class DialogConfirmAgent {
         } else {
             exposeFlatlafToSystemLoader();
             restoreExpanderIcons();
-            healPackageToggle();          // BUG 2: rebuild FileColumn's cached [+]/[-] toggle icons
+            if (!isHighlighter()) healPackageToggle();   // rebuilds FileColumn's cached [+]/[-] toggle icons
             handleDialogs();
             registerDefaultsSource();     // FlatDarkLaf.properties OR FlatLightLaf.properties
             applyCustomDefaults();
             // Dark chrome MUST NOT run on FlatLightLaf — left black panels on Light installs.
             if (wantDarkLaf()) {
                 enforceDarkChrome();
-                themeKaynExtras();        // Kayn: menu-toggle check + overview corner icons
+                if (!isHighlighter()) themeKaynExtras();        // menu-toggle check and overview corner icons
                 retintProgressBars();
             }
             widenSpeedEditors();
             growSpeedMeter();
             replaceSpeedGraph();
+            if (isHighlighter()) {
+                styleSidebar();
+                stripSectionUnderlines();
+                recolorMainTabs();
+                flushMenuBarItems();
+                darkenChromeBars();
+                monoChromeIcons();
+                roundToolbarButtons();
+                badgeViewsMenu();
+                badgeViewsPanel();
+                styleMenuFields();
+                wireMenuPopups();
+                // JD re-renders popup rows lazily, so open popups are styled again on
+                // every tick.
+                styleVisibleMenuPopups();
+                cardSettingsSections();
+                borderlessConfigTables();
+                unifyConfigFields();
+                monoTableRowIcons();
+                indentNameColumns();
+                cardMainTables();
+                alignToolbarLeft();
+                monoConfigTableIcons();
+                fixWidthLockIcon();
+                stylePropertiesPanel();
+                monoSectionHeaders();
+                monoCornerIcons();
+                growTableHeaders();
+                recolorDialogs();
+                dimModalBackdrops();
+            }
         }
         if (++lafTick >= 12) {   // every ~5s (ticks run every 400ms)
             lafTick = 0;
@@ -1053,6 +1438,53 @@ public class DialogConfirmAgent {
             if (!any) return ic;
             return new javax.swing.ImageIcon(img);
         } catch (Throwable t) { return ic; }
+    }
+
+    // JD's status rings (update check, extraction, link crawler) are CircledProgressBars that paint
+    // coloured animated glyphs, and the update globe draws through a custom path that cannot be
+    // recoloured. The patched BasicCircleProgressBarUI.paint calls this to draw an accent arc instead:
+    // nothing while idle, a spinner when indeterminate, a filling arc otherwise.
+    public static boolean paintCleanRing(java.awt.Graphics g0, Component c) {
+        try {
+            if (!isHighlighter() || !(g0 instanceof Graphics2D) || c == null) return false;
+            Object model = null; boolean indet = false;
+            try { model = c.getClass().getMethod("getModel").invoke(c); } catch (Throwable ig) { }
+            try { Object b = c.getClass().getMethod("isIndeterminate").invoke(c); indet = Boolean.TRUE.equals(b); } catch (Throwable ig) { }
+            int val = 0, min = 0, max = 0;
+            if (model != null) {
+                try {
+                    val = (Integer) model.getClass().getMethod("getValue").invoke(model);
+                    min = (Integer) model.getClass().getMethod("getMinimum").invoke(model);
+                    max = (Integer) model.getClass().getMethod("getMaximum").invoke(model);
+                } catch (Throwable ig) { }
+            }
+            boolean active = c.isEnabled() && (indet || (val > min && val < max));
+            Graphics2D g = (Graphics2D) g0;
+            int w = c.getWidth(), h = c.getHeight();
+            int d = Math.min(w, h) - 5;
+            if (d < 6) return true;
+            int x = (w - d) / 2, y = (h - d) / 2;
+            if (active) {
+                Object aa = g.getRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING);
+                g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
+                java.awt.Stroke os = g.getStroke();
+                g.setStroke(new java.awt.BasicStroke(Math.max(1.6f, d / 9f),
+                        java.awt.BasicStroke.CAP_ROUND, java.awt.BasicStroke.JOIN_ROUND));
+                g.setColor(PAL_DIVIDER);
+                g.drawOval(x, y, d, d);
+                g.setColor(accentColor());
+                if (indet) {
+                    int start = (int) ((System.currentTimeMillis() / 4) % 360);
+                    g.drawArc(x, y, d, d, 90 - start, -110);
+                } else {
+                    int extent = (int) (360.0 * (val - min) / Math.max(1, max - min));
+                    g.drawArc(x, y, d, d, 90, -extent);
+                }
+                g.setStroke(os);
+                if (aa != null) g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, aa);
+            }
+            return true;
+        } catch (Throwable t) { return false; }
     }
 
     // Opt-in geometry logging (JD_DEBUG_GEO=1). Off by default so a box test / the
@@ -1413,7 +1845,7 @@ public class DialogConfirmAgent {
         private Color colTop    = new Color(0x3f, 0xb9, 0x3f);
         private Color colBottom = new Color(0x14, 0x46, 0x14);
         private Color colAvg    = new Color(0x86, 0xd9, 0x86);
-        private Color colText   = new Color(0xf4, 0xf4, 0xf4);
+        private Color colText   = PAL_TEXT;
         private Color colLimit  = new Color(0xd9, 0x53, 0x53);
 
         CarbonSpeedGraph() {
@@ -1742,6 +2174,193 @@ public class DialogConfirmAgent {
         }
     }
 
+    // Without a frame the fields embedded in menus (speed limit, max chunks) are hard to see, so they
+    // get the button shade to read as editable.
+    private static final Color MENU_FIELD_BG = PAL_BUTTON;
+    private static final Color TILE_GREY = PAL_TRACK;   // unselected main tab
+    private static final int   MENU_FIELD_W  = 110;
+
+    private static void styleMenuFields() {
+        for (Window w : Window.getWindows()) if (w.isShowing()) styleMenuFieldsIn(w, false);
+    }
+    private static void styleMenuFieldsIn(Container c, boolean inMenu) {
+        boolean menu = inMenu || c instanceof javax.swing.JPopupMenu;
+        for (Component ch : c.getComponents()) {
+            if (menu && (ch instanceof javax.swing.JSpinner
+                    || ch instanceof javax.swing.text.JTextComponent
+                    || ch instanceof javax.swing.JComboBox)) {
+                if (!MENU_FIELD_BG.equals(ch.getBackground())) {
+                    ch.setBackground(MENU_FIELD_BG);
+                    // An opaque field fills its square bounds, and FlatLaf clears the corners only in the
+                    // enabled paint path, so a disabled field would stay square.
+                    if (ch instanceof JComponent) ((JComponent) ch).setOpaque(false);
+                }
+                // One width for all menu fields so the dropdown column lines up.
+                if (ch instanceof JComponent) {
+                    java.awt.Dimension pr = ch.getPreferredSize();
+                    if (pr != null && pr.width != MENU_FIELD_W) {
+                        java.awt.Dimension d = new java.awt.Dimension(MENU_FIELD_W, pr.height);
+                        ch.setPreferredSize(d); ch.setMinimumSize(d); ch.setMaximumSize(d);
+                        Container par = ch.getParent();
+                        if (par != null) { par.invalidate(); par.revalidate(); }
+                    }
+                    // JD's menu spinners have a custom UI that ignores FlatLaf's arc keys, so their corners
+                    // are masked with the popup background instead.
+                    JComponent jc = (JComponent) ch;
+                    if (jc.getClientProperty("jdp.fieldRound") == null) {
+                        jc.putClientProperty("jdp.fieldRound", Boolean.TRUE);
+                        // The FlatLaf border would draw an outline; only its insets are kept as padding.
+                        javax.swing.border.Border ob = jc.getBorder();
+                        java.awt.Insets bi = (ob != null) ? ob.getBorderInsets(jc) : new java.awt.Insets(3, 8, 3, 8);
+                        javax.swing.border.Border inner = new javax.swing.border.EmptyBorder(bi);
+                        javax.swing.border.Border mask = new RoundCornerMaskBorder(menuFieldMaskColor(jc), UI_RADIUS);
+                        jc.setBorder(javax.swing.BorderFactory.createCompoundBorder(mask, inner));
+                    }
+                }
+            }
+            if (ch instanceof Container) styleMenuFieldsIn((Container) ch, menu);
+        }
+    }
+
+    /** Background of the enclosing popup, used to mask a menu field's corners. */
+    private static Color menuFieldMaskColor(Component field) {
+        for (Component p = field.getParent(); p != null; p = p.getParent()) {
+            if (p instanceof javax.swing.JPopupMenu && p.getBackground() != null) return p.getBackground();
+        }
+        return PAL_HEADER;
+    }
+
+    // Menus would open unstyled until the next tick, so each popup is styled from a listener as it
+    // becomes visible. JMenus hand out their popup before it shows, which covers the first open too.
+    private static final String POPUP_WIRED = "jdp.popupWired";
+
+    private static void wireMenuPopups() {
+        for (Window w : Window.getWindows()) if (w.isShowing()) wireMenuPopupsIn(w);
+    }
+
+    private static void wireMenuPopupsIn(Container c) {
+        if (c instanceof javax.swing.JMenu) wirePopup(((javax.swing.JMenu) c).getPopupMenu());
+        else if (c instanceof javax.swing.JPopupMenu) wirePopup((javax.swing.JPopupMenu) c);
+        if (c instanceof javax.swing.JFrame) {
+            javax.swing.JMenuBar mb = ((javax.swing.JFrame) c).getJMenuBar();
+            if (mb != null) wireMenuPopupsIn(mb);
+        }
+        for (Component ch : c.getComponents())
+            if (ch instanceof Container) wireMenuPopupsIn((Container) ch);
+    }
+
+    private static void wirePopup(final javax.swing.JPopupMenu pm) {
+        if (pm == null || Boolean.TRUE.equals(pm.getClientProperty(POPUP_WIRED))) return;
+        pm.putClientProperty(POPUP_WIRED, Boolean.TRUE);
+        pm.addPopupMenuListener(new javax.swing.event.PopupMenuListener() {
+            public void popupMenuWillBecomeVisible(javax.swing.event.PopupMenuEvent e) { stylePopupNow(pm); }
+            public void popupMenuWillBecomeInvisible(javax.swing.event.PopupMenuEvent e) { }
+            public void popupMenuCanceled(javax.swing.event.PopupMenuEvent e) { }
+        });
+    }
+
+    /** Styles one popup menu. Runs on open and again on every tick while the popup is visible, because
+     *  JD builds the EditorLink rows lazily and an on-open pass alone misses them. */
+    private static void stylePopupNow(javax.swing.JPopupMenu pm) {
+        try {
+            styleMenuFieldsIn(pm, true);
+            uniformMenuSpinnerWidths(pm);
+            for (Component ch : pm.getComponents())
+                if (ch instanceof javax.swing.JMenuItem) monoMenuItemIcon((javax.swing.JMenuItem) ch);
+            for (Component ch : pm.getComponents())
+                if (ch instanceof javax.swing.JMenuItem) forceMenuItemAccent((javax.swing.JMenuItem) ch);
+            for (Component ch : pm.getComponents())
+                if (!(ch instanceof javax.swing.JMenuItem) && ch instanceof Container) monoRowLabels((Container) ch);
+            for (Component ch : pm.getComponents()) {
+                if (ch instanceof JComponent && !(ch instanceof javax.swing.JMenuItem)
+                        && !(ch instanceof javax.swing.JSeparator)) {
+                    JComponent jc = (JComponent) ch;
+                    if (jc.getClientProperty("jdp.menuRowPad") == null) {
+                        jc.putClientProperty("jdp.menuRowPad", Boolean.TRUE);
+                        // Editor rows draw their icon at x 7 and menu items at about 18 (MenuItem.margin),
+                        // so 11px lines the two icon columns up.
+                        javax.swing.border.Border pad = new javax.swing.border.EmptyBorder(3, 11, 3, 0);
+                        javax.swing.border.Border old = jc.getBorder();
+                        jc.setBorder(old == null ? pad : new javax.swing.border.CompoundBorder(pad, old));
+                    }
+                }
+            }
+            uniformMenuRowHeights(pm);
+        } catch (Throwable ignore) { }
+    }
+
+    /** Grows the plain menu items to the height of the taller EditorLink and spinner rows. */
+    private static void uniformMenuRowHeights(javax.swing.JPopupMenu pm) {
+        int max = 0;
+        for (Component ch : pm.getComponents()) {
+            if (ch instanceof javax.swing.JSeparator || !ch.isVisible()) continue;
+            int h = ch.getPreferredSize().height;
+            if (h > max) max = h;
+        }
+        if (max <= 0) return;
+        boolean changed = false;
+        for (Component ch : pm.getComponents()) {
+            if (ch instanceof javax.swing.JSeparator || !(ch instanceof JComponent) || !ch.isVisible()) continue;
+            JComponent jc = (JComponent) ch;
+            // Some of JD's standard items report the full preferred height but cap it with their own
+            // maximum size, so min and max are pinned on every row to make the BoxLayout honour it.
+            java.awt.Dimension mn = jc.getMinimumSize();
+            if (mn != null && mn.height == max && jc.getMaximumSize() != null && jc.getMaximumSize().height == max) continue;
+            java.awt.Dimension pr = ch.getPreferredSize();
+            jc.setPreferredSize(new java.awt.Dimension(pr.width, max));
+            jc.setMinimumSize(new java.awt.Dimension(0, max));
+            jc.setMaximumSize(new java.awt.Dimension(Integer.MAX_VALUE, max));
+            changed = true;
+        }
+        if (changed) { pm.revalidate(); pm.repaint(); }
+        repackPopupIfClipped(pm);
+    }
+
+    /** Grows a showing popup to fit its rows. JD adds items to the settings dropdown after it is shown,
+     *  so this runs on every tick; a heavyweight popup is resized through its window, a lightweight one
+     *  in the layered pane. It never shrinks. */
+    private static void repackPopupIfClipped(javax.swing.JPopupMenu pm) {
+        try {
+            if (!pm.isShowing() || pm.getHeight() <= 0) return;
+            // getPreferredSize stays stale after JD adds items lazily, so the children are summed instead.
+            int need = 0, wide = 0;
+            for (Component ch : pm.getComponents()) {
+                if (!ch.isVisible()) continue;
+                java.awt.Dimension d = ch.getPreferredSize();
+                if (d == null) continue;
+                need += d.height; if (d.width > wide) wide = d.width;
+            }
+            java.awt.Insets in = pm.getInsets();
+            if (in != null) { need += in.top + in.bottom; wide += in.left + in.right; }
+            if (need <= 0 || (pm.getHeight() >= need && pm.getWidth() >= wide)) return;
+            int nw = Math.max(pm.getWidth(), wide), nh = Math.max(pm.getHeight(), need);
+            java.awt.Window win = javax.swing.SwingUtilities.getWindowAncestor(pm);
+            boolean heavy = win != null && win.getClass().getName().toLowerCase().contains("popup");
+            if (heavy) {
+                if (win.getHeight() < nh || win.getWidth() < nw) { win.setSize(nw, nh); win.validate(); }
+            } else {
+                pm.setSize(nw, nh);
+                java.awt.Container par = pm.getParent();
+                if (par != null) { par.setSize(Math.max(par.getWidth(), nw), Math.max(par.getHeight(), nh)); par.revalidate(); }
+                pm.revalidate(); pm.repaint();
+            }
+        } catch (Throwable ignore) { }
+    }
+
+    private static void styleVisibleMenuPopups() {
+        // A heavyweight popup lives inside a popup window and a lightweight one in the layered pane,
+        // so walking every showing window finds both.
+        for (Window w : Window.getWindows()) {
+            if (w.isShowing()) styleVisiblePopupsIn(w);
+        }
+    }
+    private static void styleVisiblePopupsIn(Container c) {
+        for (Component ch : c.getComponents()) {
+            if (ch instanceof javax.swing.JPopupMenu && ch.isShowing()) stylePopupNow((javax.swing.JPopupMenu) ch);
+            if (ch instanceof Container) styleVisiblePopupsIn((Container) ch);
+        }
+    }
+
     private static void widenSpeedIn(Container c) {
         for (Component child : c.getComponents()) {
             if (isSpeedEditor(child.getClass())) {
@@ -1775,9 +2394,10 @@ public class DialogConfirmAgent {
         LayoutManager lm = editor.getLayout();
         if (lm == null || !lm.getClass().getName().contains("MigLayout")) return;
 
-        // Mirror JD's own formula (label width + 30 for the spinner arrows/insets) but
-        // with a long sample so the field fits any realistic limit incl. its unit.
-        int w = new JLabel("99999,99 MiB/s").getPreferredSize().width + 30;
+        // Plain Dark mirrors JD's formula (label width + 30 for the arrows) with a long
+        // sample; jd-highlighter gives every menu spinner the same width.
+        int w = isHighlighter() ? uniformFieldW()
+                : new JLabel("99999,99 MiB/s").getPreferredSize().width + 30;
         try {
             Method m = lm.getClass().getMethod("setComponentConstraints",
                     Component.class, Object.class);
@@ -1861,6 +2481,45 @@ public class DialogConfirmAgent {
             }
         } catch (Throwable ignore) { /* optional keys */ }
     }
+    // Width shared by every menu spinner: a speed value with its unit plus 30px for the arrows.
+    private static int UNIFORM_FIELD_W = -1;
+    private static int uniformFieldW() {
+        if (UNIFORM_FIELD_W < 0) UNIFORM_FIELD_W = new JLabel("999,99 MiB/s").getPreferredSize().width + 30;
+        return UNIFORM_FIELD_W;
+    }
+
+    /** Gives every spinner in a menu popup the same width. JD's MenuEditor hardcodes the MigLayout
+     *  cell widths, which override setPreferredSize, so the constraint itself is rewritten. */
+    private static void uniformMenuSpinnerWidths(Container c) {
+        boolean touched = uniformSpinnersIn(c);
+        if (touched) {
+            JPopupMenu pm = (c instanceof JPopupMenu) ? (JPopupMenu) c
+                          : (JPopupMenu) SwingUtilities.getAncestorOfClass(JPopupMenu.class, c);
+            if (pm != null) { pm.revalidate(); Dimension pref = pm.getPreferredSize(); pm.setPopupSize(pref.width, pref.height); }
+        }
+    }
+    private static boolean uniformSpinnersIn(Container c) {
+        boolean any = false;
+        for (Component ch : c.getComponents()) {
+            if (ch instanceof JSpinner) {
+                Container par = ch.getParent();
+                LayoutManager lm = (par == null) ? null : par.getLayout();
+                boolean mig = lm != null && lm.getClass().getName().contains("MigLayout");
+                JComponent sp = (JComponent) ch;
+                if (mig && !Boolean.TRUE.equals(sp.getClientProperty("jdp.fieldW"))) {
+                    try {
+                        Method m = lm.getClass().getMethod("setComponentConstraints", Component.class, Object.class);
+                        m.invoke(lm, ch, "width " + uniformFieldW() + "!");
+                        sp.putClientProperty("jdp.fieldW", Boolean.TRUE);
+                        par.revalidate();
+                        any = true;
+                    } catch (Exception ignore) { }
+                }
+            }
+            if (ch instanceof Container) any |= uniformSpinnersIn((Container) ch);
+        }
+        return any;
+    }
 
     // ------------------------------------------------------------ progress bars
 
@@ -1882,6 +2541,7 @@ public class DialogConfirmAgent {
             for (JTable t : tables) {
                 for (Object col : extColumns(t)) {
                     recolorBarFields(col);
+                    recolorExpanderFields(col);
                 }
             }
         }
@@ -1912,22 +2572,20 @@ public class DialogConfirmAgent {
         return cols;
     }
 
-    /** Set our dark fill/track on every JProgressBar-typed field of the object. */
-    private static void recolorBarFields(Object col) {
-        if (col == null) return;
-        for (Class<?> k = col.getClass(); k != null && k != Object.class; k = k.getSuperclass()) {
-            for (Field f : k.getDeclaredFields()) {
-                if (!JProgressBar.class.isAssignableFrom(f.getType())) continue;
-                try {
-                    f.setAccessible(true);
-                    Object bar = f.get(col);
-                    if (bar instanceof JProgressBar) {
-                        JProgressBar pb = (JProgressBar) bar;
-                        if (!BAR_FILL.equals(pb.getForeground())) pb.setForeground(BAR_FILL);
-                        if (!BAR_TRACK.equals(pb.getBackground())) pb.setBackground(BAR_TRACK);
+    /** FileColumn indents its rows through the normalBorder and leftGapBorder fields, about 5px left of
+     *  the column header; both are moved right so the content lines up with the header. */
+    private static final int NAME_INDENT = 5;
+    private static void indentNameColumns() {
+        for (Window w : Window.getWindows()) {
+            if (!w.isShowing()) continue;
+            List<JTable> tables = new ArrayList<>();
+            collectTables(w, tables);
+            for (JTable t : tables)
+                for (Object col : extColumns(t))
+                    if (col != null && col.getClass().getName().endsWith(".FileColumn")) {
+                        bumpBorderLeft(col, "normalBorder", 0, NAME_INDENT);
+                        bumpBorderLeft(col, "leftGapBorder", 32, NAME_INDENT);
                     }
-                } catch (Exception ignore) { }
-            }
         }
     }
 
@@ -1944,7 +2602,7 @@ public class DialogConfirmAgent {
     // shows the same colour instead of a grey flash. recolorBarFields stays as a per-instance
     // belt-and-suspenders layer and uses the SAME light fill (BAR_FILL) so they can't disagree.
     private static void installProgressBarDefaults() {
-        if (wantDarkLaf()) {
+        if (wantDarkLaf() && !isHighlighter()) {
             UIManager.put("ProgressBar.foreground",          new ColorUIResource(0xc6, 0xc6, 0xc6)); // light fill
             UIManager.put("ProgressBar.background",          new ColorUIResource(0x26, 0x26, 0x26)); // dark track
             UIManager.put("ProgressBar.selectionForeground", new ColorUIResource(0x16, 0x16, 0x16)); // % over the fill (dark on light)
@@ -1975,8 +2633,824 @@ public class DialogConfirmAgent {
             }
         });
     }
+    // Corner radius shared by every rounded element of the theme. RoundRectangle2D and fillRoundRect
+    // take the diameter, hence UI_ARC.
+    static final int UI_RADIUS = 8;
+    static final int UI_ARC    = 2 * UI_RADIUS;
+    private static final Color MAIN_CARD = PAL_SURFACE;
+    private static final int   CARD_GAP  = 10;
+    private static final int   CARD_ARC  = UI_RADIUS;
+    // The download and linkgrabber tables sit on a lighter card with a margin of base colour around it,
+    // like the settings cards.
+    private static void cardMainTables() {
+        for (Window w : Window.getWindows()) {
+            if (!w.isShowing()) continue;
+            List<JTable> tables = new ArrayList<>();
+            collectTables(w, tables);
+            for (JTable t : tables) {
+                String cn = t.getClass().getName();
+                if (!(cn.endsWith("DownloadsTable") || cn.endsWith("LinkGrabberTable"))) continue;
+                javax.swing.JScrollPane sp = null;
+                for (Container p = t.getParent(); p != null; p = p.getParent())
+                    if (p instanceof javax.swing.JScrollPane) { sp = (javax.swing.JScrollPane) p; break; }
+                if (sp == null) continue;
+                if (!MAIN_CARD.equals(t.getBackground())) t.setBackground(MAIN_CARD);
+                // Without filling the viewport the card ends at the last row, far above the bottom
+                // corner masks, and its bottom stays square.
+                try { if (!t.getFillsViewportHeight()) t.setFillsViewportHeight(true); } catch (Throwable ig) { }
+                javax.swing.JViewport vp = sp.getViewport();
+                if (vp != null && !MAIN_CARD.equals(vp.getBackground())) { vp.setBackground(MAIN_CARD); vp.setOpaque(true); }
+                javax.swing.JViewport ch = sp.getColumnHeader();
+                if (ch != null && !MAIN_CARD.equals(ch.getBackground())) ch.setBackground(MAIN_CARD);
+                if (sp.getClientProperty("jdp.mainCard") == null) {
+                    sp.setOpaque(true);
+                    sp.setBackground(PAL_BASE);
+                    sp.setBorder(javax.swing.BorderFactory.createEmptyBorder(CARD_GAP, CARD_GAP, CARD_GAP, CARD_GAP));
+                    sp.putClientProperty("jdp.mainCard", Boolean.TRUE);
+                    sp.revalidate(); sp.repaint();
+                }
+                installCardCornerOverlay(sp);
+            }
+        }
+    }
 
-    // ---------------------------------------------------------------- chrome
+    /** Rounds the card by painting its four corners in the base colour on top of the opaque table, the
+     *  only way to round a live Swing table. */
+    private static void installCardCornerOverlay(javax.swing.JScrollPane sp) {
+        try {
+            if (!sp.isShowing()) return;
+            // The masks live on a layer of the layered pane: a sibling of the scrollpane gets overdrawn by
+            // every row repaint, a higher layer is repainted on top of any dirty region.
+            javax.swing.JRootPane rp = javax.swing.SwingUtilities.getRootPane(sp);
+            if (rp == null) return;
+            javax.swing.JLayeredPane lp = rp.getLayeredPane();
+            if (lp == null) return;
+            Object existing = sp.getClientProperty("jdp.cardCorner");
+            CardCornerOverlay ov;
+            if (existing instanceof CardCornerOverlay && ((CardCornerOverlay) existing).getParent() == lp) {
+                ov = (CardCornerOverlay) existing;
+            } else {
+                if (existing instanceof CardCornerOverlay && ((CardCornerOverlay) existing).getParent() != null)
+                    ((CardCornerOverlay) existing).getParent().remove((CardCornerOverlay) existing);
+                ov = new CardCornerOverlay();
+                lp.add(ov, javax.swing.JLayeredPane.PALETTE_LAYER);   // above the content, below popups
+                sp.putClientProperty("jdp.cardCorner", ov);
+            }
+            ov.sp = sp;
+            java.awt.Rectangle b = javax.swing.SwingUtilities.convertRectangle(sp.getParent(), sp.getBounds(), lp);
+            if (b.width <= 0 || b.height <= 0) return;
+            if (!ov.getBounds().equals(b)) {
+                ov.setBounds(b);
+                lp.setLayer(ov, javax.swing.JLayeredPane.PALETTE_LAYER);
+            }
+            ov.repaint();
+        } catch (Throwable ignore) { }
+    }
+    private static final class CardCornerOverlay extends JComponent {
+        javax.swing.JScrollPane sp;
+        CardCornerOverlay() { setOpaque(false); }
+        @Override public boolean contains(int x, int y) { return false; }   // lets mouse events through to the table
+        @Override protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            try {
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(PAL_BASE);
+                int r = CARD_ARC;
+                // The card is the viewport plus the column header. The scrollbar and JD's column-control
+                // corner take a column on the right, so the scrollpane bounds minus the margin would miss it.
+                int L = CARD_GAP, T = CARD_GAP, R = getWidth() - CARD_GAP, B = getHeight() - CARD_GAP;
+                try {
+                    javax.swing.JViewport vp = (sp != null) ? sp.getViewport() : null;
+                    if (vp != null) {
+                        java.awt.Rectangle vb = vp.getBounds();   // overlay and scrollpane share coordinates
+                        L = vb.x; R = vb.x + vb.width; B = vb.y + vb.height;
+                        javax.swing.JViewport ch = sp.getColumnHeader();
+                        T = (ch != null) ? ch.getBounds().y : vb.y;
+                    }
+                } catch (Throwable ignore) { }
+                paintCorner(g2, L, T, r, true, true);
+                paintCorner(g2, R, T, r, false, true);
+                paintCorner(g2, L, B, r, true, false);
+                paintCorner(g2, R, B, r, false, false);
+            } finally { g2.dispose(); }
+        }
+        private void paintCorner(Graphics2D g2, int cx, int cy, int r, boolean left, boolean top) {
+            int x = left ? cx : cx - r, y = top ? cy : cy - r;
+            int ecx = cx + (left ? r : -r), ecy = cy + (top ? r : -r);
+            java.awt.geom.Area a = new java.awt.geom.Area(new java.awt.Rectangle(x, y, r, r));
+            a.subtract(new java.awt.geom.Area(new java.awt.geom.Ellipse2D.Float(ecx - r, ecy - r, 2 * r, 2 * r)));
+            g2.fill(a);
+        }
+    }
+
+
+    /** Widens the left inset of the EmptyBorder in field {@code name}, only while it still has its original
+     *  value so repeated passes do not add up. */
+    private static void bumpBorderLeft(Object col, String name, int baseLeft, int add) {
+        try {
+            java.lang.reflect.Field f = null;
+            for (Class<?> k = col.getClass(); k != null && k != Object.class && f == null; k = k.getSuperclass())
+                try { f = k.getDeclaredField(name); } catch (NoSuchFieldException nsf) { }
+            if (f == null) return;
+            f.setAccessible(true);
+            Object b = f.get(col);
+            if (!(b instanceof javax.swing.border.EmptyBorder)) return;
+            java.awt.Insets in = ((javax.swing.border.EmptyBorder) b).getBorderInsets();
+            if (in.left != baseLeft) return;
+            f.set(col, javax.swing.BorderFactory.createEmptyBorder(in.top, baseLeft + add, in.bottom, in.right));
+        } catch (Throwable ignore) { }
+    }
+
+    // Lines the first toolbar glyph up with the content of the list card. JD's MainToolBar switches between
+    // a MigLayout with its own leading inset and DefaultToolBarLayout, so both the border and the layout
+    // inset are set.
+    private static void alignToolbarLeft() {
+        for (Window w : Window.getWindows()) {
+            if (!w.isShowing()) continue;
+            java.util.List<Container> tbs = new java.util.ArrayList<Container>();
+            findToolbars(w, tbs);
+            for (Container tb : tbs) {
+                if (!(tb instanceof JComponent)) continue;
+                JComponent tbj = (JComponent) tb;
+                Component first = null;
+                for (Component ch : tb.getComponents()) if (ch.getWidth() > 0 && (first == null || ch.getX() < first.getX())) first = ch;
+                if (first == null) continue;
+                boolean changed = false;
+                // The buttons are transparent and the glyph sits about 11px inside each, so a small border
+                // puts the first glyph on the card's content line.
+                final int TB_LEFT = 2;
+                java.awt.Insets bi = tbj.getInsets();
+                if (bi != null && bi.left != TB_LEFT) {
+                    tbj.setBorder(javax.swing.BorderFactory.createEmptyBorder(bi.top, TB_LEFT, bi.bottom, bi.right));
+                    changed = true;
+                }
+                Object lm = tb.getLayout();
+                if (lm != null && lm.getClass().getName().contains("MigLayout") && first.getX() > CARD_GAP + 1) {
+                    try {
+                        lm.getClass().getMethod("setLayoutConstraints", Object.class).invoke(lm, "ins 0 0 0 0");
+                        try { lm.getClass().getMethod("invalidateLayout", Container.class).invoke(lm, tb); } catch (Throwable ig) { }
+                        changed = true;
+                    } catch (Throwable t) { }
+                }
+                if (changed) { tb.revalidate(); tb.repaint(); }
+            }
+        }
+    }
+    private static void findToolbars(Container c, java.util.List<Container> out) {
+        for (Component ch : c.getComponents()) {
+            if (isMainToolbar(ch.getClass()) && ch instanceof Container) out.add((Container) ch);
+            if (ch instanceof Container) findToolbars((Container) ch, out);
+        }
+    }
+
+    /** Set our dark fill/track on every JProgressBar-typed field of the object. */
+    private static void recolorBarFields(Object col) {
+        if (col == null) return;
+        for (Class<?> k = col.getClass(); k != null && k != Object.class; k = k.getSuperclass()) {
+            for (Field f : k.getDeclaredFields()) {
+                if (!JProgressBar.class.isAssignableFrom(f.getType())) continue;
+                try {
+                    f.setAccessible(true);
+                    Object bar = f.get(col);
+                    if (bar instanceof JProgressBar) {
+                        JProgressBar pb = (JProgressBar) bar;
+                        // Set on the instance so it beats FlatLaf's per-cell default.
+                        Color fill = isHighlighter() ? accentColor() : BAR_FILL;
+                        if (!fill.equals(pb.getForeground())) pb.setForeground(fill);
+                        if (!BAR_TRACK.equals(pb.getBackground())) pb.setBackground(BAR_TRACK);
+                        // On the hovered row the cell background is the accent, which would show through a
+                        // transparent track and hide the light percentage text.
+                        if (isHighlighter() && !pb.isOpaque()) pb.setOpaque(true);
+                        // BasicProgressBarUI draws the percentage in selectionForeground over the fill and in
+                        // selectionBackground over the track. The UI caches both at install time, before the
+                        // UIManager keys are set, so they are written into the UI instance.
+                        if (isHighlighter()) {
+                            Object ui = pb.getUI();
+                            if (ui != null) {
+                                setUiColorField(ui, "selectionForeground", accentFg());
+                                setUiColorField(ui, "selectionBackground", SIDEBAR_TEXT);
+                            }
+                        }
+                    }
+                } catch (Exception ignore) { }
+            }
+        }
+    }
+
+    private static void setUiColorField(Object ui, String name, Color val) {
+        for (Class<?> k = ui.getClass(); k != null && k != Object.class; k = k.getSuperclass()) {
+            try {
+                Field f = k.getDeclaredField(name);
+                f.setAccessible(true);
+                if (!val.equals(f.get(ui))) f.set(ui, val);
+                return;
+            } catch (NoSuchFieldException nsf) {
+                // declared in a superclass
+            } catch (Throwable t) {
+                return;
+            }
+        }
+    }
+
+    // JD re-provisions its black expander and column-lock glyphs, and the restore on disk loses that race,
+    // so the Icon fields JD paints from are tinted light in memory on every tick.
+    private static final Color EXPANDER_LIGHT = PAL_MONO;
+    // Replacements this agent made, so they are not tinted again on every tick.
+    private static final java.util.Map<javax.swing.Icon, Boolean> EXT_MONO_MARK =
+            java.util.Collections.synchronizedMap(new java.util.WeakHashMap<javax.swing.Icon, Boolean>());
+    private static void recolorExpanderFields(Object col) {
+        if (col == null) return;
+        for (Class<?> k = col.getClass(); k != null && k != Object.class; k = k.getSuperclass()) {
+            for (Field f : k.getDeclaredFields()) {
+                if (!javax.swing.Icon.class.isAssignableFrom(f.getType())) continue;
+                try {
+                    f.setAccessible(true);
+                    Object o = f.get(col);
+                    if (!(o instanceof javax.swing.Icon)) continue;
+                    javax.swing.Icon ic = (javax.swing.Icon) o;
+                    if (EXT_MONO_MARK.containsKey(ic)) continue;
+                    String key = iconKey(ic);
+                    javax.swing.Icon repl = null;
+                    if (key != null && (key.contains("tree_plus") || key.contains("tree_minus")
+                            || key.contains("lockColumn") || key.contains("widthLocked"))) {
+                        repl = tintSolid(ic, EXPANDER_LIGHT);
+                    }
+                    // Status glyphs stay untouched here: cleanTaskIcon matches them against these fields by identity.
+                    if (repl != null && repl != ic) { f.set(col, repl); EXT_MONO_MARK.put(repl, Boolean.TRUE); }
+                } catch (Throwable ignore) { }
+            }
+        }
+    }
+
+    // Called from the patched status-column getIcon. Classifies the glyph the column is about to return and
+    // swaps in a mono Tabler icon of the same meaning; an unknown glyph is tinted mono instead.
+    private static final java.util.Map<javax.swing.Icon, String> STATUS_CLASS =
+            java.util.Collections.synchronizedMap(new java.util.WeakHashMap<javax.swing.Icon, String>());
+    private static final java.util.Map<String, javax.swing.Icon> STATUS_CLEAN =
+            new java.util.concurrent.ConcurrentHashMap<String, javax.swing.Icon>();
+
+    public static javax.swing.Icon cleanTaskIcon(Object owner, javax.swing.Icon original) {
+        try {
+            if (original == null || !isHighlighter()) return original;
+            String key = STATUS_CLASS.get(original);
+            if (key == null) { key = classifyStatus(owner, original); STATUS_CLASS.put(original, key == null ? "" : key); }
+            int w = original.getIconWidth(), h = original.getIconHeight();
+            if (w <= 0 || h <= 0) return original;
+            if (key == null || key.isEmpty()) {
+                javax.swing.Icon fl = STATUS_FLIP.get(original);
+                if (fl == null) { fl = new RowFlipIcon(tintSolid(original, SIDEBAR_TEXT), tintSolid(original, accentFg()));
+                    STATUS_FLIP.put(original, fl); }
+                return fl;
+            }
+            // Tabler glyphs are square and JD's package icon is not, so the glyph uses the shorter side.
+            int s = Math.min(w, h); if (s <= 0) s = Math.max(w, h);
+            String ck = key + "@" + s;
+            javax.swing.Icon clean = STATUS_CLEAN.get(ck);
+            if (clean == null) {
+                javax.swing.Icon base = tablerBase(key, s, s);
+                // The hovered row has an accent background with dark text, so the glyph turns dark there too.
+                javax.swing.Icon light = (base != null) ? tintIcon(base, SIDEBAR_TEXT, null) : tintSolid(original, SIDEBAR_TEXT);
+                javax.swing.Icon dark  = (base != null) ? tintIcon(base, accentFg(), null)   : tintSolid(original, accentFg());
+                clean = new RowFlipIcon(light, dark);
+                STATUS_CLEAN.put(ck, clean);
+            }
+            return clean;
+        } catch (Throwable t) { return original; }
+    }
+
+    private static final java.util.Map<javax.swing.Icon, javax.swing.Icon> STATUS_FLIP =
+            java.util.Collections.synchronizedMap(new java.util.WeakHashMap<javax.swing.Icon, javax.swing.Icon>());
+    /** Paints the light icon on a normal row and the dark one when the cell background is the accent. */
+    private static final class RowFlipIcon implements javax.swing.Icon {
+        private final javax.swing.Icon light, dark;
+        RowFlipIcon(javax.swing.Icon l, javax.swing.Icon d) { light = l; dark = d; }
+        public int getIconWidth() { return light.getIconWidth(); }
+        public int getIconHeight() { return light.getIconHeight(); }
+        public void paintIcon(Component c, Graphics g, int x, int y) {
+            boolean hot = false;
+            try {
+                Color bg = (c != null) ? c.getBackground() : null;
+                if (bg != null) {
+                    Color acc = accentColor();
+                    hot = Math.abs(bg.getRed() - acc.getRed()) < 40 && Math.abs(bg.getGreen() - acc.getGreen()) < 40
+                            && Math.abs(bg.getBlue() - acc.getBlue()) < 40;
+                }
+            } catch (Throwable ignore) { }
+            (hot ? dark : light).paintIcon(c, g, x, y);
+        }
+    }
+
+    /** Maps a status glyph to a Tabler key, or null. The visible glyph is usually a MergedIcon that
+     *  fillColumnHelper composed, so after the field and key lookups its parts are classified. */
+    private static String classifyStatus(Object owner, javax.swing.Icon original) {
+        String result = keyFromOwnerFields(owner, original);
+        if (result == null) result = normalizeStatusKey(iconKey(original));
+        if (result == null) {
+            java.util.List<String> parts = new java.util.ArrayList<String>();
+            collectSubIconKeys(owner, original, parts, 0);
+            result = pickDominant(parts);
+        }
+        return result;
+    }
+
+    /** The Tabler key for an icon that is one of the owning column's status fields, else null. */
+    private static String keyFromOwnerFields(Object owner, javax.swing.Icon original) {
+        if (owner == null || original == null) return null;
+        for (Class<?> c = owner.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
+            for (Field f : c.getDeclaredFields()) {
+                if (!javax.swing.Icon.class.isAssignableFrom(f.getType())) continue;
+                try {
+                    f.setAccessible(true);
+                    if (f.get(owner) == original) { String k = statusKeyForField(f.getName()); if (k != null) return k; }
+                } catch (Throwable ignore) { }
+            }
+        }
+        return null;
+    }
+
+    /** Classifies the parts of a composite icon. MergedIcon keeps them in a TreeSet of wrapper entries rather
+     *  than as plain Icons, so JD's own holder types are followed too, with a depth limit. */
+    private static void collectSubIconKeys(Object owner, Object node, java.util.List<String> out, int depth) {
+        if (node == null || depth > 6) return;
+        for (Class<?> c = node.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
+            for (Field f : c.getDeclaredFields()) {
+                if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) continue;
+                try { f.setAccessible(true); consumeValue(owner, f.get(node), node, out, depth); }
+                catch (Throwable ignore) { }
+            }
+        }
+    }
+
+    private static void consumeValue(Object owner, Object v, Object node, java.util.List<String> out, int depth) {
+        if (v == null || v == node) return;
+        if (v instanceof javax.swing.Icon) {
+            javax.swing.Icon sub = (javax.swing.Icon) v;
+            String k = keyFromOwnerFields(owner, sub);
+            if (k == null) k = normalizeStatusKey(iconKey(sub));
+            if (k != null) out.add(k);
+            else collectSubIconKeys(owner, sub, out, depth + 1);
+        } else if (v instanceof Object[]) {
+            for (Object o : (Object[]) v) consumeValue(owner, o, node, out, depth);
+        } else if (v instanceof java.util.Collection) {
+            for (Object o : (java.util.Collection<?>) v) consumeValue(owner, o, node, out, depth);
+        } else {
+            String vc = v.getClass().getName();
+            if (vc.startsWith("org.jdownloader.") || vc.startsWith("org.appwork.") || vc.startsWith("jd."))
+                collectSubIconKeys(owner, v, out, depth + 1);
+        }
+    }
+
+    /** When a row merges several states, an error wins over success and success over progress. */
+    private static String pickDominant(java.util.List<String> keys) {
+        if (keys == null || keys.isEmpty()) return null;
+        for (String want : new String[] { "error", "true", "extract", "wait", "run", "help" })
+            if (keys.contains(want)) return want;
+        return keys.get(0);
+    }
+
+    private static String statusKeyForField(String n) {
+        if (n == null) return null;
+        if (n.contains("Failed")) return "error";                       // download ok but extraction failed
+        if (n.startsWith("false")) return "error";                      // download failed
+        if (n.contains("Extracted") || n.startsWith("true") || n.startsWith("ok")) return "true";
+        if (n.equals("extracting")) return "extract";
+        if (n.equals("startingIcon")) return "run";
+        if (n.equals("finalizingIcon")) return "wait";
+        if (n.equals("trueIcon")) return "true";
+        if (n.equals("online")) return "true";                          // AvailabilityColumn
+        if (n.equals("offline")) return "error";
+        if (n.equals("unknown")) return "help";
+        if (n.equals("mixed")) return "true";
+        if (n.startsWith("iconArchive")) return "extract";              // FileColumn
+        if (n.equals("iconPackageOpen")) return "folder_open";
+        if (n.startsWith("iconPackage")) return "folder_add";           // collapsed, so the folder shows a plus
+        return null;
+    }
+
+    private static String normalizeStatusKey(String ik) {
+        if (ik == null) return null;
+        String s = ik.toLowerCase();
+        if (s.contains("extract")) {                        // before the generic checks below
+            if (s.contains("error") || s.contains("fail")) return "error";
+            if (s.contains("ok")) return "true";
+            return "extract";
+        }
+        if (s.contains("error") || s.contains("false") || s.contains("offline") || s.contains("fail")) return "error";
+        if (s.contains("ok") || s.contains("true") || s.contains("finish") || s.contains("online")) return "true";
+        if (s.contains("wait") || s.contains("final") || s.contains("hourglass")) return "wait";
+        if (s.contains("start") || s.equals("run")) return "run";
+        if (s.contains("help") || s.contains("unknown") || s.contains("question")) return "help";
+        return null;
+    }
+
+    // The list icons are recoloured in a wrapping cell renderer, since JD's live repaints would undo any
+    // change made to the icons themselves. The hoster column keeps its coloured favicons.
+    private static void monoTableRowIcons() {
+        for (Window w : Window.getWindows()) {
+            if (!w.isShowing()) continue;
+            List<JTable> tables = new ArrayList<>();
+            collectTables(w, tables);
+            for (JTable t : tables) {
+                if (inConfigPanel(t)) continue;                       // handled by wrapExtCellRenderer
+                javax.swing.table.TableColumnModel cm = t.getColumnModel();
+                for (int i = 0; i < cm.getColumnCount(); i++) {
+                    javax.swing.table.TableColumn tc = cm.getColumn(i);
+                    javax.swing.table.TableCellRenderer cur = tc.getCellRenderer();
+                    if (cur == null || cur instanceof MonoIconRenderer) continue;
+                    String cn = cur.getClass().getName().toLowerCase();
+                    if (cn.contains("favicon") || cn.contains("hoster")) continue;
+                    tc.setCellRenderer(new MonoIconRenderer(cur));
+                }
+            }
+        }
+    }
+    private static boolean inConfigPanel(Component c) {
+        for (Container p = c.getParent(); p != null; p = p.getParent())
+            if (isConfigPanel(p.getClass())) return true;
+        return false;
+    }
+    // Keyless status glyphs are shared, so caching their tint saves an image per row on every repaint.
+    private static final java.util.Map<javax.swing.Icon, javax.swing.Icon> ROW_MONO =
+            java.util.Collections.synchronizedMap(new java.util.WeakHashMap<javax.swing.Icon, javax.swing.Icon>());
+    private static final class MonoIconRenderer implements javax.swing.table.TableCellRenderer {
+        private final javax.swing.table.TableCellRenderer orig;
+        MonoIconRenderer(javax.swing.table.TableCellRenderer o) { orig = o; }
+        public Component getTableCellRendererComponent(JTable t, Object v, boolean sel, boolean foc, int row, int col) {
+            Component c = orig.getTableCellRendererComponent(t, v, sel, foc, row, col);
+            // The task column returns a custom component with the glyph on an inner label, so the whole
+            // returned tree is walked.
+            monoRowIconsIn(c, sel);
+            return c;
+        }
+    }
+    private static void monoRowIconsIn(Component c, boolean sel) {
+        javax.swing.Icon ic = null;
+        if (c instanceof javax.swing.JLabel) ic = ((javax.swing.JLabel) c).getIcon();
+        else if (c instanceof javax.swing.AbstractButton) ic = ((javax.swing.AbstractButton) c).getIcon();
+        if (ic != null) {
+            javax.swing.Icon mono = monoRowIcon(ic, sel);
+            if (mono != ic) {
+                if (c instanceof javax.swing.JLabel) ((javax.swing.JLabel) c).setIcon(mono);
+                else ((javax.swing.AbstractButton) c).setIcon(mono);
+            }
+        }
+        if (c instanceof Container) for (Component ch : ((Container) c).getComponents()) monoRowIconsIn(ch, sel);
+    }
+    /** A keyed glyph becomes its Tabler twin, a keyless one a mono tint of its own shape. */
+    private static javax.swing.Icon monoRowIcon(javax.swing.Icon ic, boolean sel) {
+        if (isSiteLogo(ic)) return ic;
+        Color tone = sel ? accentFg() : SIDEBAR_TEXT;
+        if (iconKey(ic) != null) return tablerIcon(ic, tone, null);
+        if (sel) return tintSolid(ic, tone);
+        javax.swing.Icon m = ROW_MONO.get(ic);
+        if (m == null) { m = tintSolid(ic, tone); ROW_MONO.put(ic, m); }
+        return m;
+    }
+
+    // Site favicons keep their colours. Generic renderers such as the plugin settings list show them too,
+    // so the check looks at the icon class and any icon it wraps rather than at the renderer.
+    private static boolean isSiteLogo(javax.swing.Icon ic) { return isSiteLogoIn(ic, 0); }
+    private static boolean isSiteLogoIn(javax.swing.Icon ic, int depth) {
+        if (ic == null || depth > 3) return false;
+        String cn = ic.getClass().getName().toLowerCase();
+        if (cn.contains("favicon") || cn.contains("domaininfo")) return true;
+        for (Class<?> cl = ic.getClass(); cl != null && cl != Object.class; cl = cl.getSuperclass())
+            for (java.lang.reflect.Field f : cl.getDeclaredFields()) {
+                if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) continue;
+                try {
+                    f.setAccessible(true);
+                    Object v = f.get(ic);
+                    if (v instanceof javax.swing.Icon && isSiteLogoIn((javax.swing.Icon) v, depth + 1)) return true;
+                    if (v instanceof Object[]) for (Object o : (Object[]) v)
+                        if (o instanceof javax.swing.Icon && isSiteLogoIn((javax.swing.Icon) o, depth + 1)) return true;
+                    if (v instanceof java.util.Collection) for (Object o : (java.util.Collection<?>) v)
+                        if (o instanceof javax.swing.Icon && isSiteLogoIn((javax.swing.Icon) o, depth + 1)) return true;
+                } catch (Throwable ignore) { }
+            }
+        return false;
+    }
+
+    // One wrapper per ExtColumn renderer, so the getCellRenderer hook does not allocate on every paint.
+    private static final java.util.Map<javax.swing.table.TableCellRenderer, javax.swing.table.TableCellRenderer> EXT_WRAP =
+            java.util.Collections.synchronizedMap(new java.util.WeakHashMap<javax.swing.table.TableCellRenderer, javax.swing.table.TableCellRenderer>());
+    /** Called from the patched ExtTable.getCellRenderer; wraps the renderer only for tables the tick marked
+     *  as config panels. */
+    public static javax.swing.table.TableCellRenderer wrapExtCellRenderer(Object table, javax.swing.table.TableCellRenderer r) {
+        try {
+            if (r == null || r instanceof MonoIconRenderer || !isHighlighter()) return r;
+            if (!(table instanceof JComponent)) return r;
+            Object cfg = ((JComponent) table).getClientProperty("jdp.extCfg");
+            if (!(cfg instanceof Boolean) || !((Boolean) cfg)) return r;
+            String cn = r.getClass().getName().toLowerCase();
+            if (cn.contains("favicon") || cn.contains("hoster") || cn.contains("domain")) return r;
+            javax.swing.table.TableCellRenderer w = EXT_WRAP.get(r);
+            if (w == null) { w = new MonoIconRenderer(r); EXT_WRAP.put(r, w); }
+            return w;
+        } catch (Throwable ig) { return r; }
+    }
+    // Mono icons in the settings tables (packagizer, extensions, advanced). The jdp.extCfg mark set here
+    // is what wrapExtCellRenderer reads.
+    private static void monoConfigTableIcons() {
+        for (Window w : Window.getWindows()) {
+            if (!w.isShowing()) continue;
+            List<JTable> tables = new ArrayList<>();
+            collectTables(w, tables);
+            for (JTable t : tables) {
+                boolean cfg = inConfigPanel(t);
+                if (!Boolean.valueOf(cfg).equals(t.getClientProperty("jdp.extCfg")))
+                    t.putClientProperty("jdp.extCfg", Boolean.valueOf(cfg));
+                if (!cfg) continue;
+                javax.swing.table.TableColumnModel cm = t.getColumnModel();
+                for (int i = 0; i < cm.getColumnCount(); i++) {
+                    javax.swing.table.TableColumn tc = cm.getColumn(i);
+                    javax.swing.table.TableCellRenderer cur = tc.getCellRenderer();
+                    if (cur == null) { try { cur = t.getCellRenderer(0, i); } catch (Throwable ig) { cur = null; } }
+                    if (cur == null || cur instanceof MonoIconRenderer) continue;
+                    String cn = cur.getClass().getName().toLowerCase();
+                    if (cn.contains("favicon") || cn.contains("hoster") || cn.contains("domain")) continue;
+                    tc.setCellRenderer(new MonoIconRenderer(cur));
+                }
+                java.util.Set<Class<?>> seen = new java.util.HashSet<Class<?>>();
+                for (int i = 0; i < cm.getColumnCount(); i++) {
+                    Class<?> cc; try { cc = t.getColumnClass(i); } catch (Throwable ig) { continue; }
+                    if (!seen.add(cc)) continue;
+                    javax.swing.table.TableCellRenderer def = t.getDefaultRenderer(cc);
+                    if (def == null || def instanceof MonoIconRenderer) continue;
+                    String dn = def.getClass().getName().toLowerCase();
+                    if (dn.contains("favicon") || dn.contains("hoster") || dn.contains("domain")) continue;
+                    t.setDefaultRenderer(cc, new MonoIconRenderer(def));
+                }
+            }
+        }
+    }
+
+    // The properties panel below the download and linkgrabber lists draws hairlines, separators and framed
+    // fields on a slightly different background. It is flattened onto the base colour, with its fields
+    // styled like the settings pages.
+    private static void stylePropertiesPanel() {
+        for (Window w : Window.getWindows()) if (w.isShowing()) stylePropsIn(w);
+    }
+    private static boolean isPropertiesRoot(Class<?> k) {
+        String n = k.getName();
+        return n.contains(".properties.")
+                && (n.endsWith("ScrollPane") || n.endsWith("BasePanel"));
+    }
+    private static void stylePropsIn(Container c) {
+        for (Component ch : c.getComponents()) {
+            if (ch instanceof Container && isPropertiesRoot(ch.getClass())) {
+                styleOneProperties((Container) ch);
+            } else if (ch instanceof Container) {
+                stylePropsIn((Container) ch);
+            }
+        }
+    }
+    private static void styleOneProperties(Container root) {
+        try {
+            clearLinesIn(root, 0);
+            hideSeparators(root);
+            unifyFieldsIn(root, true);
+            pinPropsBg(root, 0);
+        } catch (Throwable ignore) { }
+    }
+    // Fields and cards already carry their own colour and are left alone.
+    private static void pinPropsBg(Component c, int depth) {
+        if (depth > 14) return;
+        if (c instanceof JComponent) {
+            JComponent jc = (JComponent) c;
+            boolean field = (c instanceof javax.swing.text.JTextComponent) || (c instanceof javax.swing.JComboBox)
+                    || (c instanceof javax.swing.JSpinner) || (c instanceof AbstractButton);
+            if (!field) {
+                Color bg = jc.getBackground();
+                if (bg != null && !BASE_BG.equals(bg) && !FIELD_BG.equals(bg) && !DIALOG_BG.equals(bg)) {
+                    jc.setBackground(BASE_BG);
+                    if (!jc.isOpaque() && (c instanceof javax.swing.JPanel)) jc.setOpaque(true);
+                }
+            }
+        }
+        if (c instanceof Container) for (Component ch : ((Container) c).getComponents()) pinPropsBg(ch, depth + 1);
+    }
+
+    // monoChromeIn reaches a section header only when an ancestor is recognised as a config panel, which the
+    // extensions and packagizer panels are not, so headers are found by class name as well.
+    private static void monoSectionHeaders() {
+        for (Window w : Window.getWindows()) if (w.isShowing()) monoSectionHeadersIn(w);
+    }
+    private static void monoSectionHeadersIn(Container c) {
+        for (Component ch : c.getComponents()) {
+            if (ch.getClass().getName().endsWith(".Header")) monoHeaderIcons(ch);
+            else if (ch instanceof Container) monoSectionHeadersIn((Container) ch);
+        }
+    }
+    private static void monoHeaderIcons(Component c) {
+        if (c instanceof javax.swing.JLabel) monoLabelIcon((javax.swing.JLabel) c, true);
+        if (c instanceof Container) for (Component ch : ((Container) c).getComponents()) monoHeaderIcons(ch);
+    }
+
+    // The status bar glyphs in the bottom-right corner are keyless ImageIcons that no other pass reaches.
+    // Only that corner band is touched, so content icons stay as they are.
+    private static void monoCornerIcons() {
+        for (Window w : Window.getWindows()) {
+            if (!w.isShowing()) continue;
+            int winW = w.getWidth(), winH = w.getHeight();
+            if (winW < 400 || winH < 400) continue;             // the main frame only
+            monoCornerIn(w, w, winW, winH);
+        }
+    }
+    private static void monoCornerIn(Component c, Window win, int winW, int winH) {
+        try {
+            javax.swing.Icon ic = (c instanceof javax.swing.JLabel) ? ((javax.swing.JLabel) c).getIcon()
+                    : (c instanceof AbstractButton) ? ((AbstractButton) c).getIcon() : null;
+            if (ic != null && iconKey(ic) == null && !isSiteLogo(ic) && c.getParent() != null) {
+                java.awt.Point pt = javax.swing.SwingUtilities.convertPoint(c.getParent(), c.getLocation(), win);
+                boolean rightCol = pt.x + c.getWidth() > winW - 90;
+                // The overview panel's settings and close buttons derive their glyph on every paint and ignore
+                // setIcon, so they get their own ButtonUI instead.
+                if (rightCol && (c instanceof AbstractButton) && c.getClass().getName().contains(".overviewpanel.")) {
+                    hlInstallOverviewCornerButton((AbstractButton) c);
+                } else if (rightCol && pt.y > winH - 40) {
+                    if (c instanceof javax.swing.JLabel) {
+                        javax.swing.JLabel l = (javax.swing.JLabel) c;
+                        if (ic != l.getClientProperty("jdp.monoCorner")) {
+                            javax.swing.Icon m = tintSolid(ic, EXPANDER_LIGHT);
+                            if (m != ic) { l.setIcon(m); l.putClientProperty("jdp.monoCorner", m); }
+                        }
+                    } else if (c instanceof AbstractButton) {
+                        AbstractButton b = (AbstractButton) c;
+                        if (ic != b.getClientProperty("jdp.monoCorner")) {
+                            javax.swing.Icon m = tintSolid(ic, EXPANDER_LIGHT);
+                            if (m != ic) { b.setIcon(m); b.putClientProperty("jdp.monoCorner", m); }
+                        }
+                    }
+                }
+            }
+        } catch (Throwable ig) { }
+        if (c instanceof Container) for (Component ch : ((Container) c).getComponents()) monoCornerIn(ch, win, winW, winH);
+    }
+
+    // A taller column header for the two main tables, with the hovered title in the accent. A fixed
+    // preferred size on the header freezes its width, so the cells get vertical padding instead and
+    // JTableHeader grows to the tallest one.
+    private static void growTableHeaders() {
+        for (Window w : Window.getWindows()) {
+            if (!w.isShowing()) continue;
+            List<JTable> tables = new ArrayList<>();
+            collectTables(w, tables);
+            for (JTable t : tables) {
+                String sn = t.getClass().getSimpleName();
+                if (!(sn.contains("DownloadsTable") || sn.contains("LinkGrabberTable"))) continue;
+                javax.swing.table.JTableHeader h = t.getTableHeader();
+                if (h == null) continue;
+                installHeaderHover(h);
+                wrapHeaderColumnRenderers(h);
+            }
+        }
+    }
+    private static void installHeaderHover(final javax.swing.table.JTableHeader h) {
+        if (h.getClientProperty("jdp.hdrHover") != null) return;
+        h.putClientProperty("jdp.hdrHover", Boolean.TRUE);
+        h.putClientProperty("jdp.hoverCol", Integer.valueOf(-1));
+        h.addMouseMotionListener(new java.awt.event.MouseMotionAdapter() {
+            @Override public void mouseMoved(java.awt.event.MouseEvent e) {
+                int col = h.columnAtPoint(e.getPoint());
+                Object cur = h.getClientProperty("jdp.hoverCol");
+                if (!(cur instanceof Integer) || ((Integer) cur).intValue() != col) {
+                    h.putClientProperty("jdp.hoverCol", Integer.valueOf(col));
+                    h.repaint();
+                }
+            }
+        });
+        h.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override public void mouseExited(java.awt.event.MouseEvent e) {
+                h.putClientProperty("jdp.hoverCol", Integer.valueOf(-1));
+                h.repaint();
+            }
+        });
+        javax.swing.table.TableCellRenderer base = h.getDefaultRenderer();
+        if (base != null && !(base instanceof HoverHeaderRenderer))
+            h.setDefaultRenderer(new HoverHeaderRenderer(base, h));
+    }
+    // ExtTable paints the header through per-column renderers and never uses the default one. Runs on every
+    // tick so rebuilt or reordered columns are wrapped again.
+    private static void wrapHeaderColumnRenderers(javax.swing.table.JTableHeader h) {
+        try {
+            javax.swing.table.TableColumnModel cm = h.getColumnModel();
+            for (int i = 0; i < cm.getColumnCount(); i++) {
+                javax.swing.table.TableColumn tc = cm.getColumn(i);
+                javax.swing.table.TableCellRenderer hr = tc.getHeaderRenderer();
+                if (hr == null || hr instanceof HoverHeaderRenderer) continue;
+                tc.setHeaderRenderer(new HoverHeaderRenderer(hr, h));
+            }
+        } catch (Throwable ignore) { }
+    }
+    private static final class HoverHeaderRenderer implements javax.swing.table.TableCellRenderer {
+        final javax.swing.table.TableCellRenderer base;   // read by fixWidthLockIcon
+        private final javax.swing.table.JTableHeader hdr;
+        HoverHeaderRenderer(javax.swing.table.TableCellRenderer b, javax.swing.table.JTableHeader h) { base = b; hdr = h; }
+        public Component getTableCellRendererComponent(JTable t, Object v, boolean s, boolean f, int r, int col) {
+            Component c = base.getTableCellRendererComponent(t, v, s, f, r, col);
+            try {
+                Object hc = hdr.getClientProperty("jdp.hoverCol");
+                boolean hot = (hc instanceof Integer) && ((Integer) hc).intValue() == col;
+                if (c != null) c.setForeground(hot ? accentColor() : SIDEBAR_TEXT);
+                if (c instanceof JComponent) {
+                    JComponent jc = (JComponent) c;
+                    javax.swing.border.Border cur = jc.getBorder();
+                    java.awt.Insets in = (cur == null) ? new java.awt.Insets(0, 0, 0, 0) : cur.getBorderInsets(jc);
+                    if (in.top < 6)
+                        jc.setBorder(new javax.swing.border.EmptyBorder(6, Math.max(in.left, 6), 6, Math.max(in.right, 6)));
+                }
+            } catch (Throwable ig) { }
+            return c;
+        }
+    }
+
+    /**
+     * The ExtTables in the settings panels ignore FlatLaf's Table and TableHeader keys and paint their
+     * own header band, grid and frame, so each one is flattened at the instance level.
+     */
+    private static void borderlessConfigTables() {
+        for (Window w : Window.getWindows()) {
+            if (w.isShowing()) borderlessTablesIn(w, false);
+        }
+    }
+
+    private static void borderlessTablesIn(Container c, boolean inConfig) {
+        boolean nowConfig = inConfig || (c instanceof JComponent && isConfigPanel(c.getClass()));
+        for (Component child : c.getComponents()) {
+            if (nowConfig && child instanceof JTable) flattenConfigTable((JTable) child);
+            if (child instanceof Container) borderlessTablesIn((Container) child, nowConfig);
+        }
+    }
+
+    /**
+     * Replaces the per-column ExtTableHeaderRenderer, which paints its own grey band whatever the header
+     * background is. Being a renderer, it survives JD's repaints where a setBackground on the header does not.
+     */
+    private static final javax.swing.table.TableCellRenderer DARK_HEADER = new javax.swing.table.TableCellRenderer() {
+        private final javax.swing.table.DefaultTableCellRenderer base = new javax.swing.table.DefaultTableCellRenderer();
+        public Component getTableCellRendererComponent(JTable tbl, Object v, boolean s, boolean f, int r, int col) {
+            Component c = base.getTableCellRendererComponent(tbl, v, s, f, r, col);
+            c.setBackground(DIALOG_BG);
+            c.setForeground(SIDEBAR_TEXT);
+            if (c instanceof JComponent) {
+                ((JComponent) c).setOpaque(true);
+                ((JComponent) c).setBorder(javax.swing.BorderFactory.createEmptyBorder(5, 8, 5, 8));
+            }
+            return c;
+        }
+    };
+
+    private static void flattenConfigTable(JTable t) {
+        try {
+            t.setShowGrid(false);
+            t.setIntercellSpacing(new Dimension(0, 0));
+            // UrlOrderTable forces horizontal lines on, so they take the card colour.
+            if (!DIALOG_BG.equals(t.getGridColor())) t.setGridColor(DIALOG_BG);
+
+            javax.swing.table.JTableHeader h = t.getTableHeader();
+            if (h != null) {
+                if (!DIALOG_BG.equals(h.getBackground())) h.setBackground(DIALOG_BG);
+                h.setBorder(javax.swing.BorderFactory.createEmptyBorder());
+                javax.swing.table.TableCellRenderer dr = h.getDefaultRenderer();
+                if (dr instanceof JComponent) {
+                    ((JComponent) dr).setBackground(DIALOG_BG);
+                    ((JComponent) dr).setBorder(javax.swing.BorderFactory.createEmptyBorder());
+                }
+            }
+            javax.swing.table.TableColumnModel hcm = t.getColumnModel();
+            for (int i = 0; i < hcm.getColumnCount(); i++) {
+                javax.swing.table.TableColumn col = hcm.getColumn(i);
+                if (col.getHeaderRenderer() != DARK_HEADER) col.setHeaderRenderer(DARK_HEADER);
+            }
+            Container sp = SwingUtilities.getAncestorOfClass(javax.swing.JScrollPane.class, t);
+            if (sp instanceof javax.swing.JScrollPane) {
+                javax.swing.JScrollPane s = (javax.swing.JScrollPane) sp;
+                s.setBorder(javax.swing.BorderFactory.createEmptyBorder());
+                s.setViewportBorder(javax.swing.BorderFactory.createEmptyBorder());
+                // The table background fills the viewport, so the card reaches down to the sidebar's bottom.
+                if (!t.getFillsViewportHeight()) t.setFillsViewportHeight(true);
+                javax.swing.JViewport vp = s.getViewport();
+                if (vp != null && t.getBackground() != null
+                        && !t.getBackground().equals(vp.getBackground())) {
+                    vp.setBackground(t.getBackground());
+                }
+            }
+            accentTableCheckmarks(t);
+        } catch (Throwable ignore) { }
+    }
+
+    /** Accent colour for checkmarks in boolean columns, where the renderer is a JCheckBox. */
+    private static void accentTableCheckmarks(JTable t) {
+        try {
+            Color acc = accentColor();
+            if (acc == null) return;
+            javax.swing.table.TableColumnModel cm = t.getColumnModel();
+            for (int i = 0; i < cm.getColumnCount(); i++) {
+                javax.swing.table.TableCellRenderer r = cm.getColumn(i).getCellRenderer();
+                if (r instanceof javax.swing.JCheckBox) ((javax.swing.JCheckBox) r).setForeground(acc);
+            }
+        } catch (Throwable ignore) { }
+    }
 
     /**
      * Recolour FlatLaf's UIManager colour defaults to the #161616 greyscale, exactly
@@ -2014,8 +3488,12 @@ public class DialogConfirmAgent {
             if (!(val instanceof Color)) continue;
             String ks = key.toString().toLowerCase();
             // Selection backgrounds -> the visible lighter grey (no colour accent).
+            // jd-highlighter keeps the accent on menu selections, whose selectionForeground
+            // stays dark and would be unreadable on grey. "menu" also matches the check box
+            // and radio button menu items.
             if (ks.contains("selectionbackground")) {
-                d.put(key, withAlpha(SEL, ((Color) val).getAlpha()));
+                if (!(isHighlighter() && ks.contains("menu")))
+                    d.put(key, withAlpha(SEL, ((Color) val).getAlpha()));
                 continue;
             }
             // Foreground / text greys must stay readable: de-blue them but NEVER darken
@@ -2026,8 +3504,12 @@ public class DialogConfirmAgent {
             Color rep = remap((Color) val, isText);
             if (rep != null) d.put(key, rep);
         }
-        d.put("Component.accentColor", SEL);   // FlatLaf derives focus/selection from this
-        d.put("TableHeader.background", HEADER);
+        // jd-highlighter keeps its accent (focus/selection) and its own #1e1e1e header;
+        // only plain Dark greys the FlatLaf accent + darkens the header here.
+        if (!isHighlighter()) {
+            d.put("Component.accentColor", SEL);   // FlatLaf derives focus/selection from this
+            d.put("TableHeader.background", HEADER);
+        }
         // Standard Swing JTrees (in some JD dialogs) draw dark [+]/[-] / chevrons that
         // vanish on #161616 — light them. (JD's download package toggle is NOT a Swing
         // tree; it loads theme icons tree_plus/tree_minus, shipped light in the iconset.)
@@ -2038,10 +3520,15 @@ public class DialogConfirmAgent {
                 "Tree.icon.leafColor", "Tree.icon.closedColor", "Tree.icon.openColor" }) {
             d.put(k, new ColorUIResource(0xb0, 0xb0, 0xb0));
         }
-        // Progress bars (download list): set via UIManager.put (developer overrides that
-        // OUTRANK LAF defaults and SURVIVE setLookAndFeel), not this wipe-prone getDefaults()
-        // table — the old d.put lines here reverted on every FlatLaf reinstall and caused the
-        // scroll grey-flash. Single source of truth now: installProgressBarDefaults() (BUG 3).
+        // jd-highlighter fills the download bar with the accent, so the percentage over
+        // the fill takes the dark accent foreground. Plain Dark keeps its bar colours in
+        // UIManager, where they survive setLookAndFeel.
+        if (isHighlighter()) {
+            d.put("ProgressBar.background",          new ColorUIResource(0x26, 0x26, 0x26));
+            d.put("ProgressBar.foreground",          new ColorUIResource(accentColor()));
+            d.put("ProgressBar.selectionForeground", new ColorUIResource(accentFg()));
+            d.put("ProgressBar.selectionBackground", new ColorUIResource(0xf4, 0xf4, 0xf4));
+        }
         installProgressBarDefaults();
         chromeDone = true;   // set before the refresh so a throw can never cause a retry storm
 
@@ -2092,12 +3579,2314 @@ public class DialogConfirmAgent {
             public int getIconWidth()  { return 11; }
             public int getIconHeight() { return 11; }
             public void paintIcon(Component c, java.awt.Graphics g, int x, int y) {
-                g.setColor(new Color(0xb0, 0xb0, 0xb0));
+                g.setColor(PAL_MONO);
                 g.drawRect(x, y, 10, 10);
                 g.drawLine(x + 3, y + 5, x + 7, y + 5);            // horizontal bar
                 if (plus) g.drawLine(x + 5, y + 3, x + 5, y + 7);  // vertical -> plus
             }
         });
+    }
+
+    // jd-highlighter polish for what JD hardcodes and no theme key reaches. Plain Dark
+    // keeps stock JD, so every hook checks isHighlighter() first and leaves JD as it was
+    // on any failure. The desktop agent sets the property; the container has JD_THEME.
+
+    private static final boolean HIGHLIGHTER = Boolean.getBoolean("jd.highlighter")
+            || System.getenv().getOrDefault("JD_THEME", "").toLowerCase(java.util.Locale.ROOT).contains("highlight");
+
+    private static boolean isHighlighter() { return HIGHLIGHTER; }
+
+    // jdownloader-theme.sh renders the accent into the defaults as "@accentColor = #rrggbb".
+    // UIManager is no source for it, because enforceDarkChrome greys a blue accent there.
+    private static final java.io.File RENDERED_DEFAULTS =
+            new java.io.File(DEFAULTS_DIR, "FlatDarkLaf.properties");
+    private static Color   accentCache = null;
+    private static boolean accentRead  = false;
+    private static Color accentColor() {
+        if (accentRead) return accentCache;
+        String hex = null;
+        try {
+            for (String line : java.nio.file.Files.readAllLines(RENDERED_DEFAULTS.toPath())) {
+                String s = line.trim();
+                if (s.startsWith("@accentColor")) {
+                    int eq = s.indexOf('=');
+                    if (eq > 0) { hex = s.substring(eq + 1).trim(); break; }
+                }
+            }
+        } catch (Throwable ignore) { }
+        if (hex == null || hex.isEmpty()) {
+            String env = System.getenv("JD_ACCENT");
+            hex = (env != null && !env.isEmpty()) ? env : "#ffee00";
+        }
+        if (!hex.startsWith("#")) hex = "#" + hex;
+        try { accentCache = Color.decode(hex); }
+        catch (Throwable e) { accentCache = new Color(0xff, 0xee, 0x00); }
+        accentRead = true;
+        return accentCache;
+    }
+
+    /** Text colour on the accent, taken from the selected tab foreground. */
+    private static Color accentFg() {
+        Color sel = UIManager.getColor("TabbedPane.selectedForeground");
+        if (sel != null) return new Color(sel.getRGB());
+        Color a = accentColor();
+        double lum = 0.299 * a.getRed() + 0.587 * a.getGreen() + 0.114 * a.getBlue();
+        return lum > 140 ? PAL_BASE : PAL_TEXT;
+    }
+
+    private static javax.swing.ListCellRenderer<?> asRenderer(Object o) {
+        return (o instanceof javax.swing.ListCellRenderer) ? (javax.swing.ListCellRenderer<?>) o : null;
+    }
+
+    private static final int SIDEBAR_ROW_PX = 66;   // must exceed JD's own row height of about 53
+    private static final double SIDEBAR_ICON_SCALE = 1.4;
+    private static final java.util.Map<javax.swing.Icon, javax.swing.Icon> SCALED_ICONS = new java.util.WeakHashMap<>();
+    private static final Color SIDEBAR_TEXT = PAL_TEXT;
+    // A disabled ExtButton paints a disabledIcon that JD derives from the original glyph, so it needs its
+    // own tinted version.
+    private static final Color DISABLED_TONE = PAL_DISABLED;
+
+    private static final java.util.Map<javax.swing.Icon, javax.swing.Icon> TINT_LIGHT = new java.util.WeakHashMap<>();
+    private static final java.util.Map<javax.swing.Icon, javax.swing.Icon> TINT_DARK  = new java.util.WeakHashMap<>();
+    /**
+     * A single-tone silhouette of an icon, cached per tone. JD caches its Icon objects at startup, so
+     * recolouring the SVG files is not enough; this runs in the render path instead.
+     */
+    private static javax.swing.Icon tintIcon(javax.swing.Icon orig, Color tint, Component c) {
+        try {
+            if (tint == null) return orig;
+            java.util.Map<javax.swing.Icon, javax.swing.Icon> cache =
+                    (tint.getRGB() == SIDEBAR_TEXT.getRGB()) ? TINT_LIGHT : TINT_DARK;
+            synchronized (cache) {
+                javax.swing.Icon cached = cache.get(orig);
+                if (cached != null) return cached;
+            }
+            int w = orig.getIconWidth(), h = orig.getIconHeight();
+            if (w <= 0 || h <= 0) return orig;
+            java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+            java.awt.Graphics2D g = img.createGraphics();
+            orig.paintIcon(c, g, 0, 0);
+            g.dispose();
+            int rgb = (tint.getRed() << 16) | (tint.getGreen() << 8) | tint.getBlue();
+            for (int y = 0; y < h; y++) {
+                for (int x = 0; x < w; x++) {
+                    int argb = img.getRGB(x, y);
+                    int a = argb >>> 24;
+                    if (a != 0) img.setRGB(x, y, (a << 24) | rgb);
+                }
+            }
+            javax.swing.Icon ti = new javax.swing.ImageIcon(img);
+            synchronized (cache) { cache.put(orig, ti); }
+            return ti;
+        } catch (Throwable t) { return orig; }
+    }
+
+    // JD's chrome glyphs are replaced with Tabler Icons (MIT), shipped as light PNGs named after the JD
+    // icon key in a few sizes. The key comes from getIdentifier().getKey(), since wrapper icons lack a
+    // plain getKey(). Icons without a key or a matching PNG get a mono tint of their own glyph.
+    private static final String TABLER_DIR = "/opt/jd-tabler/png";
+    private static final int[] TABLER_SIZES = { 16, 18, 20, 24, 32 };
+    private static final Object TABLER_NONE = new Object();
+    private static final java.util.Map<String, Object> TABLER_CACHE = new java.util.concurrent.ConcurrentHashMap<>();
+
+    // iconKey runs on every sidebar paint, and JD caches its icon objects, so the reflective lookup is
+    // cached per icon. KEY_NONE marks icons without a name.
+    private static final java.util.Map<javax.swing.Icon, String> KEY_CACHE = new java.util.WeakHashMap<>();
+    private static final String KEY_NONE = " noKey";
+
+    /** The JD icon's name, such as "reconnect" or "logo/myjdownloader", or null. Merged and scaled icons
+     *  report no key, so the first of their parts that has one is used. */
+    private static String iconKey(javax.swing.Icon ic) {
+        if (ic == null) return null;
+        synchronized (KEY_CACHE) {
+            String c = KEY_CACHE.get(ic);
+            if (c != null) return (c == KEY_NONE) ? null : c;
+        }
+        String result = resolveKey(ic, 0);
+        synchronized (KEY_CACHE) { KEY_CACHE.put(ic, result == null ? KEY_NONE : result); }
+        return result;
+    }
+
+    private static String resolveKey(javax.swing.Icon ic, int depth) {
+        if (ic == null || depth > 3) return null;
+        try {
+            java.lang.reflect.Method m = ic.getClass().getMethod("getIdentifier");
+            try { m.setAccessible(true); } catch (Throwable ignore) { }
+            Object id = m.invoke(ic);
+            if (id != null) {
+                java.lang.reflect.Method gk = id.getClass().getMethod("getKey");
+                try { gk.setAccessible(true); } catch (Throwable ignore) { }
+                Object k = gk.invoke(id);
+                if (k != null) { String s = k.toString(); if (!s.isEmpty() && !"null".equals(s)) return s; }
+            }
+        } catch (Throwable ignore) { }
+        for (Class<?> cl = ic.getClass(); cl != null && cl != Object.class; cl = cl.getSuperclass()) {
+            for (java.lang.reflect.Field f : cl.getDeclaredFields()) {
+                if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) continue;
+                try {
+                    f.setAccessible(true);
+                    String k = keyFromValue(f.get(ic), depth);
+                    if (k != null) return k;
+                } catch (Throwable ignore) { }
+            }
+        }
+        return null;
+    }
+
+    private static String keyFromValue(Object v, int depth) {
+        if (v instanceof javax.swing.Icon) return resolveKey((javax.swing.Icon) v, depth + 1);
+        if (v instanceof Object[]) {
+            for (Object o : (Object[]) v) if (o instanceof javax.swing.Icon) {
+                String k = resolveKey((javax.swing.Icon) o, depth + 1); if (k != null) return k;
+            }
+        } else if (v instanceof java.util.Collection) {
+            for (Object o : (java.util.Collection<?>) v) if (o instanceof javax.swing.Icon) {
+                String k = resolveKey((javax.swing.Icon) o, depth + 1); if (k != null) return k;
+            }
+        }
+        return null;
+    }
+
+    /** The Tabler icon for a JD key at w x h, scaled from the nearest shipped size. */
+    private static javax.swing.Icon tablerBase(String key, int w, int h) {
+        if (key == null || w <= 0 || h <= 0) return null;
+        int want = Math.max(w, h);
+        String safe = key.replace('/', '_').replace('\\', '_');
+        String ck = safe + "@" + w + "x" + h;
+        Object cached = TABLER_CACHE.get(ck);
+        if (cached == TABLER_NONE) return null;
+        if (cached instanceof javax.swing.Icon) return (javax.swing.Icon) cached;
+        try {
+            int best = TABLER_SIZES[0];
+            for (int s : TABLER_SIZES) if (Math.abs(s - want) < Math.abs(best - want)) best = s;
+            java.io.File f = new java.io.File(TABLER_DIR, safe + "-" + best + ".png");
+            if (!f.isFile()) { TABLER_CACHE.put(ck, TABLER_NONE); return null; }
+            java.awt.image.BufferedImage src = javax.imageio.ImageIO.read(f);
+            if (src == null) { TABLER_CACHE.put(ck, TABLER_NONE); return null; }
+            javax.swing.Icon icon;
+            if (src.getWidth() == w && src.getHeight() == h) {
+                icon = new javax.swing.ImageIcon(src);
+            } else {
+                java.awt.image.BufferedImage dst = new java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+                java.awt.Graphics2D g = dst.createGraphics();
+                g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+                g.setRenderingHint(java.awt.RenderingHints.KEY_RENDERING, java.awt.RenderingHints.VALUE_RENDER_QUALITY);
+                g.drawImage(src, 0, 0, w, h, null);
+                g.dispose();
+                icon = new javax.swing.ImageIcon(dst);
+            }
+            TABLER_CACHE.put(ck, icon);
+            return icon;
+        } catch (Throwable t) { TABLER_CACHE.put(ck, TABLER_NONE); return null; }
+    }
+
+    /** The Tabler twin of a JD glyph in the given tone, or a tinted copy of the glyph when there is none. */
+    private static javax.swing.Icon tablerIcon(javax.swing.Icon orig, Color tint, Component c) {
+        try {
+            javax.swing.Icon base = tablerBase(iconKey(orig), orig.getIconWidth(), orig.getIconHeight());
+            if (base != null) return tintIcon(base, tint, c);
+        } catch (Throwable ignore) { }
+        return tintIcon(orig, tint, c);
+    }
+
+    private static javax.swing.Icon scaleIconTo(javax.swing.Icon ic, int size) {
+        try {
+            int iw = Math.max(1, ic.getIconWidth()), ih = Math.max(1, ic.getIconHeight());
+            java.awt.image.BufferedImage src = new java.awt.image.BufferedImage(iw, ih, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+            java.awt.Graphics2D sg = src.createGraphics();
+            ic.paintIcon(null, sg, 0, 0);
+            sg.dispose();
+            java.awt.image.BufferedImage dst = new java.awt.image.BufferedImage(size, size, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+            java.awt.Graphics2D g = dst.createGraphics();
+            g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g.setRenderingHint(java.awt.RenderingHints.KEY_RENDERING, java.awt.RenderingHints.VALUE_RENDER_QUALITY);
+            g.drawImage(src, 0, 0, size, size, null);
+            g.dispose();
+            return new javax.swing.ImageIcon(dst);
+        } catch (Throwable t) { return ic; }
+    }
+
+    // Tinting and scaling on every paint makes the sidebar hover sluggish, so results are cached per tone.
+    private static final java.util.Map<javax.swing.Icon, java.util.Map<Integer, javax.swing.Icon>> SB_ICON_CACHE = new java.util.WeakHashMap<>();
+    /** Sidebar tile icon at 32px, the largest shipped Tabler size, since upscaling a PNG blurs it.
+     *  {@code factor} is unused. */
+    private static javax.swing.Icon tablerIconScaled(javax.swing.Icon orig, Color tint, Component c, double factor) {
+        Integer tkey = Integer.valueOf(tint.getRGB());
+        synchronized (SB_ICON_CACHE) {
+            java.util.Map<Integer, javax.swing.Icon> m = SB_ICON_CACHE.get(orig);
+            if (m != null) { javax.swing.Icon hit = m.get(tkey); if (hit != null) return hit; }
+        }
+        javax.swing.Icon out;
+        try {
+            javax.swing.Icon base = tablerBase(iconKey(orig), 32, 32);
+            if (base == null) base = orig;
+            // Some JD sidebar icons are smaller, such as the 20px Advanced Settings one.
+            if (base.getIconWidth() != 32 || base.getIconHeight() != 32) base = scaleIconTo(base, 32);
+            out = tintIcon(base, tint, c);
+        } catch (Throwable t) { out = tintIcon(orig, tint, c); }
+        synchronized (SB_ICON_CACHE) {
+            SB_ICON_CACHE.computeIfAbsent(orig, k -> new java.util.HashMap<>()).put(tkey, out);
+        }
+        return out;
+    }
+
+    /**
+     * Mono icons for the chrome outside the sidebar, mainly the toolbar. JD caches its icons, so the Icon is
+     * replaced on the component: a light one plus a dark rollover for the accent hover.
+     */
+    private static void monoChromeIcons() {
+        for (Window w : Window.getWindows()) {
+            if (w.isShowing()) monoChromeIn(w, false);
+        }
+    }
+
+    private static void monoChromeIn(Container c, boolean inChrome) {
+        // Config panels and the main toolbar hold no content icons such as favicons, so every label icon
+        // inside them can go mono.
+        boolean chrome = inChrome
+                || (c instanceof JComponent && isConfigPanel(c.getClass()))
+                || isMainToolbar(c.getClass());
+        for (Component child : c.getComponents()) {
+            // Menu items ignore rollover icons, so they need their own handling before the
+            // AbstractButton branch.
+            if (child instanceof javax.swing.JMenuItem) monoMenuItemIcon((javax.swing.JMenuItem) child);
+            else if (child instanceof javax.swing.AbstractButton) monoButtonIcon((javax.swing.AbstractButton) child);
+            else if (child instanceof javax.swing.JLabel) monoLabelIcon((javax.swing.JLabel) child, chrome);
+            if (child instanceof Container) monoChromeIn((Container) child, chrome);
+        }
+    }
+
+    // Toolbar toggle buttons carry a nameless ExtMergedIcon, so their Action class name picks the icon key.
+    private static final java.util.Map<String, String> ACTION_ICON = new java.util.HashMap<>();
+    static {
+        ACTION_ICON.put("PauseDownloadsAction",          "media-playback-pause");
+        ACTION_ICON.put("ClipBoardToggleAction",         "clipboard");
+        ACTION_ICON.put("AutoReconnectToggleAction",     "auto-reconnect");
+        ACTION_ICON.put("GlobalPremiumSwitchToggleAction", "premium");
+        ACTION_ICON.put("SilentModeToggleAction",        "silentmode");
+        ACTION_ICON.put("StartDownloadsAction",          "media-playback-start");
+        ACTION_ICON.put("StartStopDownloadsAction",      "media-playback-start");
+        ACTION_ICON.put("StopDownloadsAction",           "media-playback-stop");
+        ACTION_ICON.put("ForcedDownloadsAction",         "media-playback-start_forced");
+        ACTION_ICON.put("ReconnectAction",               "reconnect");
+        // The "update" glyph is a circular arrow like reconnect, so update gets a box.
+        ACTION_ICON.put("UpdateAction",                  "package_new");
+        ACTION_ICON.put("MyJDownloaderAction",           "logo/myjdownloader");
+        ACTION_ICON.put("SettingsAction",                "settings");
+        ACTION_ICON.put("AddLinksAction",                "add");
+        ACTION_ICON.put("AddContainerAction",            "addContainer");
+    }
+
+    // ExtButton derives its private disabledIcon from the first icon it paints, keeps it and ignores
+    // setDisabledIcon, so the field is cleared to make it derive again from the mono icon.
+    private static boolean invalidateExtDisabledIcon(javax.swing.AbstractButton b) {
+        try {
+            Class<?> c = b.getClass();
+            while (c != null && !"org.appwork.swing.components.ExtButton".equals(c.getName())) c = c.getSuperclass();
+            if (c == null) return false;
+            java.lang.reflect.Field f = c.getDeclaredField("disabledIcon");
+            f.setAccessible(true);
+            f.set(b, null);
+            return true;
+        } catch (Throwable ignore) { return false; }
+    }
+
+    private static void monoButtonIcon(javax.swing.AbstractButton b) {
+        try {
+            javax.swing.Icon cur = b.getIcon();
+            if (cur == null) return;
+            // Once per mono icon, and before the early return below.
+            Object mb0 = b.getClientProperty("jdp.monoBtn");
+            if (mb0 instanceof javax.swing.Icon && b.getClientProperty("jdp.disInval") != mb0
+                    && invalidateExtDisabledIcon(b))
+                b.putClientProperty("jdp.disInval", mb0);
+            // JD derives a new disabled icon from the original glyph on every enabled-state change, so
+            // the stored mono one is put back on every tick.
+            Object md = b.getClientProperty("jdp.monoDisabled");
+            if (md instanceof javax.swing.Icon && b.getDisabledIcon() != md) b.setDisabledIcon((javax.swing.Icon) md);
+            // ExtButton derives the disabled icon from the Action's SMALL_ICON, which JD resets to the original
+            // glyph on state changes such as the update check, so it is pointed back at the mono icon here.
+            if (mb0 instanceof javax.swing.Icon) {
+                javax.swing.Action ra = b.getAction();
+                if (ra != null && ra.getValue(javax.swing.Action.SMALL_ICON) != mb0) {
+                    ra.putValue(javax.swing.Action.SMALL_ICON, (javax.swing.Icon) mb0);
+                    invalidateExtDisabledIcon(b);
+                }
+            }
+            // JD sets the selected icon of a toggle lazily on first activation, so the state icons are
+            // checked on every tick.
+            monoToggleStateIcon(b, "jdp.monoSel", true);
+            monoToggleStateIcon(b, "jdp.monoRSel", false);
+            if (cur == b.getClientProperty("jdp.monoBtn")) return;
+            javax.swing.Icon mono = tablerForButton(b, cur, SIDEBAR_TEXT);
+            if (mono == cur) {
+                // No key to look up, possibly an animated icon such as the updater's, which a one-off
+                // tint would cover for a single frame only.
+                mono = new LiveMonoIcon(cur, SIDEBAR_TEXT);
+            }
+            b.setIcon(mono);
+            b.putClientProperty("jdp.monoBtn", mono);
+            // Hover, pressed and selected states paint the accent background, so their glyphs are dark.
+            b.setRolloverIcon(tablerForButton(b, cur, accentFg()));
+            javax.swing.Icon pi = b.getPressedIcon();
+            if (pi != null && pi != mono) b.setPressedIcon(tablerForButton(b, pi, accentFg()));
+            javax.swing.Icon dim = tintSolid(mono, DISABLED_TONE);
+            b.setDisabledIcon(dim);
+            b.putClientProperty("jdp.monoDisabled", dim);
+            // ExtButton derives its disabled icon from the Action rather than the button.
+            javax.swing.Action ba = b.getAction();
+            if (ba != null && ba.getValue(javax.swing.Action.SMALL_ICON) != mono)
+                ba.putValue(javax.swing.Action.SMALL_ICON, mono);
+            b.setContentAreaFilled(true);   // otherwise FlatLaf's ToggleButton.hoverBackground does not paint
+            installBtnIconListener(b);
+        } catch (Throwable ignore) { }
+    }
+
+    /** JD's animated updater swaps the button icon faster than the tick, so a new icon is turned mono as
+     *  soon as it is set. The button's own setIcon fires this too and is skipped by the identity check. */
+    private static void installBtnIconListener(final javax.swing.AbstractButton b) {
+        if (b.getClientProperty("jdp.btnIconL") != null) return;
+        b.putClientProperty("jdp.btnIconL", Boolean.TRUE);
+        b.addPropertyChangeListener("icon", new java.beans.PropertyChangeListener() {
+            public void propertyChange(java.beans.PropertyChangeEvent e) {
+                if (b.getIcon() != b.getClientProperty("jdp.monoBtn")) monoButtonIcon(b);
+            }
+        });
+        // A toggle's state icons change through their own properties, which the "icon" listener misses.
+        java.beans.PropertyChangeListener sl = new java.beans.PropertyChangeListener() {
+            public void propertyChange(java.beans.PropertyChangeEvent e) {
+                monoToggleStateIcon(b, "jdp.monoSel", true);
+                monoToggleStateIcon(b, "jdp.monoRSel", false);
+            }
+        };
+        b.addPropertyChangeListener("selectedIcon", sl);
+        b.addPropertyChangeListener("rolloverSelectedIcon", sl);
+        // JD rebuilds the state icon when the toggle flips, and the property events can miss the base icon.
+        b.addItemListener(new java.awt.event.ItemListener() {
+            public void itemStateChanged(java.awt.event.ItemEvent e) {
+                monoToggleStateIcon(b, "jdp.monoSel", true);
+                monoToggleStateIcon(b, "jdp.monoRSel", false);
+                if (b.getIcon() != b.getClientProperty("jdp.monoBtn")) monoButtonIcon(b);
+            }
+        });
+    }
+
+    /** Dark mono glyph for a toggle's selected or rollover-selected icon, which sits on the accent fill. */
+    private static void monoToggleStateIcon(javax.swing.AbstractButton b, String prop, boolean selected) {
+        try {
+            javax.swing.Icon cur = selected ? b.getSelectedIcon() : b.getRolloverSelectedIcon();
+            if (cur == null || cur == b.getClientProperty(prop)) return;
+            javax.swing.Icon m = tablerForButton(b, cur, accentFg());
+            if (m == cur) m = new LiveMonoIcon(cur, accentFg());
+            if (selected) b.setSelectedIcon(m); else b.setRolloverSelectedIcon(m);
+            b.putClientProperty(prop, m);
+        } catch (Throwable ignore) { }
+    }
+
+    /** Menu items paint getIcon() whatever their state, so the item gets a light and a dark icon and
+     *  installMenuItemHoverIcon swaps them when it is armed. */
+    private static void monoMenuItemIcon(javax.swing.JMenuItem mi) {
+        try {
+            javax.swing.Icon cur = mi.getIcon();
+            if (cur == null) return;                                   // check and radio glyphs are painted by the UI
+            Object light = mi.getClientProperty("jdp.miLight");
+            if (cur == light || cur == mi.getClientProperty("jdp.miDark")) { installMenuItemHoverIcon(mi); return; }
+            javax.swing.Icon lo = tablerIcon(cur, SIDEBAR_TEXT, mi);
+            // Extension toggles such as the event scripter have no Tabler key and a baked-in black box
+            // behind the glyph, which is cleared before tinting.
+            if (lo == cur) lo = tintSolid(deBoxIcon(cur, mi), SIDEBAR_TEXT, mi);
+            // A fresh tablerIcon in the dark tone comes out fully transparent for some menu glyphs, so the
+            // dark twin is tinted from the light one.
+            javax.swing.Icon hi = (lo != cur) ? tintSolid(lo, accentFg()) : tablerIcon(cur, accentFg(), mi);
+            if (lo == cur) return;
+            // FlatMenuItemRenderer paints getIcon() even for checked items and popups rebuild their items on
+            // every open, so the check badge is decided at paint time. A JMenu counts as selected while its
+            // popup is open, so it gets none.
+            if (!(mi instanceof javax.swing.JMenu)) { lo = hlStateCheckIcon(lo, mi); hi = hlStateCheckIcon(hi, mi); }
+            mi.putClientProperty("jdp.miLight", lo);
+            mi.putClientProperty("jdp.miDark", hi);
+            mi.setIcon(lo);
+            // Check box menu items paint the selected icon when checked and the pressed icon when armed.
+            mi.setSelectedIcon(lo);
+            mi.setPressedIcon(hi);
+            mi.setIconTextGap(10);
+            mi.setVerticalAlignment(javax.swing.SwingConstants.CENTER);
+            installMenuItemHoverIcon(mi);
+        } catch (Throwable ignore) { }
+    }
+
+    /** Draws a check badge in the bottom-right corner while the item is selected, with colours inverted on
+     *  the armed row. */
+    private static javax.swing.Icon hlStateCheckIcon(final javax.swing.Icon base, final javax.swing.JMenuItem mi) {
+        return new javax.swing.Icon() {
+            public int getIconWidth()  { return base.getIconWidth(); }
+            public int getIconHeight() { return base.getIconHeight(); }
+            public void paintIcon(java.awt.Component c, java.awt.Graphics g, int x, int y) {
+                base.paintIcon(c, g, x, y);
+                if (!mi.isSelected()) return;
+                int w = base.getIconWidth(), h = base.getIconHeight();
+                int d = Math.max(9, Math.round(w * 0.66f));
+                int bx = x + w - d, by = y + h - d;
+                boolean armed = mi.getModel().isArmed();
+                java.awt.Color disc = armed ? accentFg() : accentColor();
+                java.awt.Color chk  = armed ? accentColor() : accentFg();
+                java.awt.Graphics2D g2 = (java.awt.Graphics2D) g.create();
+                g2.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(disc);
+                g2.fillOval(bx, by, d, d);
+                g2.setColor(chk);
+                g2.setStroke(new java.awt.BasicStroke(Math.max(1.3f, d / 6.5f), java.awt.BasicStroke.CAP_ROUND, java.awt.BasicStroke.JOIN_ROUND));
+                int[] xs = { bx + Math.round(d * 0.26f), bx + Math.round(d * 0.44f), bx + Math.round(d * 0.74f) };
+                int[] ys = { by + Math.round(d * 0.52f), by + Math.round(d * 0.68f), by + Math.round(d * 0.34f) };
+                g2.drawPolyline(xs, ys, 3);
+                g2.dispose();
+            }
+        };
+    }
+
+    // Some popups, such as the status bar customize menu, arm their rows in grey, where the dark icon
+    // disappears. BasicMenuItemUI keeps the selection colours in fields, so they are set there.
+    private static void forceMenuItemAccent(javax.swing.JMenuItem mi) {
+        try {
+            Object ui = mi.getUI();
+            if (ui != null) {
+                setUiColorField(ui, "selectionBackground", accentColor());
+                setUiColorField(ui, "selectionForeground", accentFg());
+            }
+        } catch (Throwable ignore) { }
+    }
+
+    private static void installMenuItemHoverIcon(final javax.swing.JMenuItem mi) {
+        if (mi.getClientProperty("jdp.miHoverIcon") != null) return;
+        mi.putClientProperty("jdp.miHoverIcon", Boolean.TRUE);
+        mi.getModel().addChangeListener(new javax.swing.event.ChangeListener() {
+            public void stateChanged(javax.swing.event.ChangeEvent e) {
+                javax.swing.ButtonModel m = mi.getModel();
+                // FlatLaf paints a dark slot behind the icon of a checked item, so that glyph stays light
+                // even when armed. A JMenu is selected whenever its popup is open, which is not the same.
+                boolean hot = mi.isEnabled() && m.isArmed() && (mi instanceof javax.swing.JMenu || !m.isSelected());
+                Object want = mi.getClientProperty(hot ? "jdp.miDark" : "jdp.miLight");
+                if (want instanceof javax.swing.Icon) {
+                    javax.swing.Icon wi = (javax.swing.Icon) want;
+                    if (mi.getIcon() != wi) mi.setIcon(wi);
+                    if (mi.getSelectedIcon() != wi) mi.setSelectedIcon(wi);
+                }
+                // forceMenuItemAccent only runs on the next tick, so the first hover in a fresh menu would
+                // still show light text on the accent.
+                Color miFg = (mi.isEnabled() && m.isArmed()) ? accentFg() : SIDEBAR_TEXT;
+                if (!miFg.equals(mi.getForeground())) mi.setForeground(miFg);
+            }
+        });
+    }
+
+    /** Like tablerIcon, but the button's Action class picks the glyph when it is in ACTION_ICON. */
+    private static javax.swing.Icon tablerForButton(javax.swing.AbstractButton b, javax.swing.Icon icon, Color tone) {
+        // The Action mapping wins over the icon's own key, because animated buttons such as the updater
+        // carry a keyed frame icon on every tick.
+        javax.swing.Action act = b.getAction();
+        if (act != null) {
+            String jk = ACTION_ICON.get(act.getClass().getSimpleName());
+            if (jk != null) {
+                javax.swing.Icon base = tablerBase(jk, icon.getIconWidth(), icon.getIconHeight());
+                if (base != null) return tintIcon(base, tone, b);
+            }
+        }
+        return tablerIcon(icon, tone, b);
+    }
+
+    // JD's AppWork inputs ignore @componentBackground and come in several fills, so the settings get one
+    // recessed fill for fields and one raised fill for buttons, darker and lighter than the card.
+    private static final Color FIELD_BG   = PAL_FIELD;
+    private static final Color BTN_CFG_BG = PAL_BUTTON;
+    private static final Color BASE_BG    = PAL_BASE;
+    private static void unifyConfigFields() {
+        for (Window w : Window.getWindows()) if (w.isShowing()) unifyFieldsIn(w, false);
+    }
+
+    // Some JD combo box popups hard-code a blue selection. Their JList is reachable through the UI's
+    // accessible child.
+    private static void styleComboPopup(javax.swing.JComboBox<?> cb) {
+        try {
+            javax.accessibility.Accessible a = cb.getUI().getAccessibleChild(cb, 0);
+            if (a instanceof javax.swing.plaf.basic.ComboPopup) {
+                javax.swing.JList<?> list = ((javax.swing.plaf.basic.ComboPopup) a).getList();
+                Color acc = accentColor();
+                if (list != null && acc != null && !acc.equals(list.getSelectionBackground())) {
+                    list.setSelectionBackground(acc);
+                    list.setSelectionForeground(accentFg());
+                }
+            }
+        } catch (Throwable ignore) { }
+    }
+
+    private static void unifyFieldsIn(Container c, boolean inCfg) {
+        boolean cfg = inCfg || (c instanceof JComponent && isConfigPanel(c.getClass()));
+        for (Component ch : c.getComponents()) {
+            if (cfg) {
+                try {
+                    if (ch instanceof javax.swing.text.JTextComponent
+                            && !((javax.swing.text.JTextComponent) ch).isEditable()) {
+                        // A read-only text component is a description, not an input, so it sits on
+                        // the card without a field fill.
+                        if (((JComponent) ch).isOpaque()) ((JComponent) ch).setOpaque(false);
+                        if (!DIALOG_BG.equals(ch.getBackground())) ch.setBackground(DIALOG_BG);
+                        stripFramingBorder((JComponent) ch);
+                    } else if (ch instanceof javax.swing.text.JTextComponent || ch instanceof javax.swing.JComboBox
+                            || ch instanceof javax.swing.JSpinner) {
+                        if (!FIELD_BG.equals(ch.getBackground())) {
+                            ch.setBackground(FIELD_BG);
+                            if (ch instanceof JComponent) ((JComponent) ch).setOpaque(true);
+                        }
+                        // borderWidth=0 only reaches FlatBorder, and the settings pages are not dialogs,
+                        // so recolorDialogs never strips their AppWork frames.
+                        stripFramingBorder((JComponent) ch);
+                        if (ch instanceof javax.swing.JComboBox) styleComboPopup((javax.swing.JComboBox<?>) ch);
+                    } else if (ch instanceof javax.swing.AbstractButton && !isCheckLike(ch)) {
+                        javax.swing.AbstractButton ab = (javax.swing.AbstractButton) ch;
+                        // A hovered button carries the accent from installBtnHoverBg.
+                        boolean hot = ab.getModel().isRollover() || ab.getModel().isPressed()
+                                || Boolean.TRUE.equals(ab.getClientProperty("jdp.hovered"));
+                        if (!hot && !BTN_CFG_BG.equals(ab.getBackground())) ab.setBackground(BTN_CFG_BG);
+                        installBtnHoverFg(ab);
+                        installBtnHoverBg(ab);
+                        stripFramingBorder((JComponent) ch);
+                    } else if (isCheckLike(ch) && ch instanceof JComponent) {
+                        // The check glyph keeps its own CheckBox.icon border.
+                        stripFramingBorder((JComponent) ch);
+                    }
+                } catch (Throwable ignore) { }
+            }
+            if (ch instanceof Container) unifyFieldsIn((Container) ch, cfg);
+        }
+    }
+    private static boolean isCheckLike(Component ch) {
+        if (ch instanceof javax.swing.JCheckBox || ch instanceof javax.swing.JRadioButton) return true;
+        String n = ch.getClass().getSimpleName().toLowerCase();
+        return n.contains("check") || n.contains("radio") || n.contains("toggle");
+    }
+
+    /** Dark text on a button while its accent hover fill shows. */
+    private static void installBtnHoverFg(final javax.swing.AbstractButton b) {
+        if (b.getClientProperty("jdp.hoverFg") != null) return;
+        b.putClientProperty("jdp.hoverFg", Boolean.TRUE);
+        b.setRolloverEnabled(true);   // off by default on JButton, so JD's SettingsButton reports no rollover
+        b.getModel().addChangeListener(new javax.swing.event.ChangeListener() {
+            private boolean applied = false;
+            public void stateChanged(javax.swing.event.ChangeEvent e) {
+                boolean roll = b.isEnabled() && (b.getModel().isRollover() || b.getModel().isPressed());
+                if (roll && !applied) {
+                    b.putClientProperty("jdp.savedFg", b.getForeground());
+                    b.setForeground(accentFg());
+                    applied = true;
+                } else if (!roll && applied) {
+                    Object s = b.getClientProperty("jdp.savedFg");
+                    if (s instanceof Color) b.setForeground((Color) s);
+                    applied = false;
+                }
+            }
+        });
+    }
+
+    /** Accent background on a settings button while it is hovered or pressed. */
+    private static void installBtnHoverBg(final javax.swing.AbstractButton b) {
+        if (b.getClientProperty("jdp.hoverBg") != null) return;
+        b.putClientProperty("jdp.hoverBg", Boolean.TRUE);
+        b.setRolloverEnabled(true);
+        // JD's SettingsButton is an ExtButton whose onRollOver only turns on contentAreaFilled, so FlatLaf
+        // paints its grey default hover. A per-component style sets the accent instead.
+        try {
+            Color acc0 = accentColor();
+            if (acc0 != null) {
+                String hx = String.format("#%06x", acc0.getRGB() & 0xffffff);
+                b.putClientProperty("FlatLaf.style", "hoverBackground: " + hx + "; pressedBackground: " + hx);
+            }
+        } catch (Throwable ignore) { }
+        // For custom UIs that ignore the style. contentAreaFilled is restored on exit so a transparent
+        // ExtButton does not keep a fill.
+        b.addMouseListener(new java.awt.event.MouseAdapter() {
+            public void mouseEntered(java.awt.event.MouseEvent e) {
+                if (!b.isEnabled()) return;
+                Color acc = accentColor();
+                if (acc == null) return;
+                b.putClientProperty("jdp.hovered", Boolean.TRUE);
+                b.putClientProperty("jdp.savedCAF", Boolean.valueOf(b.isContentAreaFilled()));
+                Object fg = b.getClientProperty("jdp.savedFg");
+                if (!(fg instanceof Color)) b.putClientProperty("jdp.savedFg", b.getForeground());
+                b.setContentAreaFilled(true);
+                if (b instanceof JComponent) ((JComponent) b).setOpaque(true);
+                b.setBackground(acc);
+                b.setForeground(accentFg());
+                b.repaint();
+            }
+            public void mouseExited(java.awt.event.MouseEvent e) {
+                b.putClientProperty("jdp.hovered", null);
+                Object caf = b.getClientProperty("jdp.savedCAF");
+                if (caf instanceof Boolean) b.setContentAreaFilled((Boolean) caf);
+                b.setBackground(BTN_CFG_BG);
+                Object s = b.getClientProperty("jdp.savedFg");
+                if (s instanceof Color) b.setForeground((Color) s);
+                b.putClientProperty("jdp.savedFg", null);
+                b.repaint();
+            }
+        });
+        b.getModel().addChangeListener(new javax.swing.event.ChangeListener() {
+            private boolean applied = false;
+            public void stateChanged(javax.swing.event.ChangeEvent e) {
+                boolean roll = b.isEnabled() && (b.getModel().isRollover() || b.getModel().isPressed());
+                if (roll && !applied) {
+                    Color acc = accentColor();
+                    if (acc != null) {
+                        b.setBackground(acc);
+                        if (b instanceof JComponent) ((JComponent) b).setOpaque(true);
+                        b.setContentAreaFilled(true);
+                    }
+                    applied = true;
+                } else if (!roll && applied) {
+                    // The mouse listener may still hold the accent.
+                    if (!Boolean.TRUE.equals(b.getClientProperty("jdp.hovered"))) b.setBackground(BTN_CFG_BG);
+                    applied = false;
+                }
+            }
+        });
+    }
+
+    // Settings section headers carry nameless scaled icons, so the header title picks the Tabler key.
+    // titleToKey matches by substring, so longer keys come before the shorter ones they contain.
+    private static final String[][] TITLE_MAP = {
+        {"download folder", "download"}, {"download management", "downloadmanagment"}, {"autostart", "start"},
+        {"linkgrabber", "linkgrabber"}, {"file writing", "save"}, {"file access", "folder"},
+        {"miscellaneous", "wrench"}, {"reconnect", "reconnect"}, {"connection manager", "proxy_rotate"},
+        {"connection", "network-idle"}, {"account", "premium"}, {"basic auth", "basicauth"},
+        {"plugin", "plugin"}, {"captcha solver", "order"}, {"captcha", "ocr"}, {"notification", "bubble"},
+        {"packagizer", "packagizer"}, {"archive extractor", "extract"}, {"extract", "extract"},
+        {"folder watch", "folder_add"}, {"advanced", "advancedConfig"}, {"extension", "extension"},
+        {"general", "home"}, {"user interface", "gui"}, {"my.jdownloader", "logo/myjdownloader"},
+        {"proxy", "proxy"}, {"password", "password"}, {"tray", "minimize"}, {"solver", "order"},
+        {"downloadlink address", "link"}, {"window management", "desktop"}, {"menus and toolbars", "menu"},
+        // German titles
+        {"allgemein", "home"}, {"benutzeroberfläche", "gui"}, {"anzeige der download", "link"},
+        {"menüs und werkzeug", "menu"}, {"fenstermanagement", "desktop"}, {"benachrichtigung", "bubble"},
+        {"verschiedenes", "wrench"}, {"erweiterte einstellungen", "advancedConfig"}, {"erweiterungen", "extension"},
+        {"archiventpacker", "extract"}, {"archiv", "extract"}, {"zielordner", "folder"},
+        {"passwortliste", "password"}, {"paketverwalter", "packagizer"}, {"ordnerüberwachung", "folder_add"},
+        {"infosymbol", "info"}, {"profieinstellungen", "advancedConfig"}, {"benutzeraccount", "premium"},
+        {"mein benutzer", "premium"}, {"verbindung", "network-idle"}, {"passwort", "password"},
+        {"downloadverzeichnis", "downloadpath"}, {"downloadverwaltung", "downloadmanagment"},
+        {"automatisch starten", "media-playback-start"}, {"linksammler", "linkgrabber"},
+        {"schreiben von datei", "save"}, {"standardauthentifizierung", "basicauth"},
+        {"linkfilter", "filter"}, {"ereignis", "event"}, {"skripter", "event"},
+    };
+    private static String titleToKey(String text) {
+        if (text == null) return null;
+        String t = text.toLowerCase().replaceAll("<[^>]*>", " ").trim();
+        for (String[] m : TITLE_MAP) if (t.contains(m[0])) return m[1];
+        return null;
+    }
+
+    private static void monoLabelIcon(javax.swing.JLabel l, boolean cfg) {
+        try {
+            javax.swing.Icon cur = l.getIcon();
+            if (cur == null) return;
+            if (cur == l.getClientProperty("jdp.monoLbl")) return;
+            if (l.getClientProperty("jdp.tabOrig") != null) return;   // recolorMainTabs owns tab labels
+            if (isSiteLogo(cur)) return;
+            // Outside config panels only icons with a Tabler twin are touched, which leaves content icons
+            // such as favicons and file thumbnails alone.
+            if (!cfg) {
+                String key = iconKey(cur);
+                if (key == null || tablerBase(key, cur.getIconWidth(), cur.getIconHeight()) == null) return;
+            }
+            // A nameless header icon takes its glyph from the title, which often sits in a sibling label.
+            if (cfg && iconKey(cur) == null) {
+                String title = l.getText();
+                if (title == null || title.replaceAll("<[^>]*>", " ").trim().isEmpty()) {
+                    Container par = l.getParent();
+                    if (par != null) for (Component sib : par.getComponents())
+                        if (sib instanceof javax.swing.JLabel && sib != l) {
+                            String st = ((javax.swing.JLabel) sib).getText();
+                            if (st != null && !st.replaceAll("<[^>]*>", " ").trim().isEmpty()) { title = st; break; }
+                        }
+                }
+                String jk = titleToKey(title);
+                javax.swing.Icon base = (jk != null) ? tablerBase(jk, cur.getIconWidth(), cur.getIconHeight()) : null;
+                if (base != null) {
+                    javax.swing.Icon t = tintIcon(base, SIDEBAR_TEXT, l);
+                    l.setIcon(t); l.putClientProperty("jdp.monoLbl", t);
+                    return;
+                }
+                // Unknown title: tint the glyph itself. JD's AbstractIcon composites need the label to paint.
+                javax.swing.Icon solid = tintSolid(cur, SIDEBAR_TEXT, l);
+                if (solid != cur) { l.setIcon(solid); l.putClientProperty("jdp.monoLbl", solid); }
+                return;
+            }
+            javax.swing.Icon mono = tablerIcon(cur, SIDEBAR_TEXT, l);
+            if (mono != cur) { l.setIcon(mono); l.putClientProperty("jdp.monoLbl", mono); return; }
+            // A keyed icon without a Tabler PNG, such as the speed limit glyph, is tinted instead.
+            if (cfg) {
+                javax.swing.Icon solid = tintSolid(cur, SIDEBAR_TEXT, l);
+                if (solid != cur) { l.setIcon(solid); l.putClientProperty("jdp.monoLbl", solid); }
+            }
+        } catch (Throwable ignore) { }
+    }
+
+    // Custom menu rows such as SpeedlimitEditorLink are not JMenuItems, so monoMenuItemIcon misses them.
+    private static void monoRowLabels(Container c) {
+        for (Component ch : c.getComponents()) {
+            if (ch instanceof javax.swing.JLabel && ((javax.swing.JLabel) ch).getIcon() != null) {
+                javax.swing.JLabel jl = (javax.swing.JLabel) ch;
+                monoLabelIcon(jl, true);
+                // Same icon-text gap as the menu items, so the text column lines up too.
+                if (jl.getText() != null && !jl.getText().isEmpty() && jl.getIconTextGap() != 10) jl.setIconTextGap(10);
+            }
+            if (ch instanceof Container) monoRowLabels((Container) ch);
+        }
+    }
+
+    /**
+     * Raise the Settings sidebar's row height. JD gives every entry a fixed size from a
+     * shared public-static Dimension on the list's cell renderer
+     * (jd...settings.sidebar.TreeRenderer.DIMENSION = new Dimension(0, 35)); there is no
+     * List.cellHeight / UIManager key. Mutating that one Dimension object raises every
+     * row at once. It is reached through a renderer instance found in the tree, so the
+     * static field resolves in JD's own classloader regardless of the agent's.
+     */
+
+    private static void styleSidebar() {
+        for (Window w : Window.getWindows()) {
+            if (w.isShowing() && styleSidebarIn(w)) return;
+        }
+    }
+
+    private static boolean styleSidebarIn(Container c) {
+        for (Component child : c.getComponents()) {
+            if (child instanceof javax.swing.JList) {
+                javax.swing.JList<?> list = (javax.swing.JList<?>) child;
+                // JD's own renderer, stashed while the hover wrapper is installed.
+                javax.swing.ListCellRenderer<?> cur  = list.getCellRenderer();
+                javax.swing.ListCellRenderer<?> wrap = asRenderer(list.getClientProperty(SB_WRAP));
+                javax.swing.ListCellRenderer<?> r =
+                        (cur == wrap && wrap != null) ? asRenderer(list.getClientProperty(SB_ORIG_RENDERER)) : cur;
+                if (r != null && r.getClass().getName().endsWith("sidebar.TreeRenderer")) {
+                    // Centering happens in the hover wrapper, because TreeRenderer reconfigures its
+                    // shared component on every call and would undo alignment set here.
+                    try {
+                        Field f = r.getClass().getField("DIMENSION");
+                        Object dim = f.get(null);
+                        if (dim instanceof Dimension && ((Dimension) dim).height < SIDEBAR_ROW_PX) {
+                            ((Dimension) dim).height = SIDEBAR_ROW_PX;
+                        }
+                        // The JList caches row heights, and the advanced settings row with its 20px icon
+                        // would stay short, so the list gets a fixed cell height.
+                        if (list.getFixedCellHeight() != SIDEBAR_ROW_PX) {
+                            list.setFixedCellHeight(SIDEBAR_ROW_PX);
+                            list.revalidate();
+                            list.repaint();
+                            System.out.println("[jd-dialog-agent] jd-highlighter: settings sidebar row height -> "
+                                    + SIDEBAR_ROW_PX + "px (fixed)");
+                        }
+                    } catch (Throwable t) {
+                        System.out.println("[jd-dialog-agent] sidebar height bump failed: " + t);
+                    }
+                    installSidebarAccentHover(list, r);
+                    clearSidebarBorders(list);
+                    // The taller rows push the list just past the viewport, and the scrollbar would clip
+                    // the tiles. The panel list is fixed and fits any normal window.
+                    javax.swing.JScrollPane ssp = (javax.swing.JScrollPane)
+                            javax.swing.SwingUtilities.getAncestorOfClass(javax.swing.JScrollPane.class, list);
+                    if (ssp != null && ssp.getVerticalScrollBarPolicy() != javax.swing.ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER)
+                        ssp.setVerticalScrollBarPolicy(javax.swing.ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER);
+                    // JD rebuilds the panel on selection; styling it right after avoids an unstyled flash
+                    // until the next tick.
+                    if (list.getClientProperty("jdp.navRetheme") == null) {
+                        list.putClientProperty("jdp.navRetheme", Boolean.TRUE);
+                        list.addListSelectionListener(new javax.swing.event.ListSelectionListener() {
+                            public void valueChanged(javax.swing.event.ListSelectionEvent e) {
+                                if (e.getValueIsAdjusting()) return;
+                                javax.swing.SwingUtilities.invokeLater(new Runnable() { public void run() {
+                                    try { if (isHighlighter()) {
+                                        stripSectionUnderlines(); cardSettingsSections();
+                                        borderlessConfigTables(); unifyConfigFields(); monoChromeIcons();
+                                    } } catch (Throwable ignore) { }
+                                } });
+                            }
+                        });
+                    }
+                    return true;
+                }
+            }
+            if (child instanceof Container && styleSidebarIn((Container) child)) return true;
+        }
+        return false;
+    }
+
+    /** Clears the divider lines of the settings view, starting from its root. */
+    private static void clearSidebarBorders(Component list) {
+        Component root = list;
+        for (int d = 0; d < 6 && root.getParent() != null; d++) root = root.getParent();
+        clearLinesIn(root, 0);
+    }
+
+    private static void clearLinesIn(Component c, int depth) {
+        if (depth > 12) return;
+        if (c instanceof JComponent) {
+            JComponent jc = (JComponent) c;
+            javax.swing.border.Border b = jc.getBorder();
+            if (b instanceof javax.swing.border.MatteBorder) {
+                clearMatte(jc);
+                installBorderGuard(jc);
+            } else if (b instanceof javax.swing.border.LineBorder || b instanceof javax.swing.border.EtchedBorder) {
+                jc.setBorder(javax.swing.BorderFactory.createEmptyBorder());
+                installBorderGuard(jc);
+            }
+            if (c instanceof javax.swing.JScrollPane) {
+                javax.swing.JScrollPane sp = (javax.swing.JScrollPane) c;
+                sp.setViewportBorder(null);
+                // The scrollbar gutter would show as a lighter strip next to the sidebar.
+                Color base = PAL_BASE;
+                if (!base.equals(sp.getBackground())) sp.setBackground(base);
+                if (sp.getViewport() != null && !base.equals(sp.getViewport().getBackground()))
+                    sp.getViewport().setBackground(base);
+                javax.swing.JScrollBar vsb = sp.getVerticalScrollBar();
+                if (vsb != null) {
+                    if (!base.equals(vsb.getBackground())) vsb.setBackground(base);
+                    if (!vsb.isOpaque()) vsb.setOpaque(true);
+                }
+            }
+            // The gap between sidebar and content is the split divider or a panel in @componentBackground.
+            // Fields and cards fall outside this shade band and keep their colour.
+            Color base2 = PAL_BASE;
+            if (jc instanceof javax.swing.JSplitPane) {
+                jc.setBackground(base2);
+                try {
+                    java.awt.Component dvd = ((javax.swing.plaf.basic.BasicSplitPaneUI)
+                            ((javax.swing.JSplitPane) jc).getUI()).getDivider();
+                    if (dvd != null) dvd.setBackground(base2);
+                } catch (Throwable ignore) { }
+            } else if (jc.getBackground() != null) {
+                Color pb = jc.getBackground();
+                if (pb.getRed() >= 0x1b && pb.getRed() <= 0x21
+                        && pb.getGreen() >= 0x1b && pb.getGreen() <= 0x21
+                        && pb.getBlue() >= 0x1b && pb.getBlue() <= 0x21)
+                    jc.setBackground(base2);
+            }
+        }
+        if (c instanceof Container) for (Component ch : ((Container) c).getComponents()) clearLinesIn(ch, depth + 1);
+    }
+
+    private static void clearMatte(JComponent jc) {
+        javax.swing.border.Border b = jc.getBorder();
+        if (b instanceof javax.swing.border.MatteBorder) {
+            java.awt.Insets in = ((javax.swing.border.MatteBorder) b).getBorderInsets(jc);
+            jc.setBorder(javax.swing.BorderFactory.createEmptyBorder(in.top, in.left, in.bottom, in.right));
+        }
+    }
+
+    /** JD puts divider borders back after they are cleared, such as the sidebar's in ConfigSidebar, so
+     *  they are cleared again whenever the border changes. */
+    private static void installBorderGuard(final JComponent jc) {
+        if (jc.getClientProperty("jdp.borderGuard") != null) return;
+        jc.putClientProperty("jdp.borderGuard", Boolean.TRUE);
+        jc.addPropertyChangeListener("border", new java.beans.PropertyChangeListener() {
+            public void propertyChange(java.beans.PropertyChangeEvent e) {
+                javax.swing.border.Border nb = jc.getBorder();
+                if (nb instanceof javax.swing.border.MatteBorder) clearMatte(jc);
+                else if (nb instanceof javax.swing.border.LineBorder || nb instanceof javax.swing.border.EtchedBorder)
+                    jc.setBorder(javax.swing.BorderFactory.createEmptyBorder());
+            }
+        });
+    }
+
+    private static final String SB_ORIG_RENDERER = "jdp.sbOrigRenderer";
+    private static final String SB_WRAP          = "jdp.sbWrap";
+    private static final String SB_HOVER_ROW     = "jdp.sbHoverRow";
+    private static final String SB_LISTENERS     = "jdp.sbListeners";
+    private static final String SB_BTN           = "jdp.sbButton";
+    private static final Color  SB_BASE          = PAL_BASE;
+    private static final Color  SB_BTN_BG        = PAL_SURFACE;
+    private static final int    SB_BTN_GAP_V = 3, SB_BTN_GAP_H = 8, SB_BTN_ARC = UI_ARC;
+
+    /** Paints each sidebar row as a rounded tile behind JD's transparent cell component. One instance
+     *  is reused for every cell. */
+    private static final class SidebarButton extends JComponent {
+        private Component content;
+        private Color fill;
+        SidebarButton() {
+            setLayout(new java.awt.BorderLayout());
+            setOpaque(false);
+            setBorder(javax.swing.BorderFactory.createEmptyBorder(SB_BTN_GAP_V, SB_BTN_GAP_H, SB_BTN_GAP_V, SB_BTN_GAP_H));
+        }
+        void set(Component c, Color f) {
+            if (content != c) { removeAll(); content = c; add(c, java.awt.BorderLayout.CENTER); }
+            fill = f;
+        }
+        protected void paintComponent(Graphics g) {
+            if (fill != null) {
+                java.awt.Graphics2D g2 = (java.awt.Graphics2D) g.create();
+                g2.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
+                java.awt.Insets in = getInsets();
+                g2.setColor(fill);
+                g2.fillRoundRect(in.left, in.top, getWidth() - in.left - in.right,
+                        getHeight() - in.top - in.bottom, SB_BTN_ARC, SB_BTN_ARC);
+                g2.dispose();
+            }
+            super.paintComponent(g);
+        }
+    }
+
+    /**
+     * Wraps the settings sidebar renderer so the hovered row is filled with the accent like a table row;
+     * JD's own hover is only a faint tint. All state hangs off the JList, so a rebuilt sidebar simply
+     * installs it again.
+     */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static void installSidebarAccentHover(final javax.swing.JList list, javax.swing.ListCellRenderer jdRenderer) {
+        list.putClientProperty(SB_ORIG_RENDERER, jdRenderer);
+        javax.swing.ListCellRenderer wrap = (javax.swing.ListCellRenderer) list.getClientProperty(SB_WRAP);
+        if (wrap == null) {
+            wrap = new javax.swing.ListCellRenderer() {
+                public Component getListCellRendererComponent(javax.swing.JList l, Object v, int idx, boolean sel, boolean foc) {
+                    javax.swing.ListCellRenderer real = (javax.swing.ListCellRenderer) l.getClientProperty(SB_ORIG_RENDERER);
+                    Component comp = real.getListCellRendererComponent(l, v, idx, sel, foc);
+                    Object h = l.getClientProperty(SB_HOVER_ROW);
+                    int hoverRow = (h instanceof Integer) ? ((Integer) h).intValue() : -1;
+                    // The renderer component and its RenderLabel are shared between cells and JD
+                    // resets neither foreground, so every row sets its own or the hover colour leaks
+                    // into the rows painted after it.
+                    boolean accentBg = sel || idx == hoverRow;
+                    Color rowFg = accentBg ? accentFg() : SIDEBAR_TEXT;
+                    if (comp instanceof javax.swing.JComponent) ((javax.swing.JComponent) comp).setOpaque(false);
+                    comp.setForeground(rowFg);
+                    boolean hovAcc = accentBg;
+                    if (comp instanceof Container) {
+                        for (Component k : ((Container) comp).getComponents()) {
+                            k.setForeground(rowFg);
+                            // JD sets the original icon again for every cell, so replacing it here
+                            // never compounds.
+                            if (k instanceof javax.swing.JLabel) {
+                                javax.swing.JLabel kl = (javax.swing.JLabel) k;
+                                javax.swing.Icon ic = kl.getIcon();
+                                if (ic != null) {
+                                    Color sbTone = hovAcc ? accentFg() : SIDEBAR_TEXT;
+                                    String sbLc = (kl.getText() == null) ? "" : kl.getText().toLowerCase();
+                                    String origKey = iconKey(ic);
+                                    // The tray and advanced tiles are matched by icon key as well, since the
+                                    // text is blank on rows that are not hovered.
+                                    String sbOverride = (sbLc.contains("tray") || "minimize".equals(origKey)) ? "bottombar"
+                                                      : (sbLc.contains("advanced") || "advancedConfig".equals(origKey)) ? "wizard" : null;
+                                    javax.swing.Icon sbIcon = null;
+                                    if (sbOverride != null) {
+                                        javax.swing.Icon ov = tablerBase(sbOverride, 32, 32);
+                                        if (ov != null) {
+                                            if (ov.getIconWidth() != 32 || ov.getIconHeight() != 32) ov = scaleIconTo(ov, 32);
+                                            sbIcon = tintIcon(ov, sbTone, kl);
+                                        }
+                                    }
+                                    if (sbIcon == null) sbIcon = tablerIconScaled(ic, sbTone, kl, SIDEBAR_ICON_SCALE);
+                                    kl.setIcon(sbIcon);
+                                }
+                                // The sidebar shows only centred glyphs; the hovered and the selected
+                                // row show their name below the icon. JD sets the text again on every
+                                // render, so blanking it here is safe.
+                                boolean reveal = (idx == hoverRow) || sel;
+                                if (!reveal && kl.getText() != null && kl.getText().length() > 0) kl.setText("");
+                                if (kl.getHorizontalAlignment() != javax.swing.SwingConstants.CENTER)
+                                    kl.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
+                                if (kl.getHorizontalTextPosition() != javax.swing.SwingConstants.CENTER)
+                                    kl.setHorizontalTextPosition(javax.swing.SwingConstants.CENTER);
+                                int wantVpos = reveal ? javax.swing.SwingConstants.BOTTOM
+                                                      : javax.swing.SwingConstants.CENTER;
+                                if (kl.getVerticalTextPosition() != wantVpos) kl.setVerticalTextPosition(wantVpos);
+                                if (kl.getVerticalAlignment() != javax.swing.SwingConstants.CENTER)
+                                    kl.setVerticalAlignment(javax.swing.SwingConstants.CENTER);
+                                kl.setIconTextGap(2);
+                                // JD's MigLayout anchors the RenderLabel at the top, so a top inset centres
+                                // it. The border is only replaced when the inset changes, to avoid a
+                                // repaint loop.
+                                int innerH = SIDEBAR_ROW_PX - 2 * SB_BTN_GAP_V;
+                                java.awt.Insets kcur = (kl.getBorder() instanceof javax.swing.border.EmptyBorder)
+                                        ? ((javax.swing.border.EmptyBorder) kl.getBorder()).getBorderInsets(kl)
+                                        : new java.awt.Insets(0, 0, 0, 0);
+                                int contentH = kl.getPreferredSize().height - kcur.top - kcur.bottom;
+                                int topPad = Math.max(0, (innerH - contentH) / 2);
+                                if (!(kl.getBorder() instanceof javax.swing.border.EmptyBorder) || kcur.top != topPad) {
+                                    kl.setBorder(javax.swing.BorderFactory.createEmptyBorder(topPad, 0, 0, 0));
+                                    if (comp instanceof Container) ((Container) comp).revalidate();
+                                }
+                            }
+                        }
+                    }
+                    SidebarButton btn = (SidebarButton) l.getClientProperty(SB_BTN);
+                    if (btn == null) { btn = new SidebarButton(); l.putClientProperty(SB_BTN, btn); }
+                    Color acc = accentColor();
+                    btn.set(comp, accentBg && acc != null ? acc : SB_BTN_BG);
+                    return btn;
+                }
+            };
+            list.putClientProperty(SB_WRAP, wrap);
+        }
+        if (list.getCellRenderer() != wrap) list.setCellRenderer(wrap);
+        if (!SB_BASE.equals(list.getBackground())) { list.setBackground(SB_BASE); list.setOpaque(true); }
+        if (list.getClientProperty(SB_LISTENERS) == null) {
+            list.addMouseMotionListener(new java.awt.event.MouseMotionAdapter() {
+                public void mouseMoved(java.awt.event.MouseEvent e) {
+                    int idx = list.locationToIndex(e.getPoint());
+                    try {
+                        if (idx >= 0) {
+                            java.awt.Rectangle b = list.getCellBounds(idx, idx);
+                            if (b == null || !b.contains(e.getPoint())) idx = -1;
+                        }
+                    } catch (Throwable ignore) { idx = -1; }
+                    Object cur = list.getClientProperty(SB_HOVER_ROW);
+                    int prev = (cur instanceof Integer) ? ((Integer) cur).intValue() : -1;
+                    if (prev != idx) { list.putClientProperty(SB_HOVER_ROW, Integer.valueOf(idx)); list.repaint(); }
+                }
+            });
+            list.addMouseListener(new java.awt.event.MouseAdapter() {
+                public void mouseExited(java.awt.event.MouseEvent e) {
+                    list.putClientProperty(SB_HOVER_ROW, Integer.valueOf(-1));
+                    list.repaint();
+                }
+            });
+            list.putClientProperty(SB_LISTENERS, Boolean.TRUE);
+        }
+    }
+
+    /**
+     * Strips the underline from settings section titles, which Header.java bakes into the HTML
+     * markup where no colour key reaches it.
+     */
+    private static void stripSectionUnderlines() {
+        for (Window w : Window.getWindows()) {
+            if (w.isShowing()) stripUnderlinesIn(w);
+        }
+    }
+
+    private static void stripUnderlinesIn(Container c) {
+        for (Component child : c.getComponents()) {
+            if (child instanceof JLabel) {
+                JLabel lbl = (JLabel) child;
+                String t = lbl.getText();
+                if (t != null && t.length() >= 7) {
+                    String low = t.toLowerCase();
+                    if (low.startsWith("<html") && low.contains("<u>")) {
+                        lbl.setText(t.replace("<u>", "").replace("</u>", "")
+                                     .replace("<U>", "").replace("</U>", ""));
+                    }
+                }
+            }
+            if (child instanceof Container) stripUnderlinesIn((Container) child);
+        }
+    }
+
+    // Only the top-level menus get the smaller left margin. Menu.margin also applies to submenus,
+    // whose icons have to line up with the items next to them.
+    private static void flushMenuBarItems() {
+        for (Window w : Window.getWindows()) {
+            if (!(w instanceof javax.swing.JFrame) || !w.isShowing()) continue;
+            javax.swing.JMenuBar mb = ((javax.swing.JFrame) w).getJMenuBar();
+            if (mb == null) continue;
+            for (int i = 0; i < mb.getMenuCount(); i++) {
+                javax.swing.JMenu m = mb.getMenu(i);
+                if (m == null) continue;
+                java.awt.Insets mar = m.getMargin();
+                if (mar == null || mar.left != 8) {
+                    int t = mar == null ? 6 : mar.top, b = mar == null ? 6 : mar.bottom;
+                    m.setMargin(new java.awt.Insets(t, 8, b, 12));
+                }
+                installMenuHoverFg(m);
+            }
+        }
+    }
+    // FlatLaf fills a hovered top-level menu with MenuBar.hoverBackground but has no matching
+    // foreground key, so the label would stay light on the accent.
+    private static void installMenuHoverFg(final javax.swing.JMenu m) {
+        if (m.getClientProperty("jdp.menuHoverFg") != null) return;
+        m.putClientProperty("jdp.menuHoverFg", Boolean.TRUE);
+        // JMenu reports no rollover, so hover comes from a mouse listener and keyboard arming from the model.
+        m.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override public void mouseEntered(java.awt.event.MouseEvent e) { if (m.isEnabled()) m.setForeground(accentFg()); }
+            @Override public void mouseExited(java.awt.event.MouseEvent e) {
+                if (!m.isArmed() && !m.isSelected()) m.setForeground(SIDEBAR_TEXT);
+            }
+        });
+        m.getModel().addChangeListener(new javax.swing.event.ChangeListener() {
+            public void stateChanged(javax.swing.event.ChangeEvent e) {
+                javax.swing.ButtonModel mm = m.getModel();
+                Color want = (mm.isArmed() || mm.isSelected()) ? accentFg() : SIDEBAR_TEXT;
+                if (!want.equals(m.getForeground())) m.setForeground(want);
+            }
+        });
+        if (!SIDEBAR_TEXT.equals(m.getForeground())) m.setForeground(SIDEBAR_TEXT);
+    }
+
+    // The ToolBar and MenuBar defaults only reach components created later, and the LAF re-apply at
+    // boot can fail, so the live menu bar and toolbar get the base colour directly.
+    private static final Color CHROME_BASE = PAL_BASE;
+    private static void darkenChromeBars() {
+        for (Window w : Window.getWindows()) {
+            if (!w.isShowing()) continue;
+            if (w instanceof javax.swing.JFrame) {
+                javax.swing.JMenuBar mb = ((javax.swing.JFrame) w).getJMenuBar();
+                if (mb != null) {
+                    if (!CHROME_BASE.equals(mb.getBackground())) { mb.setBackground(CHROME_BASE); mb.setOpaque(true); }
+                    // FlatMenuBarBorder draws a separator line below the menu bar.
+                    if (!(mb.getBorder() instanceof javax.swing.border.EmptyBorder))
+                        mb.setBorder(javax.swing.BorderFactory.createEmptyBorder());
+                }
+            }
+            darkenToolbarsIn(w);
+        }
+    }
+    private static void darkenToolbarsIn(Container c) {
+        for (Component ch : c.getComponents()) {
+            if (isMainToolbar(ch.getClass()) && ch instanceof JComponent) {
+                if (!CHROME_BASE.equals(ch.getBackground())) { ch.setBackground(CHROME_BASE); ((JComponent) ch).setOpaque(true); }
+                Container par = ch.getParent();   // the band around the toolbar can be lighter too
+                if (par instanceof JComponent && par.getBackground() != null
+                        && par.getBackground().getRed() >= 0x1b && par.getBackground().getRed() <= 0x2a
+                        && !CHROME_BASE.equals(par.getBackground())) {
+                    par.setBackground(CHROME_BASE); ((JComponent) par).setOpaque(true);
+                }
+            }
+            if (ch instanceof Container) darkenToolbarsIn((Container) ch);
+        }
+    }
+
+    private static void recolorMainTabs() {
+        // On Linux FlatLaf leaves TabbedPane.selectedForeground null, because @accentColor resolves to
+        // systemColor(accent), so accentFg derives the tone from the accent instead.
+        Color selFg = accentFg();
+        Color norFg = UIManager.getColor("TabbedPane.foreground");
+        if (norFg == null) norFg = PAL_TEXT;
+        for (Window w : Window.getWindows()) {
+            if (w.isShowing()) recolorTabsIn(w, selFg, norFg);
+        }
+    }
+
+    private static final String TAB_HOVER_IDX = "jdp.tabHoverIdx";
+
+    /** The hovered tab as BasicTabbedPaneUI tracks it, which still works when a custom tab component
+     *  consumes the mouse events. */
+    private static int rolloverTabOf(javax.swing.JTabbedPane tp) {
+        try {
+            java.lang.reflect.Method m = javax.swing.plaf.basic.BasicTabbedPaneUI.class.getDeclaredMethod("getRolloverTab");
+            m.setAccessible(true);
+            Object r = m.invoke(tp.getUI());
+            if (r instanceof Integer) return ((Integer) r).intValue();
+        } catch (Throwable ignore) { }
+        return -1;
+    }
+
+    /** FlatTabbedPaneUI paints one background per tab and the hover colour wins over the selected one,
+     *  so the selected tab would lose its accent under the mouse. Clearing hoverColor on the UI instance
+     *  leaves the accent text as the hover cue. */
+    private static void killTabHoverColor(javax.swing.JTabbedPane tp) {
+        try {
+            Object ui = tp.getUI();
+            for (Class<?> k = ui.getClass(); k != null; k = k.getSuperclass()) {
+                try {
+                    java.lang.reflect.Field f = k.getDeclaredField("hoverColor");
+                    f.setAccessible(true);
+                    if (f.get(ui) != null) { f.set(ui, null); tp.repaint(); }
+                    return;
+                } catch (NoSuchFieldException nsf) { }
+            }
+        } catch (Throwable ignore) { }
+    }
+
+    private static void recolorTabsIn(Container c, Color selFg, Color norFg) {
+        for (Component child : c.getComponents()) {
+            if (child instanceof javax.swing.JTabbedPane) {
+                javax.swing.JTabbedPane tp = (javax.swing.JTabbedPane) child;
+                // JD's TabHeader components consume mouse events, so the pane's own listener only sees
+                // the gaps between tabs; the UI's rollover tab covers the rest.
+                killTabHoverColor(tp);
+                int rov = rolloverTabOf(tp);
+                Object hv = tp.getClientProperty(TAB_HOVER_IDX);
+                int hover = (rov >= 0) ? rov : ((hv instanceof Integer) ? (Integer) hv : -1);
+                applyTabForegrounds(tp, selFg, norFg, hover);
+                installTabHoverListener(tp, selFg, norFg);
+            }
+            if (child instanceof Container) recolorTabsIn((Container) child, selFg, norFg);
+        }
+    }
+
+    /** Dark text and icon on the selected tab, accent on the hovered one, light on the rest. JD's custom
+     *  tab components bypass FlatLaf's selectedForeground, so the foreground is set per tab. */
+    private static void applyTabForegrounds(javax.swing.JTabbedPane tp, Color selFg, Color norFg, int hover) {
+        int sel = tp.getSelectedIndex();
+        for (int i = 0; i < tp.getTabCount(); i++) {
+            boolean isSel = (i == sel);
+            boolean isHover = (hover >= 0 && i == hover && !isSel);
+            Color want = new Color((isSel ? selFg : (isHover ? accentColor() : norFg)).getRGB());
+            if (!want.equals(tp.getForegroundAt(i))) tp.setForegroundAt(i, want);
+            // Unselected tabs get a grey tile like the sidebar; the selected tab paints
+            // selectedBackground and ignores this.
+            Color tabBg = isSel ? accentColor() : TILE_GREY;
+            if (!tabBg.equals(tp.getBackgroundAt(i))) tp.setBackgroundAt(i, tabBg);
+            Color iconTone = isSel ? accentFg() : (isHover ? accentColor() : SIDEBAR_TEXT);
+            javax.swing.Icon slot = tp.getIconAt(i);
+            if (slot != null) {
+                String pk = "jdp.tabIcOrig." + i;
+                javax.swing.Icon o = (javax.swing.Icon) tp.getClientProperty(pk);
+                if (o == null && iconKey(slot) != null) { o = slot; tp.putClientProperty(pk, o); }
+                if (o != null) { javax.swing.Icon nw = tablerIcon(o, iconTone, tp); if (nw != tp.getIconAt(i)) tp.setIconAt(i, nw); }
+            }
+            Component tc = tp.getTabComponentAt(i);
+            if (tc != null) { setLabelFg(tc, want); tablerTabIcons(tc, iconTone, isSel); installTabCompHover(tp, tc, selFg, norFg); }
+        }
+    }
+
+    /** JD swaps tab icons back between ticks, so the label gets a TabIcon that picks its tone at paint
+     *  time from the label's foreground. {@code tone} is unused. */
+    private static void tablerTabIcons(Component c, Color tone, boolean sel) {
+        if (c instanceof AbstractButton) installTabCloseButton((AbstractButton) c, sel);
+        else if (c instanceof javax.swing.JLabel) installTabIconWrap((javax.swing.JLabel) c);
+        if (c instanceof Container) for (Component ch : ((Container) c).getComponents()) tablerTabIcons(ch, tone, sel);
+    }
+
+    private static void installTabIconWrap(final javax.swing.JLabel l) {
+        javax.swing.Icon cur = l.getIcon();
+        if (cur instanceof TabIcon) { ensureTabIconListener(l); return; }
+        if (cur == null) return;
+        javax.swing.Icon base = cur;
+        String tk = iconKey(cur);
+        if (tk != null) { javax.swing.Icon tb = tablerBase(tk, cur.getIconWidth(), cur.getIconHeight()); if (tb != null) base = tb; }
+        javax.swing.Icon light  = tintSolid(base, SIDEBAR_TEXT);
+        javax.swing.Icon dark   = tintSolid(base, accentFg());
+        javax.swing.Icon accent = tintSolid(base, accentColor());
+        if (light == base || light == null) return;
+        l.putClientProperty("jdp.tabOrig", cur);
+        l.setIcon(new TabIcon(light, dark, accent));
+        ensureTabIconListener(l);
+    }
+
+    /** The close button of a ClosableTabHeader ignores setIcon, setOpaque and setContentAreaFilled, so
+     *  CloseUI takes over its painting. */
+    private static void installTabCloseButton(final AbstractButton b, boolean sel) {
+        Boolean now = Boolean.valueOf(sel);
+        boolean changed = !now.equals(b.getClientProperty("jdp.closeSel"));
+        b.putClientProperty("jdp.closeSel", now);
+        if (!(b.getUI() instanceof CloseUI)) { b.setUI(new CloseUI()); b.setBorder(null); changed = true; }
+        if (changed) b.repaint();
+    }
+
+    /** Fills the button with the colour around it and centres a mono close glyph. The jdp.closeSel
+     *  property tells it whether it sits on the selected tab. */
+    private static final class CloseUI extends javax.swing.plaf.basic.BasicButtonUI {
+        private boolean sel(JComponent c) { return Boolean.TRUE.equals(c.getClientProperty("jdp.closeSel")); }
+        @Override public void update(Graphics g, JComponent c) {
+            Color fill = sel(c) ? accentColor()
+                    : (c.getParent() != null && c.getParent().getBackground() != null
+                       ? c.getParent().getBackground() : PAL_BASE);
+            g.setColor(fill);
+            g.fillRect(0, 0, c.getWidth(), c.getHeight());
+            paint(g, c);
+        }
+        @Override public void paint(Graphics g, JComponent c) {
+            javax.swing.Icon x = tintSolid(tablerBase("close", 16, 16), sel(c) ? accentFg() : SIDEBAR_TEXT);
+            if (x == null) return;
+            int ix = (c.getWidth() - x.getIconWidth()) / 2, iy = (c.getHeight() - x.getIconHeight()) / 2;
+            x.paintIcon(c, g, ix, iy);
+        }
+    }
+
+    /** The overview panel's settings and close buttons derive a dark glyph on every paint and ignore
+     *  setIcon, so like the tab close button they get a UI that paints their own glyph tinted. */
+    private static void hlInstallOverviewCornerButton(final AbstractButton b) {
+        if (!(b.getUI() instanceof HlOverviewCornerUI)) {
+            try { b.setUI(new HlOverviewCornerUI()); b.setBorder(null); } catch (Throwable ignore) { }
+        }
+    }
+    private static final class HlOverviewCornerUI extends javax.swing.plaf.basic.BasicButtonUI {
+        @Override public void update(Graphics g, JComponent c) {
+            Color bg = (c.getParent() != null && c.getParent().getBackground() != null)
+                    ? c.getParent().getBackground() : PAL_BASE;
+            g.setColor(bg);
+            g.fillRect(0, 0, c.getWidth(), c.getHeight());
+            paint(g, c);
+        }
+        @Override public void paint(Graphics g, JComponent c) {
+            AbstractButton b = (AbstractButton) c;
+            javax.swing.Icon ic = b.getIcon();
+            if (ic == null) return;
+            boolean hot = b.getModel().isRollover() || b.getModel().isArmed();
+            javax.swing.Icon m = cornerGlyphTint(b, ic, hot);
+            if (m == null) return;
+            int ix = (c.getWidth() - m.getIconWidth()) / 2, iy = (c.getHeight() - m.getIconHeight()) / 2;
+            m.paintIcon(c, g, ix, iy);
+        }
+    }
+    /** Caches the tinted glyph per hover state and source icon. */
+    private static javax.swing.Icon cornerGlyphTint(AbstractButton b, javax.swing.Icon ic, boolean hot) {
+        String pk = hot ? "jdp.ovcHot" : "jdp.ovcLit", bk = hot ? "jdp.ovcHotB" : "jdp.ovcLitB";
+        Object cached = b.getClientProperty(pk);
+        if (ic == b.getClientProperty(bk) && cached instanceof javax.swing.Icon) return (javax.swing.Icon) cached;
+        // As bright as the table header gear next to it; EXPANDER_LIGHT would look grey.
+        javax.swing.Icon m = tintSolid(ic, hot ? accentColor() : SIDEBAR_TEXT);
+        if (m == null) m = ic;
+        b.putClientProperty(bk, ic);
+        b.putClientProperty(pk, m);
+        return m;
+    }
+
+    private static boolean isSilentBell(AbstractButton b) {
+        javax.swing.Action a = b.getAction();
+        return a != null && "SilentModeToggleAction".equals(a.getClass().getSimpleName());
+    }
+    /** Rounded accent fill for the toolbar buttons. AppWork's ExtButtons have no FlatButtonBorder, so
+     *  FlatLaf would fill them square. */
+    private static final class RoundFillUI extends javax.swing.plaf.basic.BasicButtonUI {
+        @Override public void update(Graphics g, JComponent c) {
+            AbstractButton b = (AbstractButton) c;
+            javax.swing.ButtonModel m = b.getModel();
+            boolean toggle = b instanceof javax.swing.JToggleButton;
+            // On a toggle the fill shows the on state rather than hover, or switching it off under the
+            // cursor would look like nothing happened. The silent mode bell is selected when notifications
+            // are off, so its logic is inverted.
+            boolean active = isSilentBell(b) ? !m.isSelected() : m.isSelected();
+            boolean hot = active || m.isPressed() || (!toggle && m.isRollover());
+            // ExtJToggleButton paints its own selection background before ui.update, so it is covered first.
+            Color bg = (c.getParent() != null && c.getParent().getBackground() != null)
+                    ? c.getParent().getBackground() : PAL_BASE;
+            g.setColor(bg);
+            g.fillRect(0, 0, c.getWidth(), c.getHeight());
+            if (hot) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(accentColor());
+                g2.fillRoundRect(0, 0, c.getWidth(), c.getHeight(), SB_BTN_ARC, SB_BTN_ARC);
+                g2.dispose();
+            }
+            // ExtJToggleButton derives its icon from the Action's ExtMergedIcon, whose state overlay JD
+            // resets faster than the tick, so mapped actions get their glyph painted here directly.
+            javax.swing.Icon own = ownedToolbarGlyph(b, hot);
+            if (own != null) {
+                int ix = (c.getWidth() - own.getIconWidth()) / 2, iy = (c.getHeight() - own.getIconHeight()) / 2;
+                own.paintIcon(c, g, ix, iy);
+                return;
+            }
+            paint(g, c);
+        }
+    }
+
+    private static final java.util.Map<String, javax.swing.Icon> OWNED_GLYPH = new java.util.concurrent.ConcurrentHashMap<String, javax.swing.Icon>();
+    /** The Tabler glyph for a mapped toolbar button, dark on the accent and light otherwise, or null. */
+    private static javax.swing.Icon ownedToolbarGlyph(AbstractButton b, boolean hot) {
+        javax.swing.Action a = b.getAction();
+        if (a == null) return null;
+        String sn = a.getClass().getSimpleName();
+        String key;
+        if ("SilentModeToggleAction".equals(sn)) {
+            // Selected means notifications are off, shown as a crossed-out bell.
+            key = b.isSelected() ? "silentmode" : "bubble";
+        } else {
+            key = ACTION_ICON.get(sn);
+        }
+        if (key == null) return null;
+        javax.swing.Icon cur = b.getIcon();
+        int sz = (cur != null && cur.getIconHeight() > 0) ? cur.getIconHeight() : 24;
+        Color tone = !b.isEnabled() ? DISABLED_TONE : (hot ? accentFg() : SIDEBAR_TEXT);
+        String ck = key + "@" + sz + "@" + tone.getRGB();
+        javax.swing.Icon cached = OWNED_GLYPH.get(ck);
+        if (cached != null) return cached;
+        javax.swing.Icon base = tablerBase(key, sz, sz);
+        if (base == null) return null;
+        javax.swing.Icon tinted = tintSolid(base, tone);
+        OWNED_GLYPH.put(ck, tinted);
+        return tinted;
+    }
+    private static void roundToolbarButtons() {
+        for (Window w : Window.getWindows()) if (w.isShowing()) roundToolbarBtnsIn(w, false);
+    }
+    private static void roundToolbarBtnsIn(Container c, boolean inTb) {
+        boolean tb = inTb || isMainToolbar(c.getClass());
+        for (Component ch : c.getComponents()) {
+            if (tb && ch instanceof AbstractButton) {
+                AbstractButton b = (AbstractButton) ch;
+                if (!(b.getUI() instanceof RoundFillUI)) {
+                    javax.swing.border.Border ob = b.getBorder();   // keeps JD's padding across setUI
+                    b.setContentAreaFilled(false);
+                    b.setOpaque(false);
+                    b.setUI(new RoundFillUI());
+                    if (ob != null) b.setBorder(ob);
+                }
+            }
+            if (ch instanceof Container) roundToolbarBtnsIn((Container) ch, tb);
+        }
+    }
+    /** A silhouette of the icon in {@code tone}, keeping its alpha. Works for keyless icons too. */
+    private static javax.swing.Icon tintSolid(javax.swing.Icon ic, Color tone) { return tintSolid(ic, tone, null); }
+    /** JD's AbstractIcon composites paint nothing without a component, so callers pass the host in {@code c}.
+     *  Returns the original icon if the result would be empty. */
+    private static javax.swing.Icon tintSolid(javax.swing.Icon ic, Color tone, Component c) {
+        try {
+            int w = ic.getIconWidth(), h = ic.getIconHeight();
+            if (w <= 0 || h <= 0) return ic;
+            java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g = img.createGraphics();
+            try { ic.paintIcon(c, g, 0, 0); } catch (Throwable nullPaint) { ic.paintIcon(null, g, 0, 0); }
+            g.dispose();
+            int rgb = tone.getRGB() & 0x00ffffff;
+            boolean any = false;
+            for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) {
+                int a = (img.getRGB(x, y) >>> 24);
+                if (a != 0) { img.setRGB(x, y, (a << 24) | rgb); any = true; }
+            }
+            if (!any) return ic;
+            return new javax.swing.ImageIcon(img);
+        } catch (Throwable t) { return ic; }
+    }
+
+    /** Removes a black box baked in behind a logo, such as the updater's, by flood-filling the near-black
+     *  region from the corners. Icons whose corners are not opaque near-black come back unchanged. */
+    private static javax.swing.Icon deBoxIcon(javax.swing.Icon ic, Component c) {
+        try {
+            int w = ic.getIconWidth(), h = ic.getIconHeight();
+            if (w <= 0 || h <= 0) return ic;
+            java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g = img.createGraphics();
+            try { ic.paintIcon(c, g, 0, 0); } catch (Throwable t) { ic.paintIcon(null, g, 0, 0); }
+            g.dispose();
+            int[] corners = { img.getRGB(0, 0), img.getRGB(w - 1, 0), img.getRGB(0, h - 1), img.getRGB(w - 1, h - 1) };
+            for (int cr : corners) {
+                if ((cr >>> 24) < 200) return ic;
+                int r = (cr >> 16) & 0xff, gg = (cr >> 8) & 0xff, b = cr & 0xff;
+                if (r > 40 || gg > 40 || b > 40) return ic;
+            }
+            java.util.ArrayDeque<int[]> q = new java.util.ArrayDeque<int[]>();
+            boolean[] seen = new boolean[w * h];
+            int[][] starts = { {0, 0}, {w - 1, 0}, {0, h - 1}, {w - 1, h - 1} };
+            for (int[] s : starts) { int idx = s[1] * w + s[0]; if (!seen[idx]) { seen[idx] = true; q.add(s); } }
+            while (!q.isEmpty()) {
+                int[] p = q.poll(); int x = p[0], y = p[1];
+                int px = img.getRGB(x, y);
+                int r = (px >> 16) & 0xff, gg = (px >> 8) & 0xff, b = px & 0xff;
+                if ((px >>> 24) < 40) continue;
+                if (r > 60 || gg > 60 || b > 60) continue;         // edge of the logo
+                img.setRGB(x, y, px & 0x00ffffff);
+                int[][] nb = { {x - 1, y}, {x + 1, y}, {x, y - 1}, {x, y + 1} };
+                for (int[] nn : nb) {
+                    int nx = nn[0], ny = nn[1];
+                    if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+                    int nidx = ny * w + nx;
+                    if (!seen[nidx]) { seen[nidx] = true; q.add(nn); }
+                }
+            }
+            return new javax.swing.ImageIcon(img);
+        } catch (Throwable t) { return ic; }
+    }
+
+    /** Tints the wrapped icon on every paint, so animated icons such as the updater's stay mono on every
+     *  frame. That costs a render per paint and is only used where tablerForButton finds no key. */
+    private static final class LiveMonoIcon implements javax.swing.Icon {
+        private final javax.swing.Icon base;
+        private final Color tone;
+        LiveMonoIcon(javax.swing.Icon base, Color tone) { this.base = base; this.tone = tone; }
+        public void paintIcon(Component c, Graphics g, int x, int y) {
+            try {
+                int w = base.getIconWidth(), h = base.getIconHeight();
+                if (w <= 0 || h <= 0) return;
+                java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+                Graphics2D ig = img.createGraphics();
+                base.paintIcon(c, ig, 0, 0);
+                ig.dispose();
+                int rgb = tone.getRGB() & 0x00ffffff;
+                for (int yy = 0; yy < h; yy++) for (int xx = 0; xx < w; xx++) {
+                    int a = (img.getRGB(xx, yy) >>> 24);
+                    if (a != 0) img.setRGB(xx, yy, (a << 24) | rgb);
+                }
+                g.drawImage(img, x, y, null);
+            } catch (Throwable t) { base.paintIcon(c, g, x, y); }
+        }
+        public int getIconWidth() { return base.getIconWidth(); }
+        public int getIconHeight() { return base.getIconHeight(); }
+    }
+
+    /** The icon scaled by {@code factor}, cached per source icon. */
+    private static javax.swing.Icon scaleIcon(javax.swing.Icon ic, double factor) {
+        try {
+            if (ic == null || factor == 1.0) return ic;
+            synchronized (SCALED_ICONS) {
+                javax.swing.Icon cached = SCALED_ICONS.get(ic);
+                if (cached != null) return cached;
+            }
+            int w = ic.getIconWidth(), h = ic.getIconHeight();
+            if (w <= 0 || h <= 0) return ic;
+            int nw = (int) Math.round(w * factor), nh = (int) Math.round(h * factor);
+            java.awt.image.BufferedImage src = new java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+            java.awt.Graphics2D sg = src.createGraphics();
+            ic.paintIcon(null, sg, 0, 0);
+            sg.dispose();
+            java.awt.image.BufferedImage dst = new java.awt.image.BufferedImage(nw, nh, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+            java.awt.Graphics2D g = dst.createGraphics();
+            g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g.setRenderingHint(java.awt.RenderingHints.KEY_RENDERING, java.awt.RenderingHints.VALUE_RENDER_QUALITY);
+            g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
+            g.drawImage(src, 0, 0, nw, nh, null);
+            g.dispose();
+            javax.swing.Icon scaled = new javax.swing.ImageIcon(dst);
+            synchronized (SCALED_ICONS) { SCALED_ICONS.put(ic, scaled); }
+            return scaled;
+        } catch (Throwable t) { return ic; }
+    }
+
+    private static void ensureTabIconListener(final javax.swing.JLabel l) {
+        if (l.getClientProperty("jdp.tabIconL") != null) return;
+        l.putClientProperty("jdp.tabIconL", Boolean.TRUE);
+        l.addPropertyChangeListener("icon", new java.beans.PropertyChangeListener() {
+            public void propertyChange(java.beans.PropertyChangeEvent e) {
+                if (!(l.getIcon() instanceof TabIcon)) installTabIconWrap(l);
+            }
+        });
+    }
+
+    /** Picks its glyph from the label's foreground at paint time; JD leaves that foreground alone. */
+    private static final class TabIcon implements javax.swing.Icon {
+        private final javax.swing.Icon light, dark, accent;
+        TabIcon(javax.swing.Icon light, javax.swing.Icon dark, javax.swing.Icon accent) { this.light = light; this.dark = dark; this.accent = accent; }
+        private javax.swing.Icon pick(Component c) {
+            if (c == null) return light;
+            Color fg = c.getForeground();
+            if (accentFg().equals(fg)) return dark;        // selected
+            if (accentColor().equals(fg)) return accent;   // hovered
+            return light;
+        }
+        public void paintIcon(Component c, Graphics g, int x, int y) { pick(c).paintIcon(c, g, x, y); }
+        public int getIconWidth() { return light.getIconWidth(); }
+        public int getIconHeight() { return light.getIconHeight(); }
+    }
+
+    private static int indexOfTabComp(javax.swing.JTabbedPane tp, Component tc) {
+        for (int k = 0; k < tp.getTabCount(); k++) if (tp.getTabComponentAt(k) == tc) return k;
+        return -1;
+    }
+
+    /** The TabHeader components consume mouse events, so without their own listener the hover colour
+     *  would only follow on the next tick. */
+    private static void installTabCompHover(final javax.swing.JTabbedPane tp, final Component tc,
+                                            final Color selFg, final Color norFg) {
+        if (!(tc instanceof JComponent)) return;
+        final JComponent jc = (JComponent) tc;
+        if (jc.getClientProperty("jdp.tabCompHover") != null) return;
+        jc.putClientProperty("jdp.tabCompHover", Boolean.TRUE);
+        jc.addMouseListener(new MouseAdapter() {
+            @Override public void mouseEntered(MouseEvent e) {
+                int idx = indexOfTabComp(tp, tc);
+                if (idx >= 0) { tp.putClientProperty(TAB_HOVER_IDX, Integer.valueOf(idx)); applyTabForegrounds(tp, selFg, norFg, idx); }
+            }
+            @Override public void mouseExited(MouseEvent e) {
+                if (jc.contains(e.getPoint())) return;   // moved into a child
+                tp.putClientProperty(TAB_HOVER_IDX, Integer.valueOf(-1));
+                applyTabForegrounds(tp, selFg, norFg, rolloverTabOf(tp));
+            }
+        });
+    }
+
+    private static final String TAB_HOVER_WIRED = "jdp.tabHoverWired";
+    private static void installTabHoverListener(final javax.swing.JTabbedPane tp,
+                                                final Color selFg, final Color norFg) {
+        if (Boolean.TRUE.equals(tp.getClientProperty(TAB_HOVER_WIRED))) return;
+        tp.putClientProperty(TAB_HOVER_WIRED, Boolean.TRUE);
+        MouseAdapter h = new MouseAdapter() {
+            @Override public void mouseMoved(MouseEvent e) {
+                int idx = tp.indexAtLocation(e.getX(), e.getY());
+                Object prev = tp.getClientProperty(TAB_HOVER_IDX);
+                tp.putClientProperty(TAB_HOVER_IDX, Integer.valueOf(idx));   // read by the tick
+                applyTabForegrounds(tp, selFg, norFg, idx);
+                if (!Integer.valueOf(idx).equals(prev)) tp.repaint();
+            }
+            @Override public void mouseExited(MouseEvent e) {
+                tp.putClientProperty(TAB_HOVER_IDX, Integer.valueOf(-1));
+                applyTabForegrounds(tp, selFg, norFg, -1);
+                tp.repaint();
+            }
+        };
+        tp.addMouseMotionListener(h);
+        tp.addMouseListener(h);
+        // A clicked tab takes its colours right away instead of on the next tick.
+        tp.addChangeListener(new javax.swing.event.ChangeListener() {
+            public void stateChanged(javax.swing.event.ChangeEvent e) {
+                Object hv = tp.getClientProperty(TAB_HOVER_IDX);
+                applyTabForegrounds(tp, selFg, norFg, (hv instanceof Integer) ? (Integer) hv : -1);
+            }
+        });
+    }
+
+    private static void setLabelFg(Component c, Color fg) {
+        if (!fg.equals(c.getForeground())) c.setForeground(fg);
+        if (c instanceof Container) for (Component ch : ((Container) c).getComponents()) setLabelFg(ch, fg);
+    }
+
+    // Settings sections as cards. A Border on each AbstractConfigPanel paints a rounded band behind
+    // every section, between successive headers. A border paints after the background and before the
+    // children, so nothing has to be re-parented, which would break because JD rebuilds the panel on
+    // every navigation.
+    private static void cardSettingsSections() {
+        for (Window w : Window.getWindows()) {
+            if (w.isShowing()) cardSectionsIn(w);
+        }
+    }
+
+    private static void cardSectionsIn(Container c) {
+        for (Component child : c.getComponents()) {
+            if (child instanceof JComponent && isConfigPanel(child.getClass())) {
+                JComponent panel = (JComponent) child;
+                if (!(panel.getBorder() instanceof SectionCardBorder)) {
+                    try {
+                        panel.setBorder(new SectionCardBorder(panel.getBorder()));
+                        panel.revalidate();
+                        panel.repaint();
+                        System.out.println("[jd-dialog-agent] jd-highlighter: carded settings panel "
+                                + child.getClass().getSimpleName());
+                    } catch (Throwable ignore) { }
+                }
+                hideSeparators(panel);   // the cards replace the section lines
+                spreadSections(panel);
+            }
+            if (child instanceof Container) cardSectionsIn((Container) child);
+        }
+    }
+
+    private static boolean isConfigPanel(Class<?> k) {
+        for (; k != null && k != Object.class; k = k.getSuperclass())
+            if (k.getName().endsWith(".AbstractConfigPanel")) return true;
+        return false;
+    }
+
+    private static boolean isMainToolbar(Class<?> k) {
+        for (; k != null && k != Object.class; k = k.getSuperclass())
+            if (k.getName().endsWith(".MainToolBar")) return true;
+        return false;
+    }
+
+    private static void hideSeparators(Container c) {
+        for (Component ch : c.getComponents()) {
+            if (ch instanceof javax.swing.JSeparator) { if (ch.isVisible()) ch.setVisible(false); }
+            else if (ch instanceof Container) hideSeparators((Container) ch);
+        }
+    }
+
+    // The Views popup of the download list shows its items as rounded chips instead of rows divided by
+    // separators. FlatLaf still paints the accent hover on top.
+    private static final String VIEWS_BADGED = "jdp.viewsBadged";
+
+    private static void badgeViewsMenu() {
+        javax.swing.MenuElement[] path =
+                javax.swing.MenuSelectionManager.defaultManager().getSelectedPath();
+        for (javax.swing.MenuElement me : path) {
+            if (!(me instanceof JPopupMenu)) continue;
+            JPopupMenu pm = (JPopupMenu) me;
+            if (!isViewsPopup(pm)) continue;
+            hideSeparators(pm);
+            for (Component ch : pm.getComponents()) {
+                if (!(ch instanceof javax.swing.JMenuItem)) continue;
+                javax.swing.JMenuItem mi = (javax.swing.JMenuItem) ch;
+                if (mi.getClientProperty(VIEWS_BADGED) == Boolean.TRUE) continue;
+                mi.setBorder(new MenuChipBorder(mi.getBorder()));
+                mi.setOpaque(false);
+                mi.putClientProperty(VIEWS_BADGED, Boolean.TRUE);
+            }
+            pm.revalidate(); pm.repaint();
+        }
+    }
+
+    // A Views popup holds only check box and radio items plus at least one separator.
+    private static boolean isViewsPopup(JPopupMenu pm) {
+        boolean allChecky = pm.getComponentCount() > 0;
+        int seps = 0;
+        for (Component ch : pm.getComponents()) {
+            if (ch instanceof javax.swing.JSeparator) { seps++; continue; }
+            if (!(ch instanceof javax.swing.JCheckBoxMenuItem
+                    || ch instanceof javax.swing.JRadioButtonMenuItem)) allChecky = false;
+        }
+        return allChecky && seps >= 1;
+    }
+
+    /** Rounded chip behind a menu item. Like SectionCardBorder it paints before the text, so the
+     *  selection highlight lands on top. */
+    private static final class MenuChipBorder implements javax.swing.border.Border {
+        private final javax.swing.border.Border original;
+        private static final Color CHIP = PAL_SURFACE;
+        private static final int GAP = 3, PAD_V = 2, PAD_H = 6, ARC = UI_ARC;
+        MenuChipBorder(javax.swing.border.Border o) { this.original = o; }
+        public boolean isBorderOpaque() { return false; }
+        public java.awt.Insets getBorderInsets(Component c) {
+            java.awt.Insets in = (original != null) ? original.getBorderInsets(c)
+                    : new java.awt.Insets(0, 0, 0, 0);
+            return new java.awt.Insets(in.top + GAP + PAD_V, in.left + GAP + PAD_H,
+                    in.bottom + GAP + PAD_V, in.right + GAP + PAD_H);
+        }
+        public void paintBorder(Component c, Graphics g, int x, int y, int w, int h) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            try {
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(CHIP);
+                g2.fill(new java.awt.geom.RoundRectangle2D.Float(
+                        x + GAP, y + GAP, w - 2 * GAP, h - 2 * GAP, ARC, ARC));
+            } finally { g2.dispose(); }
+            if (original != null) original.paintBorder(c, g, x, y, w, h);
+        }
+    }
+
+    private static final class SectionCardBorder implements javax.swing.border.Border {
+        private final javax.swing.border.Border original;
+        private static final Color CARD = PAL_SURFACE;
+        private static final int MARGIN = 10, INNER = 12, ARC = UI_ARC;
+        SectionCardBorder(javax.swing.border.Border original) { this.original = original; }
+
+        public boolean isBorderOpaque() { return false; }
+
+        public java.awt.Insets getBorderInsets(Component c) {
+            // MARGIN outside the card plus INNER inside it
+            int p = MARGIN + INNER;
+            java.awt.Insets in = (original != null) ? original.getBorderInsets(c)
+                    : new java.awt.Insets(0, 0, 0, 0);
+            return new java.awt.Insets(in.top + p, in.left + p, in.bottom + p, in.right + p);
+        }
+
+        public void paintBorder(Component c, Graphics g, int x, int y, int w, int h) {
+            if (!(c instanceof Container)) return;
+            Container p = (Container) c;
+            List<Component> headers = new ArrayList<>();
+            for (Component ch : p.getComponents())
+                if (ch.isVisible() && ch.getClass().getName().endsWith(".Header")) headers.add(ch);
+            if (!headers.isEmpty()) {
+                headers.sort((a, b) -> Integer.compare(a.getY(), b.getY()));
+                Graphics2D g2 = (Graphics2D) g.create();
+                try {
+                    g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                    g2.setColor(CARD);
+                    int left = x + MARGIN, right = x + w - MARGIN;
+                    for (int i = 0; i < headers.size(); i++) {
+                        int hTop = headers.get(i).getY();
+                        int hNext = (i + 1 < headers.size()) ? headers.get(i + 1).getY() : Integer.MAX_VALUE;
+                        // Only this section's rows, so the gap from spreadSections shows between cards.
+                        int contentBottom = hTop + headers.get(i).getHeight();
+                        for (Component ch : p.getComponents()) {
+                            if (!ch.isVisible()) continue;
+                            int cy = ch.getY();
+                            if (cy >= hTop && cy < hNext) contentBottom = Math.max(contentBottom, cy + ch.getHeight());
+                        }
+                        // The first card starts level with the first sidebar tile, and the last one
+                        // reaches the bottom of the panel like the sidebar does.
+                        int top = (i == 0) ? y + SB_BTN_GAP_V : hTop - INNER;
+                        int bottom = (i == headers.size() - 1)
+                                ? Math.max(contentBottom + INNER, y + h - MARGIN)
+                                : (contentBottom + INNER);
+                        if (bottom - top > 6)
+                            g2.fill(new java.awt.geom.RoundRectangle2D.Float(
+                                    left, top, right - left, bottom - top, ARC, ARC));
+                    }
+                } finally { g2.dispose(); }
+            }
+            if (original != null) original.paintBorder(c, g, x, y, w, h);
+        }
+    }
+
+    // A gap above every section but the first, set through the panel's MigLayout constraints.
+    private static void spreadSections(JComponent panel) {
+        LayoutManager lm = panel.getLayout();
+        if (lm == null || !lm.getClass().getName().contains("MigLayout")) return;
+        try {
+            Method gc = lm.getClass().getMethod("getComponentConstraints", Component.class);
+            Method sc = lm.getClass().getMethod("setComponentConstraints", Component.class, Object.class);
+            boolean first = true, changed = false;
+            for (Component ch : panel.getComponents()) {
+                if (!ch.getClass().getName().endsWith(".Header")) continue;
+                if (first) { first = false; continue; }
+                Object cur = gc.invoke(lm, ch);
+                String cc = (cur == null) ? "" : cur.toString();
+                if (cc.contains("gaptop")) continue;
+                sc.invoke(lm, ch, (cc.isEmpty() ? "" : cc + ",") + "gaptop 34");   // = MARGIN + 2*INNER
+                changed = true;
+            }
+            if (changed) { panel.revalidate(); panel.repaint(); }
+        } catch (Throwable ignore) { }
+    }
+
+    // Dialogs use the card surface, with fields and buttons styled like the settings.
+    private static final Color DIALOG_BG = PAL_SURFACE;
+    // The updater window sits on top of the download list card, so it needs a lighter shade than the card.
+    private static final Color UPDATER_BG = new Color(0x30, 0x30, 0x30);
+
+    private static void recolorDialogs() {
+        for (Window w : Window.getWindows()) {
+            if (!w.isShowing() || !(w instanceof javax.swing.RootPaneContainer)) continue;
+            // The updater window is undecorated, transparent and not a Dialog, so it is matched by title.
+            boolean isUpdater = false;
+            try {
+                String t = (w instanceof Frame) ? ((Frame) w).getTitle()
+                        : (w instanceof Dialog) ? ((Dialog) w).getTitle() : w.getName();
+                isUpdater = t != null && t.toLowerCase().contains("updat");
+            } catch (Throwable ig) { }
+            if (!(w instanceof Dialog) && !isUpdater) continue;
+            try {
+                javax.swing.RootPaneContainer rpc = (javax.swing.RootPaneContainer) w;
+                // The grey frame is a border on the content pane and root pane themselves, which the
+                // walk over their children never reaches.
+                Color bg = isUpdater ? UPDATER_BG : DIALOG_BG;
+                Container cp = rpc.getContentPane();
+                if (cp instanceof JComponent) {
+                    stripFramingBorder((JComponent) cp);
+                    if (!bg.equals(cp.getBackground())) cp.setBackground(bg);
+                    if (!((JComponent) cp).isOpaque()) ((JComponent) cp).setOpaque(true);
+                }
+                javax.swing.JRootPane rp = rpc.getRootPane();
+                if (rp != null) {
+                    stripFramingBorder(rp);
+                    if (rp.getLayeredPane() != null) stripFramingBorder(rp.getLayeredPane());
+                    if (isUpdater && rp instanceof JComponent) {
+                        if (!bg.equals(rp.getBackground())) rp.setBackground(bg);
+                        rp.setOpaque(true);
+                        // JD sizes the window tightly to its content and reverts any growth, so a larger
+                        // border would squeeze it. A little horizontal room is safe.
+                        if (!(rp.getBorder() instanceof javax.swing.border.EmptyBorder))
+                            rp.setBorder(javax.swing.BorderFactory.createEmptyBorder(0, 8, 0, 8));
+                    }
+                }
+                styleDialogContent(cp, bg);
+                if (isUpdater) { roundUpdaterBar(cp); fitUpdaterWindow(w); }
+            } catch (Throwable ignore) { }
+        }
+    }
+
+    /** Gives AppWork dialogs the theme's surface, field and button fills and removes their framing
+     *  borders. Runs on every tick so content built later is caught; icons are handled by monoChromeIcons. */
+    private static void styleDialogContent(Container c, Color bg) {
+        for (Component ch : c.getComponents()) {
+            try {
+                if (ch instanceof javax.swing.JPanel || ch instanceof javax.swing.JOptionPane
+                        || ch instanceof javax.swing.Box || ch instanceof javax.swing.JScrollPane) {
+                    if (!bg.equals(ch.getBackground())) ch.setBackground(bg);
+                    stripFramingBorder((JComponent) ch);
+                } else if (ch instanceof javax.swing.text.JTextComponent
+                        && !((javax.swing.text.JTextComponent) ch).isEditable()) {
+                    // A read-only text component is the dialog message, not an input.
+                    if (((JComponent) ch).isOpaque()) ((JComponent) ch).setOpaque(false);
+                    if (!bg.equals(ch.getBackground())) ch.setBackground(bg);
+                    stripFramingBorder((JComponent) ch);
+                } else if (ch instanceof javax.swing.text.JTextComponent || ch instanceof javax.swing.JComboBox
+                        || ch instanceof javax.swing.JSpinner) {
+                    if (!FIELD_BG.equals(ch.getBackground())) {
+                        ch.setBackground(FIELD_BG);
+                        if (ch instanceof JComponent) ((JComponent) ch).setOpaque(true);
+                    }
+                    if (ch instanceof javax.swing.JComboBox) styleComboPopup((javax.swing.JComboBox<?>) ch);
+                } else if (ch instanceof javax.swing.AbstractButton && !isCheckLike(ch)) {
+                    javax.swing.AbstractButton ab = (javax.swing.AbstractButton) ch;
+                    boolean hot = ab.getModel().isRollover() || ab.getModel().isPressed();
+                    if (!hot && !BTN_CFG_BG.equals(ab.getBackground())) ab.setBackground(BTN_CFG_BG);
+                    // The two hover listeners share the jdp.savedFg key, so the first hover can leave a dark
+                    // label on the dark button. Resetting it at rest keeps the label readable.
+                    if (!hot && !SIDEBAR_TEXT.equals(ab.getForeground())) ab.setForeground(SIDEBAR_TEXT);
+                    installBtnHoverFg(ab);
+                    installBtnHoverBg(ab);
+                    // This FlatLaf build ignores a per-component arc, so the updater buttons are rounded by a
+                    // corner mask. The original border stays inside it to keep the padding.
+                    if (bg == UPDATER_BG && ab.getClientProperty("jdp.updBtnMask") == null) {
+                        javax.swing.border.Border ob = ab.getBorder();
+                        ab.setBorder(ob == null ? new RoundCornerMaskBorder(UPDATER_BG, UI_RADIUS)
+                            : javax.swing.BorderFactory.createCompoundBorder(new RoundCornerMaskBorder(UPDATER_BG, UI_RADIUS), ob));
+                        ab.putClientProperty("jdp.updBtnMask", Boolean.TRUE);
+                    }
+                } else if (ch instanceof javax.swing.JLabel && ((javax.swing.JLabel) ch).getIcon() != null) {
+                    javax.swing.JLabel l = (javax.swing.JLabel) ch;
+                    if (l.getClass().getName().endsWith(".ProgressLogo")) {
+                        tameProgressLogo(l);
+                    } else {
+                        javax.swing.Icon cur = l.getIcon();
+                        if (l.getClientProperty("jdp.monoLbl") != cur) {
+                            // Small icons are chrome glyphs; a large image is a logo and only loses its box.
+                            javax.swing.Icon m;
+                            if (cur.getIconWidth() >= 40 || cur.getIconHeight() >= 40) m = deBoxIcon(cur, l);
+                            else m = tablerIcon(cur, SIDEBAR_TEXT, l);
+                            if (m != cur) { l.setIcon(m); l.putClientProperty("jdp.monoLbl", m); }
+                        }
+                    }
+                } else if (ch instanceof JComponent) {
+                    stripFramingBorder((JComponent) ch);
+                }
+            } catch (Throwable ignore) { }
+            if (ch instanceof Container) styleDialogContent((Container) ch, bg);
+        }
+    }
+
+    /** The updater's ProgressLogo paints its globe from internal Image and Icon fields and ignores the theme's
+     *  updaterIcon SVGs, so those fields are replaced with the JD Highlighter logo. */
+    private static void tameProgressLogo(javax.swing.JLabel l) {
+        try {
+            if (Boolean.TRUE.equals(l.getClientProperty("jdp.updLogo"))) return;
+            java.awt.image.BufferedImage logo = logoImage();
+            if (logo == null) return;
+            int sz = Math.max(l.getWidth(), l.getHeight());
+            if (sz < 32) sz = 64; if (sz > 96) sz = 96;
+            java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(sz, sz, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+            java.awt.Graphics2D g = img.createGraphics();
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g.drawImage(logo, 0, 0, sz, sz, null);
+            g.dispose();
+            javax.swing.ImageIcon icon = new javax.swing.ImageIcon(img);
+            for (Class<?> k = l.getClass(); k != null && k != javax.swing.JLabel.class; k = k.getSuperclass()) {
+                for (java.lang.reflect.Field f : k.getDeclaredFields()) {
+                    try {
+                        Class<?> ft = f.getType();
+                        if (java.awt.Image.class.isAssignableFrom(ft)) { f.setAccessible(true); f.set(l, img); }
+                        else if (javax.swing.Icon.class.isAssignableFrom(ft)) { f.setAccessible(true); f.set(l, icon); }
+                    } catch (Throwable ig) { }
+                }
+            }
+            l.setIcon(icon);
+            l.setOpaque(false);
+            if (!UPDATER_BG.equals(l.getBackground())) l.setBackground(UPDATER_BG);
+            l.putClientProperty("jdp.updLogo", Boolean.TRUE);
+            l.repaint();
+        } catch (Throwable ig) { }
+    }
+
+    /** The JD Highlighter logo, decoded once from LOGO_PNG_B64. */
+    private static java.awt.image.BufferedImage LOGO_IMG;
+    private static boolean LOGO_TRIED;
+    private static java.awt.image.BufferedImage logoImage() {
+        if (LOGO_TRIED) return LOGO_IMG;
+        LOGO_TRIED = true;
+        try {
+            byte[] png = java.util.Base64.getDecoder().decode(LOGO_PNG_B64);
+            LOGO_IMG = javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(png));
+        } catch (Throwable ig) { LOGO_IMG = null; }
+        return LOGO_IMG;
+    }
+    // jd-highlighter/.github/assets/icon.svg as a 128px PNG, embedded so the agent needs no SVG renderer.
+    // Regenerate it when icon.svg changes.
+    private static final String LOGO_PNG_B64 =
+        "iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAX30lEQVR4Xu2dCXQUVdbHO3vSWUCWTgxBMWwConhAhkVQUUFBBQRZZBXZRGWXfRNUwAV1RlC+79MZdz931DkO6uh8gqAgKquKgLIoAgYQGFAE3nf/1amk+r5X1VXprk4nU/ec30lOulJV/f633rvvvqV8Ps8888wzzzzzzDPPPPPMM88888wzzzzzzLMKbTk5OdWITkQfYsy0CRn3P7og9fX5s9OXTx3vfww8MC995pSx6f1Gj8ipz//fs4pjmSTwQOK57Ozs9URRZmbmKUJw2rfJEH9dnCx+2+sT4mAoh39IEFtWJ576cFny0aWPpH09e5J/6ZRx6YX8Yp7FgeXn59euWbPmoBo1arxBgh/nQoej7nl+sfThFHHqgOwInE2rEk8//mDa7v69Mx8666yzqvB78SxGVqVKlbMCgcBI4hNCGCFnEFWrVhXkDJLYVrRumSHW/DNREt2MbesSxaPzUw/XLcx5hG4pm9+jZy4YiduZRH6V+I0Lr6J69eqCmgNJbDOqVMkUD9+XIs4UyYKbsWtjgujSKeMMXWdzVlZWD37PnkVuiST8TSToV1xgu6BWoCpbkECS6Cp635guju2RxTYDzcfsyana/1LNs5dqoAH8S3jm3BJJvIG5ublfc0HLChzBbq3QoX2GFgxysa146rFkOnfw/+ka28npLuVfyjMbRgFdCxJrDRcwmsARwsUJbf6UIQ5858wJXn06mc4b/H/UOOQEKwoKCqrx7+iZwoqDuyXEKS6YW1SrVs2yaUB38d8/ykJb8bclyXTO0nOQo50kh5tOXzGBf2fPio2q+utJkH1coFhANY5lbdCnR7qtbqKRedODMYGR/Pzs/XdP8QJFbikkwkPEGS6MGzRv3lxcc8014uabbxZjxowRc+fO1X7Py8uzdILJY1Ilka04/YtP9O2ZHnIO1AobVlAN8VjKZ7wQ/iPt7LPPPpdE+ZSL5BYdOnQQ999/v5K77rpLNGrUyDJAfOuFJEloK37dmSCaNPKHnOOjtxLFppU+sfyVpKNPLvwPzh9QkNeeqv2DXCS3OP/888W9994rCW8En8NJzGKC2gV+8eMWZ0HhZx8kavkF/RwLZqdoDvDNp8SapN8fnJtzCS+bSm8kSHfiBBfJTcaNGycJrmLGjBlaTGDmBJ07pmvVOxfaiqnjSuOByy5N1xwA/LjJJ3ZuSDwz/o7M/ryMKq3RUz8sEMMoX+f666+XxFYxfvx47Xh0E7n4Ok8sSpFEtuLYngTRsH6wKUBtsOmToAOAE9TD2Lc1QUy4I2MSL6tKZ1Swk7gwsQJBnp1aYMSIESX/g+whFx/kn+0X+7c6awqWPZ9U8v8IBHUH+P7L4OdHdiWIyWMzFvIyqzRW/ORLwtDfRZMmTcSFF14ofRZtGjZsKO677z5JdCPz588XF198ccn/mAWFwwenSSKH46ZuwV7Bqn8klDgAOLIr+Pmh7xPEbUPSxvOyq/AWCLb5WrXfoEED0a5dO9G7d28xevTokMBs7Nixom3btppTcPGiRadOnSTROXfffbc455xztOPN4gF06Va/56xXsOPLBFG1arA3YXSA7etKj9mzOUH0753Zj5dhhTVE+1SQJ84991xx5513SoWtYurUqaJjx46CuomSgJEC57K6jwULFmjXNv4Phpe5A4B2bTIcjRyCO4aliWceD3UAcHR36THfrEk80693RitelhXOqN2tY+zqoR1G4SL5wgtexYQJE7T/4SJGChJA/FoAzUPr1q2l4zGIZJYkevtFZ7UAho+XPJAsOYAeC+isfDfpj+bNfRV60gkyfMokD5oAXvgcOEnjxo1LYgT0z/v06aMFckja4CkeOHCg6NWrl7jhhhtEq1atbDUddevWFQsXLpSuh2r/oosuko7XwZgBFx9gIonTWgABIXcAwMccFj+Qsp8XaoWxQDC9KxUkuO666yQBOOiOQexwQRscBV28WrVqSddRAQeYOXNmyDmmTZumBYj8WI5ZLfDm88mSyFag28fFBzvXhx6HfMP429Ne5WUb90ZP4g0Bi9x+//79JSGdcs8994ju3buL2rVrS+cPBwJR3QngaHXq1JGOUYGAkIsPWjbPcJwcgtjcAQCfpPrLtgQxbGBGd17GcWvFQ7qWo3pWQVg4UCPcdNNNAkElP68T4AQDBgywXXPomHULncYCx3bL4oOfNsvHzp2aepyKNpWXdVxaIDieLxWczuWXX65sg+0AwQoLC6VzxhKzWqBjh3RJuHBs+1x2gK9XUdXPYopZk1LheM/yso47w0weKqTTvNB0LrnkEi3RwoW1Q7du3aTz6aDPjiHdzp07i/z8fOnzaGNWC6z7yP6sYnBwh+wA4NAO2QHo/Gf8fn8LXubxZJi8aTqNq2nTplq7zYW1g5X4SBzNmjWr5Ng5c+a47ghmPQKn2UH0HjAqyB1gxxehx+kTTokdvNDjxqhgBvKC0qlXr16ISE5AYkaVEEJ+YOjQodLxOsacvhuoegTVq2WKou3Oxgj2fSM7APjt59JjZkwsHU2k6w7mZR8Plmg2exfV8+TJkyWBnIA8AD9vuK4kHMfNeMFsoOjRBc5GCn/fK4sP9m4pPWbcqFIHyMrKQm4gvuYWFs/blwoJ1TDy+1wcpyBwNJ4XwtppTuAk/J6iBbKDqjGC5s0yJJHDgbEA7gDfrA42Efh8xC1pIdegGCSu5g8kUIF8yQsIWbnhw4dLopSFnj17hpx78ODB0jEqEBjy+4om1OWVHAA4WWIGirbJDgDQVcTn/XuFOgA53m4uQrlZ8XItqXCQpOGClBUkazCZs6CgQBuqtepG4rNhw4ZpQSe/p2hjNmlk9AhnweAf+31is2GSiM5Pxc1Aty6hk0sBxQLxsegkEFyrF1IwzZo109pgLk40MKv6cT3UDJjYye/HTVTBYK18v/jdEMTZYedXsgOgh4DP2rbKkK5B1/2IaxFzw4qXAFuoidTs9OnTJYHcAsIjtYzMHhcnFpgFg++85CwzePgH2QHAv/f4RIN6oTOLix3gANcj5hYILtEOKZBBgwZJIrlJ3759XRkytguCQS4OGNjHWTOA7N+WVbID7N3sIyeTz1+1alUk3HK5JjG1AFuf3759e0mgWIDxfeQauDixQtUMBGpmSsO74VANEKE3wM9d7AAItMdyTWJm2JkjYBjxwzCr3Yke0QTTuDEnIBZBnxlmzQDG/bnIVqhSwxtWqh0A2Ui69iquS8wM27IYCwGRNxfHLaZMmSJuvPHGmEwktYNZMzCkv7NmAL0B7gCrlydI5wUYlKJr/0GOkMO1iYnRxf9mLISypnrtAtG7du2qrfDhAsQDqmbg7DznvQGeFFr2fKJ0XgCnw3XJEbpwbWJidAO79C+PyN+qbx4pEydOLJmlG6+YNQMfvuWsGdj/bagD/GVhsnROZCAN136Ia+O6kfj1jF8ec+m4aNECT36kkz9igdk8gbtGO1tVfOKnUAcYPig0C6hwgC+4Pq4bXbS/8ctbrbqNBAR4CC55YccrqrGBCxo7Hxv41jBE3LihnATCfATDdU8XFBRkcI1cNaoB5hm/OHL1XLxImT17drkld8qK2djAt2udjQ3s2RQUH+lhfi6A5oZd+0KukatG/c+XjTeAsXcuYCRgBDFegz0rzCaKLH7A2RAxZgTBAda8r+4BFHcBS8BoLNfIVaOLrjfegJ1Fl3ZAT4IP/VYkzLqDPW5wNl/w5L6gA7z8ZOmCUiN6D0CHHsgZXCM3Ddu3HTfegNksX1TjaMcxIQTH8Pn4Opgn2KNHD8czdOMNMwcY0DvN8R5DW9f4xNiR8j5DLADUid2EUfK2AL+B22+/PURQRO78GKDapQPNR0Vr680wawLeey1RHPlBFtmK3Rt9olFDeRAIcQa/LmnyL66Ta0YXrMtvgMcASM3yY3SMPQbUDPzzioxqtnDNGpnasK5xipcdftqibv8xBsCvS6zjOrlmVM014zdw6623hjgAJm/wY4wMGTJEOw6xA/+somJW/c+cGNwTyLgE3A5YIaTvOmrDAbZynVwz+qLt+A0Yp2hhQCjc8Kw+Z2DUqFHSZxUVs0zg2g+C6wDRpXO6fEw1EYTlAHT2cp1cM9UUMKzY0R3glltu4TenBNlDu8dWBFRjAdgizjjGb9wDwA7G2cA6JkHgMa6TaxYI7vYRcgOYlKE7AJZw88/NqCzBn1ka+Km/hO4DsO9bWWQrXvwfeRwAFI8EGvmD6+Sa0cU68gLAYk3dATBFK16GaWOFKvjDbmBfrw7N6//ANoEIx44v1SOBmIzK7uEw18k1o4u15gWANh21gD4RFNG9ajVPZcTs6Z8xIRj8GUFzwEW2AusC6pwrdwUVgWDspolTn/MCXgg6ePIxdAsnQK3AP6+MqJ5+sH6FehMIjPZxoa3o1V2eEs4DQYrLtnCdXLPi/X2lgtBBDwArcpDdw/Rw/nllwuzp79o5XTm7BxzcLotsxfxZKdL5FYFg7DafxtuyeEGoQMIHGUE3V+mWN2ZP/6fvB0f/kM7lDoDtYbnIVrz7ino8gAWCy7lOrhpd8AAvDBVwAuwHyP9eGTBbFdT9utKBH4jNHeC7tbLIVvz8rTojyEYEl3CNXDW64EpeIGZcccUVYTODFRFVvx+bRxo3idCHdY2UJSFUv64cCBrnBFBcNoZr5KrRBZ/kBWIFHKAyNQVmWb9BfUNnAWONP3cAoC/6tIu+xawR46AQBYHXcI1ctUAZNn1WpYcx3Qs9h5YtW2oLP/nn8Qhy/qqpX9gcYucGeXMI7PnDHeDAd7LIVsydJmcEUQPp90QP5HlcI1eNLngdLxi7QHDMETAOHoF58+Zp8UK8ZwfNpn1hHx8uHPhesehz9wb5OCtef1adESy+J6SBE7lGrlrxVnBl2vMfkz6sVg5jejn2FWjRooX0v+WNWeB3fgO/9k4ALhz4WbEFDHoH/Dgrtn6uzggW9wRi2wPQjWqBz3kB2QXr/bnwKrAl7JVXXhk3WUVV4Aes9gj81WTVr5NAELOJalSXr4tYhJqkyVybmBgVyP28gOzSr18/SWwrsI8vloK5uedPOMyqfrxmlgtmRJ/fx3EaCF7aWh4axj1RbNWSaxMTI8+7lheSXTAPgItsBzQdGEKO9WCTWdWPN4dgf38uFkcVCP6yTT7OiqED5QUiVCNhFDCJaxMTIwfICrDJoXbA3kHRWEWMqePYdVzVu4gmZjN9wEtP2tskescXsgPsdBgIPjhPTgmX+yYRVEAv8AILB7aA52JGAmYaY+zBjW4kxDdr97FxExfJDOz1wx3g47fD1xxGEGfwe6AmYCnXJKZWlmbgqquukkSMBldffbV0rUgxa/eRmXOyISRf97+Z+FOLdHHcwcjgd+tCewJZWVlnqPzzuCaxtiQqqL284KzASx64eNEAW9Pwa0WCWbYP7/z59H3zqF8FdgoxOsBzTwSfZid7C2N0EdfW74Nqpu1cjHKxgMWLIVRghJCLFw3M1iKUBbP5/WDJg86WeQF043TxN67wibzcYG7/6cftxRA6zZqW9gSodoqP9wxSNVQ/YDMphGXebu0jgPNiDwHEAugyIteA5sbpGAQiflWqF/BcvxP0TaFHDy9N6+KNovw4K3p2DY4J0P39RkWfzLUoNyMneJEXpAq8kIkLF03QvCBnYPwbehxYvWxnmblZdw/gDWHH9sii2AUvhfrwjdChXWwAyY+zAm8wx//l5OQ8zjUoV6OuXdOAxStidJAGHjlypCRcLEAOAQtYzGYpmc3uARc09mvv+eGCOGHDigRRrzB0WBcpZH6cFUsfTsHTf5KKPI1rUO5GhfgmL1QV6Lcb1xGUB2geunTpos1VwEgkxh2wzZyq7ccbwxGBczGcgFU+bVrKmTzMHzi6275jvfd6Ep7+Z3jZx4XRE9Q8YPG2EA42fOLClAd4YxgcEruNAvyOHgUyjsOH9ROff+SsnVYxfYI8nKuz9kP7zrXti8QzVNRZvOzjxkjYpVxoK/AElvUVMtEAg0268JxhQ/uI9StzJBGc8o9Xk7QnnQuv89xS+z2Bk/t9qP7j14r3DrY1X1AnkpdIlRVcD/sVcNF1hg/rIzatjlx8TBApqCVP5zIyZ4rDGuaIrwYv97gy6hEM4SKHA+0xF8ktsNs4NrXkouuMHNFHbP40Sy54h2B/wMvayu0+5+aeDruWh32mL44SB3z5dEw7UeQbQj/vJV6i39fSz3f4sW4aXiCxgoscDrxfwGqiSDRAsghdRS66zl0TelI766xrZsbIIfLonQq8dJL/ryVFvnH081riDnHIt4h+LiM2ESekY3UO+WL74kksHsk1vDTaLtjvNxqvmOHgqb/tttskwY3Mn9dZFG13luI144G58sidGZhL6GRyiGOKfFuFiPGUMVhumNfHmoHhYqwn4AmdsoAaBV0+Y5Sv4r8XtxUn99nvjlnxxnPJlkGfih/WR+faJozk2sTMSNBFXGC7IK1rXHDqBAR5kyZN0rpyXGwjQ2/tK957s5AXWJn5+O9JyqlbOrkBv2jfJkOMujVN/HlhitZD2L3JVfH3i92+2G4iyQyvkLe9iEQFmgXVLGIV6FKia4cdS7jYnHvmXC92bXQYgFnw2QeJIlAzGPGXg9BqDvlmc0FibugaYvUqF9YJeD08F9sI3haKbp1VgKczeHB/8frzTbXhVanAysj6FYlUY/nFXxcnl4/Qao6Lo76aXI9yMbxcoqZhd3GnIE1rzBXgd+xBiIARG05xkc1YtLCT2PGVw6g7DMjkIV2MJx/bun2zxn5mz2Viu14wnOXl5TUmMX/h4toBU7OwFyH2HsBgElK1XFwrZk7rLr74uCYvoIj5v3eSSqp9HSR+Vi2PTm8iAk6LX331uQblbjVq1Li8WrVqv2LQRQVm4WD3C4DpWFh+rY/No2fAhQ3HlEk9xQdvFTrepdMOmKOHLhwP9AD+vux5+yneqFPke52XfdxYdnb2vbzA7BKuO6ezaGFHsfajvJJXr0abR+aniOxs+f6M4PMnFjmfPRQVinxteLnHlVEBjSXO8EILB2b3mFX/o27rJZ57spXYudHZGLsTkN7l7/ENB9787ZYjmvAJL++4NKoJulMBneQFFg6sBdBrgonju4un/6u1+GpFjahG9Sp2bUwQHdqHz+2rwMujnL47qMzEOu0biVEbX5/a+J95ganAnrvYOXP87ani/TcLxI9bopOzt8NbLyRpr4Pl96SDOAVxi9lcQtClU7o4ssvlLmJ5pX0jMQoMqTLIfhdbqwwfnKaBavOhe1LEs08kay9d+nGLywVnAuYAqnbrNIKFI/p+Pfhp5QStLsnAli+n+XWiSPmlfSO15s2yRj31WPIpVwdGHPDPZUnaVq9cRC4+uqjGLiucwGQ10RmqJd7Yt9VXSOffwq8XBco97Rux+f3+/G5dMtZt/KT8kilY8WNnKFexWWNI3sLoBPT7HurWlozji8O+s+haH/NrR0Q8pH2jZXl5/mvnTEk96mT5VaQgSHt0QYq24peLbQRVvGKrViUU4xwhZvHvBxPf+9JJtJf5fZSR+En7RtFS6p3nnzZrUuqJSKdkW4Eu2mvPJGuvd+Nic1RVvgmbiH6+MEu3EbBR4PYwv6cyEF9p3yhb6jkF2ZMnjUk9jq6Y4suXCWQH//epZNG8WXjh8dQrXtWmYh2BblgC/xJWRk4wXiB9q7hPG8Rn2tcFS8zPz+ozoHf6Dgjn9NXsOuiKYYHFhReEFx7YeOqLiCW5ubmt+A07MXKCXnR/v/H7DUs8p33dsvT09MLatTIfGjU0/eDy15JsJVk2rEwUY0amSYM3Vlg89b8Sr+Bpb9KkSSq/v7IaxQSX0b0e5PduSbynfd02ekIbnFOQNatn14yv501LPYXVM3rCZceXCWLhnBRt4iUX1wpE+OypP0Ysp79NLt6Tx7VkCwnahO59pyS0moqR9o2hJcMhqlfPanTniKye9Pvb1H7vpZ/HuMgq6LhDFOGvJrEXY/tVbIBBPwv5Rdy24und6xWCh1KR0r5xYsnUfNQB5BiX6/j9/hYkfnV+cHka1QQ5xAeS6DoVMe3rmTMjgVNI7Gcl8YNU3LSvZ/aNnCCBxJ7PxK/4aV/PnBmJPoo4pTlAZUr7embfSPiu5AC/VMa0r2c2jcQP8L955plnnnnmmWeeeeaZZ5555plnnnnmmWee2bP/BwAqlPS5flauAAAAAElFTkSuQmCC";
+
+    /** Rounds the ends of the updater's progress bar. Its UI has an arc field that this FlatLaf build
+     *  ignores, and ProgressBar.arc has to stay as it is for the download rows, so the corners are masked. */
+    private static void roundUpdaterBar(Container c) {
+        for (Component ch : c.getComponents()) {
+            if (ch instanceof javax.swing.JProgressBar) {
+                javax.swing.JProgressBar pb = (javax.swing.JProgressBar) ch;
+                if (!Boolean.TRUE.equals(pb.getClientProperty("jdp.updBar"))) {
+                    pb.setBorder(new RoundCornerMaskBorder(UPDATER_BG, UI_RADIUS));
+                    pb.putClientProperty("jdp.updBar", Boolean.TRUE);
+                    pb.repaint();
+                }
+            }
+            if (ch instanceof Container) roundUpdaterBar((Container) ch);
+        }
+    }
+
+    /** A zero-inset border that paints a component's corners in the colour behind it, so a square component
+     *  looks rounded on a uniform surface. */
+    static final class RoundCornerMaskBorder implements javax.swing.border.Border {
+        private final Color mask; private final int radius;   // 0 or less gives a pill
+        RoundCornerMaskBorder(Color mask, int radius) { this.mask = mask; this.radius = radius; }
+        public java.awt.Insets getBorderInsets(Component c) { return new java.awt.Insets(0, 0, 0, 0); }
+        public boolean isBorderOpaque() { return false; }
+        public void paintBorder(Component c, Graphics g0, int x, int y, int w, int h) {
+            if (w <= 0 || h <= 0) return;
+            Graphics2D g = (Graphics2D) g0.create();
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            int r = radius > 0 ? Math.min(radius, Math.min(w, h) / 2) : Math.min(w, h) / 2;
+            java.awt.geom.Area a = new java.awt.geom.Area(new java.awt.Rectangle(x, y, w, h));
+            a.subtract(new java.awt.geom.Area(new java.awt.geom.RoundRectangle2D.Float(x, y, w, h, 2f * r, 2f * r)));
+            g.setColor(mask);
+            g.fill(a);
+            g.dispose();
+        }
+    }
+
+    /** JD centres the updater on its main frame, but Selkies resizes the X display to the browser window,
+     *  so in a smaller browser the updater runs past the screen edge. It is moved back onto the screen. */
+    private static void fitUpdaterWindow(Window w) {
+        try {
+            java.awt.Color wb = w.getBackground();
+            if (wb == null || wb.getAlpha() < 255) { try { w.setBackground(UPDATER_BG); } catch (Throwable ig) { } }
+            // Java can keep stale, larger GraphicsConfiguration bounds after Selkies resizes the display, so
+            // the smaller of those and the current DisplayMode wins. The frame itself stays square: rounding
+            // it needs setShape on an undecorated frame, and undecorating JD's updater breaks its layout.
+            java.awt.GraphicsConfiguration gc = w.getGraphicsConfiguration();
+            java.awt.Rectangle sc = gc.getBounds();
+            int scW = sc.width, scH = sc.height;
+            try { java.awt.DisplayMode dm = gc.getDevice().getDisplayMode();
+                  if (dm.getWidth()  > 0) scW = Math.min(scW, dm.getWidth());
+                  if (dm.getHeight() > 0) scH = Math.min(scH, dm.getHeight()); } catch (Throwable t) { }
+            java.awt.Rectangle b = w.getBounds();
+            final int m = 8;
+            int nx = b.x, ny = b.y;
+            if (nx + b.width  > sc.x + scW - m) nx = sc.x + scW - b.width  - m;
+            if (ny + b.height > sc.y + scH - m) ny = sc.y + scH - b.height - m;
+            if (nx < sc.x + m) nx = sc.x + m;
+            if (ny < sc.y + m) ny = sc.y + m;
+            if (nx != b.x || ny != b.y) w.setLocation(nx, ny);
+        } catch (Throwable ig) { }
+    }
+    /** Removes decorative frames, including AppWork's grey dialog border, and keeps plain padding. */
+    private static void stripFramingBorder(JComponent jc) {
+        javax.swing.border.Border b = jc.getBorder();
+        if (b == null || b instanceof javax.swing.border.EmptyBorder) return;
+        String cn = b.getClass().getName();
+        if (b instanceof javax.swing.border.TitledBorder || b instanceof javax.swing.border.EtchedBorder
+                || b instanceof javax.swing.border.LineBorder || b instanceof javax.swing.border.BevelBorder
+                || b instanceof javax.swing.border.MatteBorder
+                || cn.startsWith("org.appwork") || cn.contains("LineBorder") || cn.contains("Etched")
+                // FlatLaf's line and scroll pane borders draw the faint frame around a pop-up.
+                || cn.contains("FlatLineBorder") || cn.contains("FlatScrollPaneBorder"))
+            jc.setBorder(javax.swing.BorderFactory.createEmptyBorder());
+        // Component.borderWidth=0 does not reach the round, button, text field and text area borders on
+        // JD's own controls, so they become an EmptyBorder with the same insets to keep the padding.
+        else if (cn.contains("FlatRoundBorder") || cn.contains("FlatButtonBorder")
+                || cn.contains("FlatTextBorder") || cn.contains("FlatMarginBorder")) {
+            java.awt.Insets in = b.getBorderInsets(jc);
+            jc.setBorder(javax.swing.BorderFactory.createEmptyBorder(in.top, in.left, in.bottom, in.right));
+        }
+    }
+
+    // A glass pane dims the main window while a modal dialog shows; the dialog is its own window and
+    // stays bright. It is polled, so a dialog that went away abnormally cannot leave the overlay behind.
+    private static final java.util.Map<Window, Component> DIMMED =
+            new java.util.WeakHashMap<Window, Component>();
+
+    private static void dimModalBackdrops() {
+        boolean modal = false;
+        for (Window w : Window.getWindows()) {
+            if (w instanceof Dialog && w.isShowing()
+                    && ((Dialog) w).getModalityType() != Dialog.ModalityType.MODELESS) { modal = true; break; }
+        }
+        // A modal dialog's declared owner is often a hidden shared frame, so the large visible frame
+        // is dimmed instead.
+        Frame main = null;
+        for (Frame f : Frame.getFrames()) {
+            if (f.isShowing() && f.getWidth() > 600 && f.getHeight() > 400
+                    && f instanceof javax.swing.RootPaneContainer) { main = f; break; }
+        }
+        if (main == null) return;
+        boolean has = DIMMED.containsKey(main);
+        try {
+            javax.swing.JRootPane rp = ((javax.swing.RootPaneContainer) main).getRootPane();
+            if (rp == null) return;
+            if (modal && !has) {
+                Component saved = rp.getGlassPane();
+                // The frame cannot change behind the modal, so one blurred snapshot serves until it
+                // closes. Without one, a darker flat veil is used.
+                final java.awt.image.BufferedImage blur = frostSnapshot(rp);
+                JComponent dim = new JComponent() {
+                    protected void paintComponent(Graphics g) {
+                        if (blur != null) g.drawImage(blur, 0, 0, getWidth(), getHeight(), null);
+                        g.setColor(new Color(0, 0, 0, blur != null ? 110 : 175));
+                        g.fillRect(0, 0, getWidth(), getHeight());
+                    }
+                };
+                dim.setOpaque(false);
+                rp.setGlassPane(dim);
+                dim.setVisible(true);
+                DIMMED.put(main, saved);
+                System.out.println("[jd-dialog-agent] jd-highlighter: frosted+dimmed main window behind modal dialog");
+            } else if (!modal && has) {
+                Component saved = DIMMED.remove(main);
+                if (saved != null) { rp.setGlassPane(saved); saved.setVisible(false); }
+                else rp.getGlassPane().setVisible(false);
+            }
+        } catch (Throwable ignore) { }
+    }
+
+    /** The root pane's content below the glass pane, blurred at half resolution. */
+    private static java.awt.image.BufferedImage frostSnapshot(javax.swing.JRootPane rp) {
+        try {
+            int w = rp.getWidth(), h = rp.getHeight();
+            if (w <= 0 || h <= 0) return null;
+            int sw = Math.max(1, w / 2), sh = Math.max(1, h / 2);
+            java.awt.image.BufferedImage snap = new java.awt.image.BufferedImage(sw, sh, java.awt.image.BufferedImage.TYPE_INT_RGB);
+            java.awt.Graphics2D g = snap.createGraphics();
+            g.scale(sw / (double) w, sh / (double) h);
+            rp.getLayeredPane().printAll(g);   // leaves out the glass pane itself
+            g.dispose();
+            return boxBlur(boxBlur(snap, 4), 4);   // two passes come close to a gaussian
+        } catch (Throwable t) { return null; }
+    }
+
+    /** Separable box blur of radius r on an INT_RGB image. */
+    private static java.awt.image.BufferedImage boxBlur(java.awt.image.BufferedImage src, int r) {
+        int w = src.getWidth(), h = src.getHeight();
+        int[] in = src.getRGB(0, 0, w, h, null, 0, w);
+        int[] tmp = new int[in.length];
+        blurPass(in, tmp, w, h, r);
+        blurPass(tmp, in, h, w, r);   // transposed
+        java.awt.image.BufferedImage out = new java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        out.setRGB(0, 0, w, h, in, 0, w);
+        return out;
+    }
+
+    /** One separable pass writing transposed, so calling it twice blurs both axes. */
+    private static void blurPass(int[] src, int[] dst, int w, int h, int r) {
+        int div = 2 * r + 1;
+        for (int y = 0; y < h; y++) {
+            int base = y * w;
+            for (int x = 0; x < w; x++) {
+                int rs = 0, gs = 0, bs = 0, n = 0;
+                int lo = Math.max(0, x - r), hi = Math.min(w - 1, x + r);
+                for (int k = lo; k <= hi; k++) {
+                    int p = src[base + k];
+                    rs += (p >> 16) & 0xff; gs += (p >> 8) & 0xff; bs += p & 0xff; n++;
+                }
+                int rr = rs / n, gg = gs / n, bb = bs / n;
+                dst[x * h + y] = (rr << 16) | (gg << 8) | bb;
+            }
+        }
+    }
+
+    /** The innermost non-popup container that holds the Views sections. */
+    private static Container findViewsHost(Container c) {
+        for (Component ch : c.getComponents()) {
+            if (ch instanceof Container) {
+                Container r = findViewsHost((Container) ch);
+                if (r != null) return r;
+            }
+        }
+        if (!(c instanceof JPopupMenu) && subtreeHasAllViewsItems(c)) return c;
+        return null;
+    }
+    /** Counts Views section headers rather than matching their titles, which are localised. */
+    private static boolean subtreeHasAllViewsItems(Container c) {
+        int[] n = { 0 };
+        countViewsHeaders(c, n);
+        return n[0] >= 2;
+    }
+    private static void countViewsHeaders(Container c, int[] n) {
+        for (Component ch : c.getComponents()) {
+            if (ch instanceof JComponent && isViewsHeader(ch.getClass())) n[0]++;
+            if (ch instanceof Container) countViewsHeaders((Container) ch, n);
+        }
+    }
+
+    // The docked Views panel of the linkgrabber shows its section headers as chips, like the Views popup,
+    // without the separator lines between them.
+    private static void badgeViewsPanel() {
+        for (Window w : Window.getWindows()) {
+            if (!w.isShowing()) continue;
+            Container host = findViewsHost(w);
+            if (host == null) continue;
+            monoViewsTables(host);
+            boolean changed = badgeViewsHeaders(host);
+            changed |= stripHeaderScrollDividers(host);
+            changed |= flattenViewsGrids(host);
+            hideSeparators(host);
+            if (changed) { host.revalidate(); host.repaint(); }
+        }
+    }
+
+    /** Returns true if a header got its chip in this pass. */
+    private static boolean badgeViewsHeaders(Container c) {
+        boolean changed = false;
+        for (Component ch : c.getComponents()) {
+            if (ch instanceof JComponent && isViewsHeader(ch.getClass())) {
+                JComponent header = (JComponent) ch;
+                if (header.getClientProperty(VIEWS_BADGED) != Boolean.TRUE) {
+                    // MenuChipBorder paints its inner border on top of the chip, so a separator line goes.
+                    javax.swing.border.Border ob = header.getBorder();
+                    if (ob instanceof javax.swing.border.MatteBorder || ob instanceof javax.swing.border.LineBorder
+                            || ob instanceof javax.swing.border.EtchedBorder) ob = null;
+                    header.setBorder(new MenuChipBorder(ob));
+                    header.setOpaque(false);
+                    header.putClientProperty(VIEWS_BADGED, Boolean.TRUE);
+                    changed = true;
+                }
+            }
+            if (ch instanceof Container) changed |= badgeViewsHeaders((Container) ch);
+        }
+        return changed;
+    }
+
+    /** The package check keeps out org.jdownloader.extensions.Header from the settings pages. */
+    private static boolean isViewsHeader(Class<?> k) {
+        String cn = k.getName();
+        return (cn.endsWith(".Header") && cn.startsWith("org.jdownloader.gui.views.components."))
+                || cn.endsWith(".CustomFilterHeader");   // the custom views section
+    }
+
+    /** A HeaderScrollPane draws its divider as a border. Returns true if one was removed. */
+    private static boolean stripHeaderScrollDividers(Container c) {
+        boolean changed = false;
+        for (Component ch : c.getComponents()) {
+            if (ch instanceof JComponent && ch.getClass().getName().endsWith(".HeaderScrollPane")) {
+                JComponent hsp = (JComponent) ch;
+                javax.swing.border.Border b = hsp.getBorder();
+                if (b != null && !(b instanceof javax.swing.border.EmptyBorder)) {
+                    hsp.setBorder(javax.swing.BorderFactory.createEmptyBorder());
+                    changed = true;
+                }
+            }
+            if (ch instanceof Container) changed |= stripHeaderScrollDividers((Container) ch);
+        }
+        return changed;
+    }
+
+    // Mono file-type icons in the Views tables; the hoster table keeps its coloured favicons.
+    private static void monoViewsTables(Container host) {
+        try {
+            java.util.List<JTable> tabs = new java.util.ArrayList<JTable>();
+            collectTables(host, tabs);
+            for (JTable t : tabs) {
+                if (t.getRowCount() == 0) continue;
+                boolean hoster = false;
+                try {
+                    javax.swing.Icon i0 = firstIcon(t.prepareRenderer(t.getCellRenderer(0, 0), 0, 0));
+                    if (i0 != null && i0.getClass().getName().toLowerCase().contains("domain")) hoster = true;
+                } catch (Throwable ig) { }
+                if (hoster) continue;
+                javax.swing.table.TableColumnModel cm = t.getColumnModel();
+                for (int i = 0; i < cm.getColumnCount(); i++) {
+                    javax.swing.table.TableColumn tc = cm.getColumn(i);
+                    javax.swing.table.TableCellRenderer cur = tc.getCellRenderer();
+                    if (cur == null) { try { cur = t.getCellRenderer(0, i); } catch (Throwable ig) { cur = null; } }
+                    if (cur == null || cur instanceof MonoIconRenderer) continue;
+                    String cn = cur.getClass().getName().toLowerCase();
+                    if (cn.contains("favicon") || cn.contains("hoster") || cn.contains("domain")) continue;
+                    tc.setCellRenderer(new MonoIconRenderer(cur));
+                }
+                // Some Views tables override getCellRenderer and ignore the column renderer.
+                java.util.Set<Class<?>> seen = new java.util.HashSet<Class<?>>();
+                for (int i = 0; i < cm.getColumnCount(); i++) {
+                    Class<?> cc; try { cc = t.getColumnClass(i); } catch (Throwable ig) { continue; }
+                    if (!seen.add(cc)) continue;
+                    javax.swing.table.TableCellRenderer def = t.getDefaultRenderer(cc);
+                    if (def == null || def instanceof MonoIconRenderer) continue;
+                    String dn = def.getClass().getName().toLowerCase();
+                    if (dn.contains("favicon") || dn.contains("hoster") || dn.contains("domain")) continue;
+                    t.setDefaultRenderer(cc, new MonoIconRenderer(def));
+                }
+            }
+        } catch (Throwable ignore) { }
+    }
+    private static javax.swing.Icon firstIcon(Component c) {
+        if (c instanceof javax.swing.JLabel) return ((javax.swing.JLabel) c).getIcon();
+        if (c instanceof AbstractButton) return ((AbstractButton) c).getIcon();
+        if (c instanceof Container)
+            for (Component ch : ((Container) c).getComponents()) { javax.swing.Icon i = firstIcon(ch); if (i != null) return i; }
+        return null;
+    }
+
+    /** Hides the grid of the Views tables in their own background, since they sit on the base colour
+     *  rather than a card. JD can turn the lines back on, so this runs every tick and reports changes. */
+    private static boolean flattenViewsGrids(Container c) {
+        boolean changed = false;
+        for (Component ch : c.getComponents()) {
+            if (ch instanceof JTable) {
+                JTable t = (JTable) ch;
+                try {
+                    if (t.getShowHorizontalLines() || t.getShowVerticalLines()) { t.setShowGrid(false); changed = true; }
+                    Color bg = t.getBackground();
+                    if (bg != null && !bg.equals(t.getGridColor())) { t.setGridColor(bg); changed = true; }
+                    Dimension sp = t.getIntercellSpacing();
+                    if (sp == null || sp.width != 0 || sp.height != 0) { t.setIntercellSpacing(new Dimension(0, 0)); changed = true; }
+                } catch (Throwable ignore) { }
+            }
+            if (ch instanceof Container) changed |= flattenViewsGrids((Container) ch);
+        }
+        return changed;
     }
 
     // --------------------------------------------------------------- dialogs

@@ -86,7 +86,11 @@ RUN set -eux; \
         fonts-hack \
         locales coreutils \
         # openbox-xdg-autostart needs PyXDG
-        python3-xdg; \
+        python3-xdg \
+        # Rounds the dialog window corners for jd-highlighter. The xrender backend
+        # works on the GPU-less Xvfb display, and /defaults/picom.conf turns off
+        # everything that would compete with the Selkies encoder.
+        picom; \
     # Build the font cache so Java finds the fonts on the first start
     fc-cache -f -v >/dev/null 2>&1 || true; \
     apt-get clean; \
@@ -208,7 +212,8 @@ ENV S6_KILL_GRACETIME=30000 \
 
 # Defaults the Unraid template can override:
 # JD_LANG       UI language as an ISO code (de, en, fr, ...)
-# JD_THEME      Dark (Carbon #161616) or Light
+# JD_THEME      Dark (Carbon #161616), Light, JDDEFAULT or jd-highlighter
+# JD_ACCENT     accent colour for jd-highlighter, any hex
 # JD_SELFUPDATE false turns off JD's self-update checks. The same channel delivers
 #               the hoster plugins, which go stale within weeks.
 # JD_INST_DIR   install path, only worth changing for debugging
@@ -217,6 +222,7 @@ ENV S6_KILL_GRACETIME=30000 \
 #               zoom would blur it by scaling up the Selkies H.264 stream.
 ENV JD_LANG=en \
     JD_THEME=Dark \
+    JD_ACCENT=#ffee00 \
     JD_SELFUPDATE=true \
     JD_INST_DIR=/config/JDownloader \
     JD_UI_SCALE= \
