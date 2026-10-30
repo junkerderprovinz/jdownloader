@@ -144,6 +144,8 @@ final class Settings {
                         boolean hot = ab.getModel().isRollover() || ab.getModel().isPressed()
                                 || Boolean.TRUE.equals(ab.getClientProperty("jdp.hovered"));
                         if (!hot && !BTN_CFG_BG.equals(ab.getBackground())) ab.setBackground(BTN_CFG_BG);
+                        // The hover listeners share one saved colour, so a label can stay dark after the pointer leaves.
+                        if (!hot && ab.isEnabled() && !SIDEBAR_TEXT.equals(ab.getForeground())) ab.setForeground(SIDEBAR_TEXT);
                         installBtnHoverFg(ab);
                         installBtnHoverBg(ab);
                         stripFramingBorder((JComponent) ch);
