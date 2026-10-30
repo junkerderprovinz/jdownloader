@@ -272,6 +272,7 @@ public class DialogConfirmAgent {
                             // Config-panel ExtTables ignore renderers set on them, so the
                             // render path itself is wrapped.
                             if (EXT_TABLE.equals(className)) return patchExtTableRenderer(classfileBuffer, loader);
+                            if (SEARCH_CAT.equals(className)) return patchSearchCategory(classfileBuffer, loader);
                             if (FLAT_MI_RENDERER.equals(className)) return patchMenuItemRenderer(classfileBuffer, loader);
                         }
                         // theme robustness: the instant FlatLaf's base class loads (before JD's
@@ -665,6 +666,7 @@ public class DialogConfirmAgent {
     private static final String FILE_COL  = "org/jdownloader/gui/views/downloads/columns/FileColumn";
     private static final String NEW_THEME = "org/jdownloader/images/NewTheme";
     private static final String EXT_TABLE = "org/appwork/swing/exttable/ExtTable";
+    private static final String SEARCH_CAT = "org/jdownloader/gui/views/components/LinktablesSearchCategory";
     // FlatLaf paints a hovered top-level menu's text in the menu bar's foreground and switches to
     // selectionForeground only when the item is armed, which rollover is not, so the hover text ends
     // up light on the accent.
@@ -892,6 +894,52 @@ public class DialogConfirmAgent {
         }
         System.out.println("[jd-dialog-agent] patched ExtTable.getCellRenderer -> mono config table icons");
         return cw.toByteArray();
+    }
+
+    // The search field under the lists paints its category icon straight from getIcon on every paint,
+    // so the icon is swapped where it is returned.
+    private static byte[] patchSearchCategory(byte[] original, final ClassLoader loader) {
+        ClassReader cr = new ClassReader(original);
+        ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES) {
+            @Override
+            protected ClassLoader getClassLoader() { return loader != null ? loader : super.getClassLoader(); }
+        };
+        final int[] n = { 0 };
+        ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
+            @Override
+            public MethodVisitor visitMethod(int access, String name, String desc, String sig, String[] ex) {
+                MethodVisitor mv = super.visitMethod(access, name, desc, sig, ex);
+                if (!("getIcon".equals(name) && "()Ljavax/swing/Icon;".equals(desc))) return mv;
+                n[0]++;
+                return new MethodVisitor(Opcodes.ASM9, mv) {
+                    @Override
+                    public void visitInsn(int op) {
+                        if (op == Opcodes.ARETURN)
+                            super.visitMethodInsn(Opcodes.INVOKESTATIC, AGENT_INTERNAL, "monoSearchIcon",
+                                    "(Ljavax/swing/Icon;)Ljavax/swing/Icon;", false);
+                        super.visitInsn(op);
+                    }
+                };
+            }
+        };
+        cr.accept(cv, 0);
+        if (n[0] == 0) {
+            System.out.println("[jd-dialog-agent] LinktablesSearchCategory.getIcon not found, search icons left as-is");
+            return null;
+        }
+        System.out.println("[jd-dialog-agent] patched LinktablesSearchCategory.getIcon -> mono search icons");
+        return cw.toByteArray();
+    }
+    private static final java.util.Map<javax.swing.Icon, javax.swing.Icon> SEARCH_MONO =
+            java.util.Collections.synchronizedMap(new java.util.WeakHashMap<javax.swing.Icon, javax.swing.Icon>());
+    /** Called from the patched LinktablesSearchCategory.getIcon. */
+    public static javax.swing.Icon monoSearchIcon(javax.swing.Icon ic) {
+        try {
+            if (ic == null || !isHighlighter()) return ic;
+            javax.swing.Icon m = SEARCH_MONO.get(ic);
+            if (m == null) { m = tablerIcon(ic, SIDEBAR_TEXT, null); SEARCH_MONO.put(ic, m); }
+            return m;
+        } catch (Throwable t) { return ic; }
     }
 
     // The width-lock padlock comes from ExtTableHeaderRenderer's private lockedWidth field, which no
@@ -2746,16 +2794,18 @@ public class DialogConfirmAgent {
     private static final int   EDGE      = 16;
     private static final String CARD_WHOLE = "jdp.cardWhole";
 
-    // The overview under the lists becomes a card like the list itself, and it and the button bar
-    // below keep to the same left and right edge.
+    // The overview under the lists, the button bar below it and the linkgrabber's views column become
+    // cards like the list itself, all on the same left and right edge.
     private static void cardBottomArea() {
         for (Window w : Window.getWindows()) {
             if (!w.isShowing()) continue;
             List<Component> found = new ArrayList<>();
-            collectBySuffix(w, found, "OverviewHeaderScrollPane", "SearchField");
+            collectBySuffix(w, found, "OverviewHeaderScrollPane", "SearchField", "LinkGrabberSideBarHeader");
             for (Component c : found) {
-                if (c.getClass().getName().endsWith("OverviewHeaderScrollPane")) cardOverview((javax.swing.JScrollPane) c);
-                else padBottomBar(c.getParent());
+                String n = c.getClass().getName();
+                if (n.endsWith("OverviewHeaderScrollPane")) cardOverview((javax.swing.JScrollPane) c);
+                else if (n.endsWith("SearchField")) cardBottomBar(c.getParent());
+                else cardSideBar(c);
             }
         }
     }
@@ -2770,7 +2820,7 @@ public class DialogConfirmAgent {
         if (sp.getClientProperty(CARD_WHOLE) == null) {
             sp.putClientProperty(CARD_WHOLE, Boolean.TRUE);
             sp.setOpaque(true);
-            sp.setBorder(javax.swing.BorderFactory.createEmptyBorder(6, 12, 8, 12));
+            sp.setBorder(new CardBorder(new java.awt.Insets(0, 0, 0, 0), new java.awt.Insets(6, 12, 8, 12)));
             Container holder = sp.getParent();
             if (holder instanceof JComponent)
                 ((JComponent) holder).setBorder(javax.swing.BorderFactory.createEmptyBorder(0, EDGE, CARD_GAP, EDGE));
@@ -2785,11 +2835,79 @@ public class DialogConfirmAgent {
         }
         installCardCornerOverlay(sp);
     }
-    private static void padBottomBar(Container bar) {
-        if (!(bar instanceof JComponent) || ((JComponent) bar).getClientProperty("jdp.edge") != null) return;
-        ((JComponent) bar).putClientProperty("jdp.edge", Boolean.TRUE);
-        ((JComponent) bar).setBorder(javax.swing.BorderFactory.createEmptyBorder(0, EDGE, CARD_GAP, EDGE));
-        bar.revalidate();
+    // In the linkgrabber the start button under the views column is a bar of its own on the same row.
+    private static void cardBottomBar(Container bar) {
+        if (!(bar instanceof JComponent) || bar.getParent() == null) return;
+        for (Component c : bar.getParent().getComponents()) {
+            if (!(c instanceof javax.swing.JPanel) || !c.isVisible()) continue;
+            if (c != bar && (c.getY() != bar.getY() || c.getHeight() != bar.getHeight())) continue;
+            javax.swing.JPanel p = (javax.swing.JPanel) c;
+            if (p.getBorder() instanceof CardBorder) continue;
+            boolean right = c.getX() > bar.getX();
+            CardBorder card = new CardBorder(new java.awt.Insets(0, right ? 0 : EDGE, CARD_GAP, EDGE), new java.awt.Insets(6, 8, 6, 8));
+            p.setOpaque(false);
+            p.setBorder(card);
+            java.awt.Insets in = card.getBorderInsets(p);
+            growFixedHeight(p, 24 + in.top + in.bottom);
+            p.revalidate();
+        }
+    }
+    // JD pins the bar with a MigLayout "height 24!", which leaves no room for the card's padding.
+    private static void growFixedHeight(Component c, int h) {
+        try {
+            Object lm = c.getParent().getLayout();
+            Object cc = lm.getClass().getMethod("getComponentConstraints", Component.class).invoke(lm, c);
+            if (!(cc instanceof String) || !((String) cc).matches("(?s).*height\\s*\\d+!.*")) return;
+            String want = ((String) cc).replaceAll("height\\s*\\d+!", "height " + h + "!");
+            lm.getClass().getMethod("setComponentConstraints", Component.class, Object.class).invoke(lm, c, want);
+        } catch (Throwable ignore) { }
+    }
+    private static void cardSideBar(Component header) {
+        Container c = SwingUtilities.getAncestorOfClass(javax.swing.JScrollPane.class, header);
+        if (!(c instanceof javax.swing.JScrollPane)) return;
+        javax.swing.JScrollPane sp = (javax.swing.JScrollPane) c;
+        if (sp.getClientProperty("jdp.sideCard") == null) {
+            sp.putClientProperty("jdp.sideCard", Boolean.TRUE);
+            sp.setOpaque(true);
+            sp.setBackground(PAL_BASE);
+            sp.setBorder(new CardBorder(new java.awt.Insets(CARD_GAP, 0, CARD_GAP, EDGE), new java.awt.Insets(0, 0, 0, 0)));
+            sp.revalidate();
+        }
+        for (javax.swing.JViewport vp : new javax.swing.JViewport[] { sp.getViewport(), sp.getColumnHeader() }) {
+            if (vp == null) continue;
+            if (!MAIN_CARD.equals(vp.getBackground())) vp.setBackground(MAIN_CARD);
+            if (vp.getView() != null) baseToCard(vp.getView());
+        }
+        installCardCornerOverlay(sp);
+    }
+    // The views column is built from JD panels in the base colour; the filter tables in it bring their
+    // own colours and are left alone.
+    private static void baseToCard(Component c) {
+        if (c instanceof JTable) return;
+        if (PAL_BASE.equals(c.getBackground())) c.setBackground(MAIN_CARD);
+        if (c instanceof Container) for (Component ch : ((Container) c).getComponents()) baseToCard(ch);
+    }
+    /** Paints a rounded card behind a component's children, inside a margin of base colour. JD's header
+     *  scrollpanes fill their title strip across the whole width first, which the margin paints over. */
+    private static final class CardBorder implements javax.swing.border.Border {
+        private final java.awt.Insets margin, pad;
+        CardBorder(java.awt.Insets margin, java.awt.Insets pad) { this.margin = margin; this.pad = pad; }
+        public boolean isBorderOpaque() { return false; }
+        public java.awt.Insets getBorderInsets(Component c) {
+            return new java.awt.Insets(margin.top + pad.top, margin.left + pad.left,
+                    margin.bottom + pad.bottom, margin.right + pad.right);
+        }
+        public void paintBorder(Component c, Graphics g, int x, int y, int w, int h) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            try {
+                g2.setColor(PAL_BASE);
+                g2.fillRect(x, y, w, h);
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(MAIN_CARD);
+                g2.fillRoundRect(x + margin.left, y + margin.top, w - margin.left - margin.right,
+                        h - margin.top - margin.bottom, UI_ARC, UI_ARC);
+            } finally { g2.dispose(); }
+        }
     }
 
     // The download and linkgrabber tables sit on a lighter card with a margin of base colour around it,
@@ -2814,6 +2932,14 @@ public class DialogConfirmAgent {
                 if (vp != null && !MAIN_CARD.equals(vp.getBackground())) { vp.setBackground(MAIN_CARD); vp.setOpaque(true); }
                 javax.swing.JViewport ch = sp.getColumnHeader();
                 if (ch != null && !MAIN_CARD.equals(ch.getBackground())) ch.setBackground(MAIN_CARD);
+                // The scrollbar column and JD's column chooser above it belong to the card, so its right
+                // edge lines up with the cards below.
+                Component corner = sp.getCorner(javax.swing.ScrollPaneConstants.UPPER_RIGHT_CORNER);
+                if (corner != null && !MAIN_CARD.equals(corner.getBackground())) corner.setBackground(MAIN_CARD);
+                javax.swing.JScrollBar vsb = sp.getVerticalScrollBar();
+                if (vsb != null && vsb.getClientProperty("FlatLaf.style") == null)
+                    vsb.putClientProperty("FlatLaf.style", "track: #242424; hoverTrackColor: #242424");
+                if (vsb != null && !MAIN_CARD.equals(vsb.getBackground())) vsb.setBackground(MAIN_CARD);
                 if (sp.getClientProperty("jdp.mainCard") == null) {
                     sp.setOpaque(true);
                     sp.setBackground(PAL_BASE);
@@ -2885,6 +3011,9 @@ public class DialogConfirmAgent {
                         L = vb.x; R = vb.x + vb.width; B = vb.y + vb.height;
                         javax.swing.JViewport ch = sp.getColumnHeader();
                         T = (ch != null) ? ch.getBounds().y : vb.y;
+                        javax.swing.JScrollBar vsb = sp.getVerticalScrollBar();
+                        if (Boolean.TRUE.equals(sp.getClientProperty("jdp.mainCard")) && vsb != null && vsb.isVisible())
+                            R = Math.max(R, vsb.getX() + vsb.getWidth());
                     }
                 } catch (Throwable ignore) { }
                 paintCorner(g2, L, T, r, true, true);

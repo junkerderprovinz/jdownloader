@@ -230,6 +230,8 @@ card = "#ff242424"
 d["colorfortablepackagerowbackground"] = card
 d["colorfortablealternaterowbackground"] = card
 d["colorfortablerowgap"] = card
+# The overview and the views column draw their title strip in this colour on top of their card.
+d["colorforpanelheaderbackground"] = card
 # JD paints the bar fill in contrast to the row, dark on the accent hover row. The
 # percentage text has one fixed colour, so it needs a grey that reads on both fills.
 for _i in range(1, 6):
