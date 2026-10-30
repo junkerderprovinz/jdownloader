@@ -196,7 +196,9 @@ public class DialogConfirmAgent {
         } else {
             exposeSyntheticaToSystemLoader();
         }
-        if (!DESKTOP) writeFile(PID_FILE, Long.toString(ProcessHandle.current().pid()));
+        // The runtime name is pid@host. ProcessHandle would be shorter but needs Java 9, and the desktop
+        // build targets Java 8.
+        if (!DESKTOP) writeFile(PID_FILE, java.lang.management.ManagementFactory.getRuntimeMXBean().getName().split("@")[0]);
         Thread t = new Thread(DialogConfirmAgent::watch, "jd-dialog-agent");
         t.setDaemon(true);
         t.start();
