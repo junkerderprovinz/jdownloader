@@ -405,11 +405,6 @@ final class Menus {
             for (int i = 0; i < mb.getMenuCount(); i++) {
                 javax.swing.JMenu m = mb.getMenu(i);
                 if (m == null) continue;
-                java.awt.Insets mar = m.getMargin();
-                if (mar == null || mar.left != 8) {
-                    int t = mar == null ? 6 : mar.top, b = mar == null ? 6 : mar.bottom;
-                    m.setMargin(new java.awt.Insets(t, 8, b, 12));
-                }
                 installMenuHoverFg(m);
             }
         }

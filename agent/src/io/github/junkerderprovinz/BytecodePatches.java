@@ -76,6 +76,7 @@ final class BytecodePatches {
                             if (EXT_TABLE.equals(className)) return patchExtTableRenderer(classfileBuffer, loader);
                             if (SEARCH_CAT.equals(className)) return patchSearchCategory(classfileBuffer, loader);
                             if (FAV_ICONS.equals(className)) return patchFavIcons(classfileBuffer, loader);
+                            if (ACTION_BAR.equals(className)) return patchDropdownImage(classfileBuffer, loader);
                             if (FLAT_MI_RENDERER.equals(className)) return patchMenuItemRenderer(classfileBuffer, loader);
                         }
                         // Registered before JD's setLookAndFeel, the defaults reach the first paint.
@@ -462,6 +463,7 @@ final class BytecodePatches {
     private static final String EXT_TABLE = "org/appwork/swing/exttable/ExtTable";
     private static final String SEARCH_CAT = "org/jdownloader/gui/views/components/LinktablesSearchCategory";
     private static final String FAV_ICONS = "jd/controlling/faviconcontroller/FavIcons";
+    private static final String ACTION_BAR = "org/jdownloader/gui/views/downloads/bottombar/CustomizeableActionBar";
     // FlatLaf paints a hovered top-level menu's text in the menu bar's foreground and switches to
     // selectionForeground only when the item is armed, which rollover is not, so the hover text ends
     // up light on the accent.
@@ -759,6 +761,44 @@ final class BytecodePatches {
             return null;
         }
         System.out.println("[jd-dialog-agent] patched FavIcons.createDefaultFavIcon -> light stand-in logos");
+        return cw.toByteArray();
+    }
+
+    // The bottom bar glues a tiny arrow onto a menu button's glyph as one image, which the mono pass
+    // would turn into a bar, so the image is rebuilt where it is made.
+    private static byte[] patchDropdownImage(byte[] original, final ClassLoader loader) {
+        ClassReader cr = new ClassReader(original);
+        ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES) {
+            @Override
+            protected ClassLoader getClassLoader() { return loader != null ? loader : super.getClassLoader(); }
+        };
+        final int[] n = { 0 };
+        ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
+            @Override
+            public MethodVisitor visitMethod(int access, String name, String desc, String sig, String[] ex) {
+                MethodVisitor mv = super.visitMethod(access, name, desc, sig, ex);
+                if (!("createDropdownImage".equals(name) && "(ZLjava/awt/Image;)Ljavax/swing/ImageIcon;".equals(desc))) return mv;
+                n[0]++;
+                return new MethodVisitor(Opcodes.ASM9, mv) {
+                    @Override
+                    public void visitInsn(int op) {
+                        if (op == Opcodes.ARETURN) {
+                            super.visitVarInsn(Opcodes.ILOAD, 1);
+                            super.visitVarInsn(Opcodes.ALOAD, 2);
+                            super.visitMethodInsn(Opcodes.INVOKESTATIC, AGENT_INTERNAL, "monoDropdownIcon",
+                                    "(Ljavax/swing/ImageIcon;ZLjava/awt/Image;)Ljavax/swing/ImageIcon;", false);
+                        }
+                        super.visitInsn(op);
+                    }
+                };
+            }
+        };
+        cr.accept(cv, 0);
+        if (n[0] == 0) {
+            System.out.println("[jd-dialog-agent] CustomizeableActionBar.createDropdownImage not found, dropdown glyphs left as-is");
+            return null;
+        }
+        System.out.println("[jd-dialog-agent] patched CustomizeableActionBar.createDropdownImage -> mono dropdown glyphs");
         return cw.toByteArray();
     }
 }

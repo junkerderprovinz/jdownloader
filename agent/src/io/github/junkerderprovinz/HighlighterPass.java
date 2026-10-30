@@ -68,13 +68,18 @@ final class HighlighterPass {
         everyTick("dimModalBackdrops", Dialogs::dimModalBackdrops),
     };
 
-    private static boolean listening;
+    private static boolean listening, inPass, soon;
     private static volatile boolean changed = true;
     private static int quietTicks;
     private static int fullPasses;
 
     static void run(boolean timed) {
         listen();
+        inPass = true;
+        try { runSteps(timed); } finally { inPass = false; }
+    }
+
+    private static void runSteps(boolean timed) {
         boolean full = changed || ++quietTicks >= FULL_PASS_TICKS;
         if (full) {
             // Cleared before the steps run, so the changes they make themselves trigger one more pass.
@@ -100,8 +105,21 @@ final class HighlighterPass {
         listening = true;
         long mask = AWTEvent.CONTAINER_EVENT_MASK | AWTEvent.HIERARCHY_EVENT_MASK | AWTEvent.WINDOW_EVENT_MASK
                 | AWTEvent.COMPONENT_EVENT_MASK | AWTEvent.MOUSE_EVENT_MASK | AWTEvent.KEY_EVENT_MASK;
-        Toolkit.getDefaultToolkit().addAWTEventListener(e -> { if (marksChange(e)) changed = true; }, mask);
+        Toolkit.getDefaultToolkit().addAWTEventListener(e -> { if (marksChange(e)) markChanged(); }, mask);
         UIManager.addPropertyChangeListener(e -> changed = true);
+    }
+
+    // A window or view that just opened would show JD's own look until the next tick, so a change starts
+    // a pass right after the current event. Changes the steps make themselves wait for the tick, which
+    // keeps a step that touches the tree from feeding itself.
+    private static void markChanged() {
+        changed = true;
+        if (inPass || soon) return;
+        soon = true;
+        javax.swing.SwingUtilities.invokeLater(() -> {
+            soon = false;
+            if (DialogConfirmAgent.isHighlighter()) run(false);
+        });
     }
 
     // Scrolling moves components and the pointer enters and leaves them all the time, which changes

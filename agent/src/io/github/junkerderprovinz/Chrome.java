@@ -35,17 +35,34 @@ final class Chrome {
                 javax.swing.JMenuBar mb = ((javax.swing.JFrame) w).getJMenuBar();
                 if (mb != null) {
                     if (!CHROME_BASE.equals(mb.getBackground())) { mb.setBackground(CHROME_BASE); mb.setOpaque(true); }
-                    // FlatMenuBarBorder draws a separator line below the menu bar. The first menu's
-                    // text sits 8px inside it, so the left inset puts the text on EDGE.
-                    javax.swing.border.Border mbb = mb.getBorder();
-                    if (!(mbb instanceof javax.swing.border.EmptyBorder)
-                            || ((javax.swing.border.EmptyBorder) mbb).getBorderInsets().left != EDGE - 8)
-                        mb.setBorder(javax.swing.BorderFactory.createEmptyBorder(0, EDGE - 8, 0, 0));
+                    // Replaces FlatMenuBarBorder, which draws a separator line below the bar.
+                    if (!(mb.getBorder() instanceof MenuPillBorder)) mb.setBorder(new MenuPillBorder());
                 }
             }
             darkenToolbarsIn(w);
         }
     }
+    // The top-level menus sit on pills like the main tabs. A bar paints its border before its children,
+    // so the pills end up behind the menus, and FlatLaf's hover selection uses the same insets and arc in
+    // the template, so it covers a pill exactly. The left inset puts the first pill on EDGE.
+    private static final int PILL_INSET_V = 2, PILL_INSET_H = 4, PILL_ARC = 16;
+    private static final class MenuPillBorder implements javax.swing.border.Border {
+        public boolean isBorderOpaque() { return false; }
+        public java.awt.Insets getBorderInsets(Component c) { return new java.awt.Insets(0, EDGE - PILL_INSET_H, 0, 0); }
+        public void paintBorder(Component c, Graphics g, int x, int y, int w, int h) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            try {
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(TILE_GREY);
+                for (Component m : ((Container) c).getComponents()) {
+                    if (!(m instanceof javax.swing.JMenu) || !m.isVisible()) continue;
+                    g2.fillRoundRect(m.getX() + PILL_INSET_H, m.getY() + PILL_INSET_V, m.getWidth() - 2 * PILL_INSET_H,
+                            m.getHeight() - 2 * PILL_INSET_V, PILL_ARC, PILL_ARC);
+                }
+            } finally { g2.dispose(); }
+        }
+    }
+
     private static void darkenToolbarsIn(Container c) {
         for (Component ch : c.getComponents()) {
             if (isMainToolbar(ch.getClass()) && ch instanceof JComponent) {
