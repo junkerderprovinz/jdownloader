@@ -320,6 +320,16 @@ public class DialogConfirmAgent {
         } catch (Throwable t) { return img; }
     }
 
+    private static volatile java.lang.reflect.Method favIconCall;
+    /** Called from the patched hoster list of the account dialog in place of DomainInfo.getFavIcon(fetch). */
+    public static javax.swing.Icon chooserFavIcon(Object domainInfo, boolean fetch) {
+        try {
+            java.lang.reflect.Method m = favIconCall;
+            if (m == null) favIconCall = m = domainInfo.getClass().getMethod("getFavIcon", boolean.class);
+            return (javax.swing.Icon) m.invoke(domainInfo, fetch || isHighlighter());
+        } catch (Throwable t) { return null; }
+    }
+
     /** Called from the patched CustomizeableActionBar.createDropdownImage: the glyph in the text colour and
      *  a small chevron in place of JD's arrow. */
     public static javax.swing.ImageIcon monoDropdownIcon(javax.swing.ImageIcon orig, boolean up, java.awt.Image glyph) {

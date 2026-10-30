@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static io.github.junkerderprovinz.DialogConfirmAgent.*;
+import static io.github.junkerderprovinz.Dialogs.*;
 import static io.github.junkerderprovinz.Settings.*;
 import static io.github.junkerderprovinz.Tables.*;
 
@@ -77,6 +78,7 @@ final class Cards {
             if (!(c instanceof javax.swing.JPanel) || !c.isVisible()) continue;
             if (c != bar && (c.getY() != bar.getY() || c.getHeight() != bar.getHeight())) continue;
             javax.swing.JPanel p = (javax.swing.JPanel) c;
+            roundButtonsIn(p);
             if (p.getBorder() instanceof CardBorder) continue;
             boolean right = c.getX() > bar.getX();
             CardBorder card = new CardBorder(new java.awt.Insets(0, right ? 0 : EDGE, CARD_GAP, EDGE), new java.awt.Insets(6, 8, 6, 8));

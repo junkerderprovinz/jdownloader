@@ -66,6 +66,7 @@ final class HighlighterPass {
         everyTick("growTableHeaders", Tables::growTableHeaders),
         everyTick("recolorDialogs", Dialogs::recolorDialogs),
         everyTick("dimModalBackdrops", Dialogs::dimModalBackdrops),
+        everyTick("repaintHosterChooser", Dialogs::repaintHosterChooser),
     };
 
     private static boolean listening, inPass, soon;

@@ -324,6 +324,8 @@ final class Menus {
             // Check box menu items paint the selected icon when checked and the pressed icon when armed.
             mi.setSelectedIcon(lo);
             mi.setPressedIcon(hi);
+            // Swing derives a disabled icon only from image icons, so a greyed-out item would show none.
+            mi.setDisabledIcon(tintSolid(lo, DISABLED_TONE));
             mi.setIconTextGap(10);
             mi.setVerticalAlignment(javax.swing.SwingConstants.CENTER);
             installMenuItemHoverIcon(mi);

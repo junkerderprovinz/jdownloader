@@ -1,6 +1,7 @@
 package io.github.junkerderprovinz;
 
 import javax.swing.JComponent;
+import javax.swing.UIManager;
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Container;
@@ -14,7 +15,9 @@ import java.awt.Window;
 
 import static io.github.junkerderprovinz.DialogConfirmAgent.*;
 import static io.github.junkerderprovinz.Icons.*;
+import static io.github.junkerderprovinz.LafDefaults.*;
 import static io.github.junkerderprovinz.Settings.*;
+import static io.github.junkerderprovinz.Tables.*;
 
 /** Dialog colours, the updater window and the dimmed backdrop behind modal dialogs. */
 final class Dialogs {
@@ -50,6 +53,7 @@ final class Dialogs {
                 if (rp != null) {
                     stripFramingBorder(rp);
                     if (rp.getLayeredPane() != null) stripFramingBorder(rp.getLayeredPane());
+                    if (!isUpdater && !(rp.getBorder() instanceof DialogEdgeBorder)) rp.setBorder(new DialogEdgeBorder());
                     if (isUpdater && rp instanceof JComponent) {
                         if (!bg.equals(rp.getBackground())) rp.setBackground(bg);
                         rp.setOpaque(true);
@@ -78,6 +82,49 @@ final class Dialogs {
         w.validate();
     }
 
+    // JD draws the field glyphs of its dialogs at 22 to 24px, larger than any other glyph in the theme. A
+    // dialog's main symbol, such as the warning sign, is larger still and keeps its size.
+    private static javax.swing.Icon dialogGlyph(javax.swing.Icon cur, javax.swing.JLabel l) {
+        boolean field = cur.getIconWidth() > 18 && cur.getIconWidth() <= 26;
+        javax.swing.Icon base = field ? tablerBase(iconKey(cur), 18, 18) : null;
+        if (base != null) return tintIcon(base, SIDEBAR_TEXT, l);
+        javax.swing.Icon t = tablerIcon(cur, SIDEBAR_TEXT, l);
+        return field ? scaleIconTo(t, 18) : t;
+    }
+
+    // A combo's renderer paints the icon of every row and of the value shown in the box itself.
+    static void monoComboRenderer(javax.swing.JComboBox<?> cb) {
+        javax.swing.ListCellRenderer<?> cur = cb.getRenderer();
+        if (cur == null || cur instanceof MonoComboRenderer) return;
+        setRenderer(cb, new MonoComboRenderer(cur));
+    }
+    @SuppressWarnings({ "rawtypes", "unchecked" })
+    private static void setRenderer(javax.swing.JComboBox cb, javax.swing.ListCellRenderer r) { cb.setRenderer(r); }
+    @SuppressWarnings({ "rawtypes", "unchecked" })
+    static final class MonoComboRenderer implements javax.swing.ListCellRenderer {
+        private final javax.swing.ListCellRenderer orig;
+        MonoComboRenderer(javax.swing.ListCellRenderer orig) { this.orig = orig; }
+        public Component getListCellRendererComponent(javax.swing.JList l, Object v, int i, boolean sel, boolean foc) {
+            Component c = orig.getListCellRendererComponent(l, v, i, sel, foc);
+            if (c instanceof javax.swing.JLabel) {
+                javax.swing.JLabel lb = (javax.swing.JLabel) c;
+                javax.swing.Icon ic = lb.getIcon();
+                if (ic != null && !isSiteLogo(ic)) lb.setIcon(tablerIcon(ic, sel && i >= 0 ? accentFg() : SIDEBAR_TEXT, lb));
+            }
+            return c;
+        }
+    }
+
+    // Undecorated dialogs over a window that is not dimmed would melt into it without an edge.
+    private static final class DialogEdgeBorder implements javax.swing.border.Border {
+        public java.awt.Insets getBorderInsets(Component c) { return new java.awt.Insets(1, 1, 1, 1); }
+        public boolean isBorderOpaque() { return true; }
+        public void paintBorder(Component c, Graphics g, int x, int y, int w, int h) {
+            g.setColor(PAL_DIVIDER);
+            g.drawRect(x, y, w - 1, h - 1);
+        }
+    }
+
     private static boolean isWarningRed(Color c) {
         return c != null && c.getRed() > 200 && c.getGreen() < 80 && c.getBlue() < 80;
     }
@@ -103,7 +150,10 @@ final class Dialogs {
                         ch.setBackground(FIELD_BG);
                         if (ch instanceof JComponent) ((JComponent) ch).setOpaque(true);
                     }
-                    if (ch instanceof javax.swing.JComboBox) styleComboPopup((javax.swing.JComboBox<?>) ch);
+                    if (ch instanceof javax.swing.JComboBox) {
+                        styleComboPopup((javax.swing.JComboBox<?>) ch);
+                        monoComboRenderer((javax.swing.JComboBox<?>) ch);
+                    }
                 } else if (ch instanceof javax.swing.AbstractButton && !isCheckLike(ch)) {
                     javax.swing.AbstractButton ab = (javax.swing.AbstractButton) ch;
                     boolean hot = ab.getModel().isRollover() || ab.getModel().isPressed();
@@ -113,6 +163,7 @@ final class Dialogs {
                     if (!hot && !SIDEBAR_TEXT.equals(ab.getForeground())) ab.setForeground(SIDEBAR_TEXT);
                     installBtnHoverFg(ab);
                     installBtnHoverBg(ab);
+                    if (bg != UPDATER_BG) roundButton(ab);
                     // This FlatLaf build ignores a per-component arc, so the updater buttons are rounded by a
                     // corner mask. The original border stays inside it to keep the padding.
                     if (bg == UPDATER_BG && ab.getClientProperty("jdp.updBtnMask") == null) {
@@ -131,11 +182,13 @@ final class Dialogs {
                         tameProgressLogo(l);
                     } else {
                         javax.swing.Icon cur = l.getIcon();
-                        if (l.getClientProperty("jdp.monoLbl") != cur) {
+                        // monoChromeIcons may have toned the glyph already at JD's size.
+                        boolean big = cur.getIconWidth() > 18 && cur.getIconWidth() <= 26;
+                        if (l.getClientProperty("jdp.monoLbl") != cur || big) {
                             // Small icons are chrome glyphs; a large image is a logo and only loses its box.
                             javax.swing.Icon m;
                             if (cur.getIconWidth() >= 40 || cur.getIconHeight() >= 40) m = deBoxIcon(cur, l);
-                            else m = tablerIcon(cur, SIDEBAR_TEXT, l);
+                            else m = dialogGlyph(cur, l);
                             if (m != cur) { l.setIcon(m); l.putClientProperty("jdp.monoLbl", m); }
                         }
                     }
@@ -264,6 +317,7 @@ final class Dialogs {
         javax.swing.border.Border b = jc.getBorder();
         if (b == null || b instanceof javax.swing.border.EmptyBorder) return;
         String cn = b.getClass().getName();
+        if (jc instanceof javax.swing.AbstractButton && cn.contains("FlatButtonBorder")) { roundButton(jc); return; }
         if (b instanceof javax.swing.border.TitledBorder || b instanceof javax.swing.border.EtchedBorder
                 || b instanceof javax.swing.border.LineBorder || b instanceof javax.swing.border.BevelBorder
                 || b instanceof javax.swing.border.MatteBorder
@@ -277,6 +331,81 @@ final class Dialogs {
                 || cn.contains("FlatTextBorder") || cn.contains("FlatMarginBorder")) {
             java.awt.Insets in = b.getBorderInsets(jc);
             jc.setBorder(javax.swing.BorderFactory.createEmptyBorder(in.top, in.left, in.bottom, in.right));
+        }
+    }
+
+    // Logos the hoster list asked for arrive in the background, and the table does not repaint for them.
+    static void repaintHosterChooser() {
+        for (Window w : Window.getWindows())
+            if (w.isShowing() && w instanceof Dialog) repaintChooserIn(w);
+    }
+    private static void repaintChooserIn(Container c) {
+        for (Component ch : c.getComponents()) {
+            if (ch instanceof javax.swing.JTable && ch.getClass().getName().contains("HosterChooserTable")) ch.repaint();
+            else if (ch instanceof Container) repaintChooserIn((Container) ch);
+        }
+    }
+
+    // JD's FlatLaf fills buttons square whatever arc it is given, so the fill is painted here and
+    // FlatLaf's own UI only draws the label and icon on top. Arrow buttons inside combos, spinners and
+    // scroll bars keep their look.
+    static void roundButton(JComponent jc) {
+        if (!(jc instanceof javax.swing.AbstractButton)) return;
+        javax.swing.AbstractButton b = (javax.swing.AbstractButton) jc;
+        javax.swing.plaf.ButtonUI ui = b.getUI();
+        if (ui == null || ui instanceof RoundButtonUI || !ui.getClass().getName().endsWith("FlatButtonUI")) return;
+        Container p = b.getParent();
+        if (b.getClass().getName().contains("Arrow") || p instanceof javax.swing.JComboBox
+                || p instanceof javax.swing.JSpinner || p instanceof javax.swing.JScrollBar) return;
+        b.setUI(new RoundButtonUI(ui));
+    }
+    static final class RoundButtonUI extends javax.swing.plaf.ButtonUI {
+        private final javax.swing.plaf.ButtonUI inner;
+        RoundButtonUI(javax.swing.plaf.ButtonUI inner) { this.inner = inner; }
+        @Override public void installUI(JComponent c) { inner.installUI(c); c.setOpaque(false); }
+        @Override public void uninstallUI(JComponent c) { inner.uninstallUI(c); }
+        @Override public void update(Graphics g, JComponent c) {
+            javax.swing.AbstractButton b = (javax.swing.AbstractButton) c;
+            if (b.isContentAreaFilled()) {
+                Color bg = fill(b);
+                if (bg != null) {
+                    Graphics2D g2 = (Graphics2D) g.create();
+                    try {
+                        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                        g2.setColor(bg);
+                        g2.fillRoundRect(0, 0, c.getWidth(), c.getHeight(), UI_ARC, UI_ARC);
+                    } finally { g2.dispose(); }
+                }
+            }
+            inner.paint(g, c);
+        }
+        private static Color fill(javax.swing.AbstractButton b) {
+            javax.swing.ButtonModel m = b.getModel();
+            boolean def = b instanceof javax.swing.JButton && ((javax.swing.JButton) b).isDefaultButton();
+            String k = def ? "Button.default." : "Button.";
+            Color c = null;
+            if (!b.isEnabled()) c = UIManager.getColor("Button.disabledBackground");
+            else if (m.isPressed() && m.isArmed()) c = UIManager.getColor(k + "pressedBackground");
+            else if (m.isRollover()) c = UIManager.getColor(k + "hoverBackground");
+            return c != null ? c : b.getBackground();
+        }
+        @Override public void paint(Graphics g, JComponent c) { inner.paint(g, c); }
+        @Override public Dimension getPreferredSize(JComponent c) { return inner.getPreferredSize(c); }
+        @Override public Dimension getMinimumSize(JComponent c) { return inner.getMinimumSize(c); }
+        @Override public Dimension getMaximumSize(JComponent c) { return inner.getMaximumSize(c); }
+        @Override public boolean contains(JComponent c, int x, int y) { return inner.contains(c, x, y); }
+        @Override public int getBaseline(JComponent c, int w, int h) { return inner.getBaseline(c, w, h); }
+        @Override public java.awt.Component.BaselineResizeBehavior getBaselineResizeBehavior(JComponent c) {
+            return inner.getBaselineResizeBehavior(c);
+        }
+    }
+    static void roundButtonsIn(Container c) {
+        for (Component ch : c.getComponents()) {
+            if (ch instanceof javax.swing.AbstractButton && !(ch instanceof javax.swing.JMenuItem) && !isCheckLike(ch)
+                    && ((JComponent) ch).getBorder() != null
+                    && ((JComponent) ch).getBorder().getClass().getName().contains("FlatButtonBorder"))
+                roundButton((JComponent) ch);
+            else if (ch instanceof Container) roundButtonsIn((Container) ch);
         }
     }
 

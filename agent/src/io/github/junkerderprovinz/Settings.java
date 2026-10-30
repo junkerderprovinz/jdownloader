@@ -147,6 +147,7 @@ final class Settings {
                         installBtnHoverFg(ab);
                         installBtnHoverBg(ab);
                         stripFramingBorder((JComponent) ch);
+                        roundButton(ab);
                     } else if (isCheckLike(ch) && ch instanceof JComponent) {
                         // The check glyph keeps its own CheckBox.icon border.
                         stripFramingBorder((JComponent) ch);
