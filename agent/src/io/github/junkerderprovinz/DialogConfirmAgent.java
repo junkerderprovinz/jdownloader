@@ -73,6 +73,14 @@ import java.util.WeakHashMap;
  */
 public class DialogConfirmAgent {
 
+    // The jd-highlighter desktop installer sets jd.highlighter.home to <JD>/.jd-highlighter.
+    // There JD's dialogs are left to the user and no container markers are written.
+    private static final String HL_HOME = System.getProperty("jd.highlighter.home", "");
+    private static final boolean DESKTOP = !HL_HOME.isEmpty();
+    private static final java.io.File JD_HOME = DESKTOP
+            ? new java.io.File(HL_HOME).getAbsoluteFile().getParentFile()
+            : new java.io.File("/config/JDownloader");
+
     // --- Carbon greyscale (matches jdownloader-theme.sh content palette) ---
     private static final ColorUIResource BG     = new ColorUIResource(0x16, 0x16, 0x16);
     private static final ColorUIResource HEADER = new ColorUIResource(0x0b, 0x0b, 0x0b);
@@ -126,7 +134,9 @@ public class DialogConfirmAgent {
     // LAF re-apply once the main window is stable (the same once-after-stable pattern
     // enforceDarkChrome() has used safely for months). The legacy UIManager remap in
     // enforceDarkChrome() still runs afterwards as polish + fallback.
-    private static final java.io.File DEFAULTS_DIR = new java.io.File("/opt/JDownloader/flatlaf-defaults");
+    private static final java.io.File DEFAULTS_DIR = DESKTOP
+            ? new java.io.File(HL_HOME, "flatlaf-defaults")
+            : new java.io.File("/opt/JDownloader/flatlaf-defaults");
     private static Instrumentation INSTRUMENTATION;
     private static volatile boolean defaultsRegistered = false;
     private static volatile boolean flatLafLoadHookFired = false;
@@ -180,7 +190,7 @@ public class DialogConfirmAgent {
         } else {
             exposeSyntheticaToSystemLoader();
         }
-        writeFile(PID_FILE, Long.toString(ProcessHandle.current().pid()));
+        if (!DESKTOP) writeFile(PID_FILE, Long.toString(ProcessHandle.current().pid()));
         Thread t = new Thread(DialogConfirmAgent::watch, "jd-dialog-agent");
         t.setDaemon(true);
         t.start();
@@ -963,9 +973,10 @@ public class DialogConfirmAgent {
     // light copy. (The Swing Tree.collapsedIcon override elsewhere only covers real
     // JTrees in JD dialogs; it never touched this ExtTable handle.)
     private static final java.io.File EXPANDER_SRC_DIR =
-            new java.io.File("/opt/JDownloader/themes-default/flat/org/jdownloader/images");
+            DESKTOP ? new java.io.File(HL_HOME, "icons")
+                    : new java.io.File("/opt/JDownloader/themes-default/flat/org/jdownloader/images");
     private static final java.io.File EXPANDER_DST_DIR =
-            new java.io.File("/config/JDownloader/themes/flat/org/jdownloader/images");
+            new java.io.File(JD_HOME, "themes/flat/org/jdownloader/images");
     // JD ships the two exttable lock icons black, which vanishes on the jd-highlighter
     // header. The image carries light copies, and JD's re-provisioning puts the black ones
     // back, so they need the same heal as the expanders.
@@ -1135,9 +1146,9 @@ public class DialogConfirmAgent {
      * Retried each tick until the jar exists (fresh installs write it later).
      */
     private static final java.io.File FLATLAF_JAR =
-            new java.io.File("/config/JDownloader/libs/laf/flatlaf.jar");
+            new java.io.File(JD_HOME, "libs/laf/flatlaf.jar");
     private static final java.io.File LAF_DIR =
-            new java.io.File("/config/JDownloader/libs/laf");
+            new java.io.File(JD_HOME, "libs/laf");
     private static boolean flatlafExposed = false;
     private static final java.util.HashSet<String> syntheticaExposed =
             new java.util.HashSet<String>();
@@ -1250,7 +1261,7 @@ public class DialogConfirmAgent {
         if (wantClassicLaf()) {
             exposeSyntheticaToSystemLoader();
             seedClassicLafColors();
-            handleDialogs();
+            if (!DESKTOP) handleDialogs();
             // Classic still gets the compact-toolbar / speed-graph growth.
             widenSpeedEditors();
             growSpeedMeter();
@@ -1305,7 +1316,7 @@ public class DialogConfirmAgent {
         }
         if (++lafTick >= 12) {   // every ~5s (ticks run every 400ms)
             lafTick = 0;
-            writeLafMarker();
+            if (!DESKTOP) writeLafMarker();
             if (GEO_DEBUG) dumpGeometry();
         }
     }
@@ -3589,9 +3600,9 @@ public class DialogConfirmAgent {
 
     // jd-highlighter polish for what JD hardcodes and no theme key reaches. Plain Dark
     // keeps stock JD, so every hook checks isHighlighter() first and leaves JD as it was
-    // on any failure. The desktop agent sets the property; the container has JD_THEME.
+    // on any failure. The desktop install is always jd-highlighter.
 
-    private static final boolean HIGHLIGHTER = Boolean.getBoolean("jd.highlighter")
+    private static final boolean HIGHLIGHTER = DESKTOP
             || System.getenv().getOrDefault("JD_THEME", "").toLowerCase(java.util.Locale.ROOT).contains("highlight");
 
     private static boolean isHighlighter() { return HIGHLIGHTER; }
@@ -3684,7 +3695,8 @@ public class DialogConfirmAgent {
     // JD's chrome glyphs are replaced with Tabler Icons (MIT), shipped as light PNGs named after the JD
     // icon key in a few sizes. The key comes from getIdentifier().getKey(), since wrapper icons lack a
     // plain getKey(). Icons without a key or a matching PNG get a mono tint of their own glyph.
-    private static final String TABLER_DIR = "/opt/jd-tabler/png";
+    private static final String TABLER_DIR = DESKTOP
+            ? new java.io.File(HL_HOME, "jd-tabler/png").getPath() : "/opt/jd-tabler/png";
     private static final int[] TABLER_SIZES = { 16, 18, 20, 24, 32 };
     private static final Object TABLER_NONE = new Object();
     private static final java.util.Map<String, Object> TABLER_CACHE = new java.util.concurrent.ConcurrentHashMap<>();
