@@ -31,11 +31,13 @@ final class Dialogs {
         for (Window w : Window.getWindows()) {
             if (!w.isShowing() || !(w instanceof javax.swing.RootPaneContainer)) continue;
             // The updater window is undecorated, transparent and not a Dialog, so it is matched by title.
+            // The main frame is left out because JD adds "Update available" to its title.
             boolean isUpdater = false;
             try {
                 String t = (w instanceof Frame) ? ((Frame) w).getTitle()
                         : (w instanceof Dialog) ? ((Dialog) w).getTitle() : w.getName();
-                isUpdater = t != null && t.toLowerCase().contains("updat");
+                isUpdater = t != null && t.toLowerCase().contains("updat")
+                        && !w.getClass().getName().endsWith("JDownloaderMainFrame");
             } catch (Throwable ig) { }
             if (!(w instanceof Dialog) && !isUpdater) continue;
             try {
