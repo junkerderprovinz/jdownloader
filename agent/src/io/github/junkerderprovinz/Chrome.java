@@ -176,7 +176,12 @@ final class Chrome {
         if (cur instanceof TabIcon) { ensureTabIconListener(l); return; }
         if (cur == null) return;
         javax.swing.Icon base = cur;
+        // The donate tab pulses its heart through a TransparentIcon that no longer carries the key,
+        // so a label keeps the first key it was seen with.
         String tk = iconKey(cur);
+        if (tk != null) l.putClientProperty("jdp.tabKey", tk);
+        else if (l.getClientProperty("jdp.tabKey") instanceof String) tk = (String) l.getClientProperty("jdp.tabKey");
+        else if (l.getParent() != null && l.getParent().getClass().getSimpleName().equals("DonateTabHeader")) tk = "heart";
         if (tk != null) { javax.swing.Icon tb = tablerBase(tk, cur.getIconWidth(), cur.getIconHeight()); if (tb != null) base = tb; }
         javax.swing.Icon light  = tintSolid(base, SIDEBAR_TEXT);
         javax.swing.Icon dark   = tintSolid(base, accentFg());

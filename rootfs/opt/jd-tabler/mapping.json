@@ -45,6 +45,7 @@
   "downloadmanagment": "list-details",
   "downloadpassword": "key",
   "downloadpath": "folder",
+  "easter-egg": "egg",
   "edit": "pencil",
   "error": "alert-circle",
   "event": "calendar-event",
@@ -71,6 +72,7 @@
   "go-top": "arrow-bar-to-up",
   "go-up": "chevron-up",
   "gui": "layout",
+  "halloween": "pumpkin-scary",
   "harddisk": "database",
   "hashsum": "hash",
   "heart": "heart",
@@ -181,6 +183,7 @@
   "updaterIcon100": "cloud-check",
   "upload": "upload",
   "url": "link",
+  "valentine": "hearts",
   "video": "video",
   "wait": "hourglass",
   "warning": "alert-triangle",
@@ -188,5 +191,6 @@
   "warning_green": "alert-triangle",
   "warning_red": "alert-triangle",
   "wizard": "wand",
-  "wrench": "tool"
+  "wrench": "tool",
+  "xmas-gift": "gift"
 }
