@@ -165,7 +165,13 @@ public class DialogConfirmAgent {
     private static final java.util.Set<Window> RESTART_REQUESTED =
             java.util.Collections.newSetFromMap(new java.util.WeakHashMap<Window, Boolean>());
 
+    // When JD restarts itself it copies -javaagent into the new command line, and the inherited
+    // JAVA_TOOL_OPTIONS loads the agent a second time. Two instances patch every class twice.
+    private static boolean started;
+
     public static void premain(String agentArgs, Instrumentation inst) {
+        if (started) return;
+        started = true;
         if (wantClassicLaf()) {
             System.out.println("[jd-dialog-agent] watching for installer dialogs (classic JDDEFAULT — no FlatLaf dark chrome)");
         } else if (wantDarkLaf()) {
@@ -1257,24 +1263,60 @@ public class DialogConfirmAgent {
         }
     }
 
+    // Each step runs on its own, so one that throws on an odd component cannot starve the rest.
+    // JD re-renders popup rows lazily, which is why open popups are styled again on every tick.
+    private static final Runnable[] HL_STEPS = {
+        DialogConfirmAgent::styleSidebar,
+        DialogConfirmAgent::stripSectionUnderlines,
+        DialogConfirmAgent::recolorMainTabs,
+        DialogConfirmAgent::flushMenuBarItems,
+        DialogConfirmAgent::darkenChromeBars,
+        DialogConfirmAgent::monoChromeIcons,
+        DialogConfirmAgent::roundToolbarButtons,
+        DialogConfirmAgent::badgeViewsMenu,
+        DialogConfirmAgent::badgeViewsPanel,
+        DialogConfirmAgent::fixMenuArrow,
+        DialogConfirmAgent::styleMenuFields,
+        DialogConfirmAgent::wireMenuPopups,
+        DialogConfirmAgent::styleVisibleMenuPopups,
+        DialogConfirmAgent::cardSettingsSections,
+        DialogConfirmAgent::borderlessConfigTables,
+        DialogConfirmAgent::unifyConfigFields,
+        DialogConfirmAgent::monoTableRowIcons,
+        DialogConfirmAgent::indentNameColumns,
+        DialogConfirmAgent::cardMainTables,
+        DialogConfirmAgent::cardBottomArea,
+        DialogConfirmAgent::alignToolbarLeft,
+        DialogConfirmAgent::monoConfigTableIcons,
+        DialogConfirmAgent::fixWidthLockIcon,
+        DialogConfirmAgent::stylePropertiesPanel,
+        DialogConfirmAgent::monoSectionHeaders,
+        DialogConfirmAgent::monoCornerIcons,
+        DialogConfirmAgent::growTableHeaders,
+        DialogConfirmAgent::recolorDialogs,
+        DialogConfirmAgent::dimModalBackdrops,
+    };
+
     private static void tick() {
         if (wantClassicLaf()) {
             exposeSyntheticaToSystemLoader();
             seedClassicLafColors();
-            if (!DESKTOP) handleDialogs();
+            handleDialogs();
             // Classic still gets the compact-toolbar / speed-graph growth.
             widenSpeedEditors();
             growSpeedMeter();
             replaceSpeedGraph();
         } else {
+            // The container fixes are made for FlatLaf Dark, so a desktop in another look and feel
+            // is left alone entirely.
             if (DESKTOP) {
-                LookAndFeel laf = UIManager.getLookAndFeel();
-                desktopFlatLaf = laf != null && laf.getClass().getName().startsWith("com.formdev.flatlaf.");
+                desktopFlatLaf = isFlatDark(UIManager.getLookAndFeel());
+                if (!desktopFlatLaf) return;
             }
             exposeFlatlafToSystemLoader();
             restoreExpanderIcons();
             if (!isHighlighter()) healPackageToggle();   // rebuilds FileColumn's cached [+]/[-] toggle icons
-            handleDialogs();
+            if (!DESKTOP) handleDialogs();
             registerDefaultsSource();     // FlatDarkLaf.properties OR FlatLightLaf.properties
             applyCustomDefaults();
             // Dark chrome MUST NOT run on FlatLightLaf — left black panels on Light installs.
@@ -1287,35 +1329,9 @@ public class DialogConfirmAgent {
             growSpeedMeter();
             replaceSpeedGraph();
             if (isHighlighter()) {
-                styleSidebar();
-                stripSectionUnderlines();
-                recolorMainTabs();
-                flushMenuBarItems();
-                darkenChromeBars();
-                monoChromeIcons();
-                roundToolbarButtons();
-                badgeViewsMenu();
-                badgeViewsPanel();
-                styleMenuFields();
-                wireMenuPopups();
-                // JD re-renders popup rows lazily, so open popups are styled again on
-                // every tick.
-                styleVisibleMenuPopups();
-                cardSettingsSections();
-                borderlessConfigTables();
-                unifyConfigFields();
-                monoTableRowIcons();
-                indentNameColumns();
-                cardMainTables();
-                alignToolbarLeft();
-                monoConfigTableIcons();
-                fixWidthLockIcon();
-                stylePropertiesPanel();
-                monoSectionHeaders();
-                monoCornerIcons();
-                growTableHeaders();
-                recolorDialogs();
-                dimModalBackdrops();
+                for (Runnable step : HL_STEPS) {
+                    try { step.run(); } catch (Throwable ignore) { }
+                }
             }
         }
         if (++lafTick >= 12) {   // every ~5s (ticks run every 400ms)
@@ -2195,6 +2211,74 @@ public class DialogConfirmAgent {
     private static final Color TILE_GREY = PAL_TRACK;   // unselected main tab
     private static final int   MENU_FIELD_W  = 110;
 
+    // FlatLaf darkens a submenu's arrow only for a JMenu it sees as selected, which JD's menus do not
+    // report while their submenu is open, so the arrow would stay light on the accent. The arrow of every
+    // JMenu is wrapped in one that turns dark whenever the menu is hot.
+    private static final class HotArrowIcon implements javax.swing.Icon {
+        final javax.swing.Icon base;
+        HotArrowIcon(javax.swing.Icon base) { this.base = base; }
+        public int getIconWidth() { return base.getIconWidth(); }
+        public int getIconHeight() { return base.getIconHeight(); }
+        public void paintIcon(Component c, Graphics g, int x, int y) {
+            boolean hot = c instanceof javax.swing.JMenu
+                    && (((javax.swing.JMenu) c).isSelected() || ((javax.swing.JMenu) c).getModel().isArmed());
+            (hot ? tintIcon(base, accentFg(), c) : base).paintIcon(c, g, x, y);
+        }
+    }
+    private static void fixMenuArrow() {
+        for (Window w : Window.getWindows()) {
+            if (!w.isShowing()) continue;
+            if (w instanceof javax.swing.JFrame) {
+                javax.swing.JMenuBar mb = ((javax.swing.JFrame) w).getJMenuBar();
+                if (mb != null) for (javax.swing.MenuElement m : mb.getSubElements()) fixArrowsIn(m);
+            }
+            for (Component c : w instanceof Container ? ((Container) w).getComponents() : new Component[0])
+                if (c instanceof javax.swing.JRootPane) fixPopupArrows((Container) c);
+        }
+    }
+    private static void fixPopupArrows(Container c) {
+        for (Component ch : c.getComponents()) {
+            if (ch instanceof JPopupMenu) fixArrowsIn((JPopupMenu) ch);
+            else if (ch instanceof Container) fixPopupArrows((Container) ch);
+        }
+    }
+    private static void fixArrowsIn(javax.swing.MenuElement e) {
+        if (e instanceof javax.swing.JMenu) {
+            Object ui = ((javax.swing.JMenu) e).getUI();
+            Object icon = fieldValue(ui, javax.swing.plaf.basic.BasicMenuItemUI.class, "arrowIcon");
+            if (icon instanceof javax.swing.Icon && !(icon instanceof HotArrowIcon)) {
+                HotArrowIcon hot = new HotArrowIcon((javax.swing.Icon) icon);
+                setField(ui, "arrowIcon", hot);
+                // FlatLaf paints through a renderer that keeps its own reference to the arrow.
+                Object renderer = fieldValue(ui, ui.getClass(), "renderer");
+                if (renderer == null) renderer = fieldValue(ui, ui.getClass().getSuperclass(), "renderer");
+                if (renderer != null) setField(renderer, "arrowIcon", hot);
+                ((javax.swing.JMenu) e).repaint();
+            }
+        }
+        for (javax.swing.MenuElement sub : e.getSubElements()) fixArrowsIn(sub);
+    }
+    private static Object fieldValue(Object o, Class<?> owner, String name) {
+        try {
+            Field f = owner.getDeclaredField(name);
+            f.setAccessible(true);
+            return f.get(o);
+        } catch (Throwable t) { return null; }
+    }
+    private static void setField(Object o, String name, Object value) {
+        for (Class<?> k = o.getClass(); k != null && k != Object.class; k = k.getSuperclass()) {
+            try {
+                Field f = k.getDeclaredField(name);
+                f.setAccessible(true);
+                f.set(o, value);
+                return;
+            } catch (NoSuchFieldException next) {
+            } catch (Throwable t) {
+                return;
+            }
+        }
+    }
+
     private static void styleMenuFields() {
         for (Window w : Window.getWindows()) if (w.isShowing()) styleMenuFieldsIn(w, false);
     }
@@ -2617,7 +2701,7 @@ public class DialogConfirmAgent {
     // shows the same colour instead of a grey flash. recolorBarFields stays as a per-instance
     // belt-and-suspenders layer and uses the SAME light fill (BAR_FILL) so they can't disagree.
     private static void installProgressBarDefaults() {
-        if (wantDarkLaf() && !isHighlighter()) {
+        if (wantDarkLaf() && !isHighlighter() && !DESKTOP) {
             UIManager.put("ProgressBar.foreground",          new ColorUIResource(0xc6, 0xc6, 0xc6)); // light fill
             UIManager.put("ProgressBar.background",          new ColorUIResource(0x26, 0x26, 0x26)); // dark track
             UIManager.put("ProgressBar.selectionForeground", new ColorUIResource(0x16, 0x16, 0x16)); // % over the fill (dark on light)
@@ -2641,6 +2725,7 @@ public class DialogConfirmAgent {
         lafListenerAdded = true;
         UIManager.addPropertyChangeListener(evt -> {
             if ("lookAndFeel".equals(evt.getPropertyName())) {
+                if (DESKTOP) desktopFlatLaf = isFlatDark(UIManager.getLookAndFeel());
                 SwingUtilities.invokeLater(() -> {
                     installProgressBarDefaults();
                     if (wantDarkLaf()) retintProgressBars();
@@ -2655,6 +2740,56 @@ public class DialogConfirmAgent {
     private static final Color MAIN_CARD = PAL_SURFACE;
     private static final int   CARD_GAP  = 10;
     private static final int   CARD_ARC  = UI_RADIUS;
+    // The left line that menu, toolbar, tabs, cards and the bottom bar all start on.
+    private static final int   EDGE      = 16;
+    private static final String CARD_WHOLE = "jdp.cardWhole";
+
+    // The overview under the lists becomes a card like the list itself, and it and the button bar
+    // below keep to the same left and right edge.
+    private static void cardBottomArea() {
+        for (Window w : Window.getWindows()) {
+            if (!w.isShowing()) continue;
+            List<Component> found = new ArrayList<>();
+            collectBySuffix(w, found, "OverviewHeaderScrollPane", "SearchField");
+            for (Component c : found) {
+                if (c.getClass().getName().endsWith("OverviewHeaderScrollPane")) cardOverview((javax.swing.JScrollPane) c);
+                else padBottomBar(c.getParent());
+            }
+        }
+    }
+    private static void collectBySuffix(Container c, List<Component> out, String... suffixes) {
+        for (Component ch : c.getComponents()) {
+            String n = ch.getClass().getName();
+            for (String s : suffixes) if (n.endsWith(s)) { out.add(ch); break; }
+            if (ch instanceof Container) collectBySuffix((Container) ch, out, suffixes);
+        }
+    }
+    private static void cardOverview(javax.swing.JScrollPane sp) {
+        if (sp.getClientProperty(CARD_WHOLE) == null) {
+            sp.putClientProperty(CARD_WHOLE, Boolean.TRUE);
+            sp.setOpaque(true);
+            sp.setBorder(javax.swing.BorderFactory.createEmptyBorder(6, 12, 8, 12));
+            Container holder = sp.getParent();
+            if (holder instanceof JComponent)
+                ((JComponent) holder).setBorder(javax.swing.BorderFactory.createEmptyBorder(0, EDGE, CARD_GAP, EDGE));
+            if (holder != null) holder.revalidate();
+        }
+        if (!MAIN_CARD.equals(sp.getBackground())) sp.setBackground(MAIN_CARD);
+        for (javax.swing.JViewport vp : new javax.swing.JViewport[] { sp.getViewport(), sp.getColumnHeader() }) {
+            if (vp == null) continue;
+            if (!MAIN_CARD.equals(vp.getBackground())) vp.setBackground(MAIN_CARD);
+            Component view = vp.getView();
+            if (view != null && view.isOpaque() && !MAIN_CARD.equals(view.getBackground())) view.setBackground(MAIN_CARD);
+        }
+        installCardCornerOverlay(sp);
+    }
+    private static void padBottomBar(Container bar) {
+        if (!(bar instanceof JComponent) || ((JComponent) bar).getClientProperty("jdp.edge") != null) return;
+        ((JComponent) bar).putClientProperty("jdp.edge", Boolean.TRUE);
+        ((JComponent) bar).setBorder(javax.swing.BorderFactory.createEmptyBorder(0, EDGE, CARD_GAP, EDGE));
+        bar.revalidate();
+    }
+
     // The download and linkgrabber tables sit on a lighter card with a margin of base colour around it,
     // like the settings cards.
     private static void cardMainTables() {
@@ -2680,7 +2815,7 @@ public class DialogConfirmAgent {
                 if (sp.getClientProperty("jdp.mainCard") == null) {
                     sp.setOpaque(true);
                     sp.setBackground(PAL_BASE);
-                    sp.setBorder(javax.swing.BorderFactory.createEmptyBorder(CARD_GAP, CARD_GAP, CARD_GAP, CARD_GAP));
+                    sp.setBorder(javax.swing.BorderFactory.createEmptyBorder(CARD_GAP, EDGE, CARD_GAP, EDGE));
                     sp.putClientProperty("jdp.mainCard", Boolean.TRUE);
                     sp.revalidate(); sp.repaint();
                 }
@@ -2714,11 +2849,13 @@ public class DialogConfirmAgent {
             ov.sp = sp;
             java.awt.Rectangle b = javax.swing.SwingUtilities.convertRectangle(sp.getParent(), sp.getBounds(), lp);
             if (b.width <= 0 || b.height <= 0) return;
+            // Swing repaints the layer over any dirty region below it, so the overlay itself only
+            // needs a repaint when it moves.
             if (!ov.getBounds().equals(b)) {
                 ov.setBounds(b);
                 lp.setLayer(ov, javax.swing.JLayeredPane.PALETTE_LAYER);
+                ov.repaint();
             }
-            ov.repaint();
         } catch (Throwable ignore) { }
     }
     private static final class CardCornerOverlay extends JComponent {
@@ -2726,6 +2863,8 @@ public class DialogConfirmAgent {
         CardCornerOverlay() { setOpaque(false); }
         @Override public boolean contains(int x, int y) { return false; }   // lets mouse events through to the table
         @Override protected void paintComponent(Graphics g) {
+            // A hidden or replaced card leaves its overlay behind, which then must not paint.
+            if (sp == null || !sp.isShowing()) return;
             Graphics2D g2 = (Graphics2D) g.create();
             try {
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
@@ -2736,7 +2875,10 @@ public class DialogConfirmAgent {
                 int L = CARD_GAP, T = CARD_GAP, R = getWidth() - CARD_GAP, B = getHeight() - CARD_GAP;
                 try {
                     javax.swing.JViewport vp = (sp != null) ? sp.getViewport() : null;
-                    if (vp != null) {
+                    // A card that pads its content from the inside fills its whole scrollpane.
+                    if (sp != null && Boolean.TRUE.equals(sp.getClientProperty(CARD_WHOLE))) {
+                        L = 0; T = 0; R = getWidth(); B = getHeight();
+                    } else if (vp != null) {
                         java.awt.Rectangle vb = vp.getBounds();   // overlay and scrollpane share coordinates
                         L = vb.x; R = vb.x + vb.width; B = vb.y + vb.height;
                         javax.swing.JViewport ch = sp.getColumnHeader();
@@ -2791,9 +2933,9 @@ public class DialogConfirmAgent {
                 for (Component ch : tb.getComponents()) if (ch.getWidth() > 0 && (first == null || ch.getX() < first.getX())) first = ch;
                 if (first == null) continue;
                 boolean changed = false;
-                // The buttons are transparent and the glyph sits about 11px inside each, so a small border
-                // puts the first glyph on the card's content line.
-                final int TB_LEFT = 2;
+                // The buttons are transparent and the glyph sits about 12px inside each, so this border
+                // puts the first glyph on EDGE.
+                final int TB_LEFT = EDGE - 12;
                 java.awt.Insets bi = tbj.getInsets();
                 if (bi != null && bi.left != TB_LEFT) {
                     tbj.setBorder(javax.swing.BorderFactory.createEmptyBorder(bi.top, TB_LEFT, bi.bottom, bi.right));
@@ -3094,22 +3236,22 @@ public class DialogConfirmAgent {
             Component c = orig.getTableCellRendererComponent(t, v, sel, foc, row, col);
             // The task column returns a custom component with the glyph on an inner label, so the whole
             // returned tree is walked.
-            monoRowIconsIn(c, sel);
+            monoRowIconsIn(c, sel, Boolean.TRUE.equals(t.getClientProperty("jdp.extCfg")));
             return c;
         }
     }
-    private static void monoRowIconsIn(Component c, boolean sel) {
+    private static void monoRowIconsIn(Component c, boolean sel, boolean cfg) {
         javax.swing.Icon ic = null;
         if (c instanceof javax.swing.JLabel) ic = ((javax.swing.JLabel) c).getIcon();
         else if (c instanceof javax.swing.AbstractButton) ic = ((javax.swing.AbstractButton) c).getIcon();
         if (ic != null) {
-            javax.swing.Icon mono = monoRowIcon(ic, sel);
+            javax.swing.Icon mono = cfg && isMergedIcon(ic) ? monoMergedIcon(ic, c.getForeground()) : monoRowIcon(ic, sel);
             if (mono != ic) {
                 if (c instanceof javax.swing.JLabel) ((javax.swing.JLabel) c).setIcon(mono);
                 else ((javax.swing.AbstractButton) c).setIcon(mono);
             }
         }
-        if (c instanceof Container) for (Component ch : ((Container) c).getComponents()) monoRowIconsIn(ch, sel);
+        if (c instanceof Container) for (Component ch : ((Container) c).getComponents()) monoRowIconsIn(ch, sel, cfg);
     }
     /** A keyed glyph becomes its Tabler twin, a keyless one a mono tint of its own shape. */
     private static javax.swing.Icon monoRowIcon(javax.swing.Icon ic, boolean sel) {
@@ -3120,6 +3262,48 @@ public class DialogConfirmAgent {
         javax.swing.Icon m = ROW_MONO.get(ic);
         if (m == null) { m = tintSolid(ic, tone); ROW_MONO.put(ic, m); }
         return m;
+    }
+
+    private static boolean isMergedIcon(javax.swing.Icon ic) {
+        for (Class<?> k = ic.getClass(); k != null; k = k.getSuperclass())
+            if (k.getName().equals("org.appwork.swing.components.ExtMergedIcon")) return true;
+        return false;
+    }
+    // The help and reset buttons of the advanced settings are one MergedIcon, and a silhouette of it turns
+    // the help disc into a blank dot. Each part gets its Tabler twin in the cell text colour, and parts JD
+    // greyed out stay dim.
+    private static final java.util.Map<javax.swing.Icon, java.util.Map<Integer, javax.swing.Icon>> MERGED_MONO =
+            java.util.Collections.synchronizedMap(new java.util.WeakHashMap<javax.swing.Icon, java.util.Map<Integer, javax.swing.Icon>>());
+    private static javax.swing.Icon monoMergedIcon(javax.swing.Icon ic, Color fg) {
+        if (isSiteLogo(ic)) return ic;
+        Color tone = fg != null ? fg : SIDEBAR_TEXT;
+        Integer tk = Integer.valueOf(tone.getRGB());
+        java.util.Map<Integer, javax.swing.Icon> per = MERGED_MONO.computeIfAbsent(ic, k -> new java.util.concurrent.ConcurrentHashMap<>());
+        javax.swing.Icon hit = per.get(tk);
+        if (hit != null) return hit;
+        javax.swing.Icon out;
+        try {
+            Class<?> ext = ic.getClass();
+            while (!ext.getName().equals("org.appwork.swing.components.ExtMergedIcon")) ext = ext.getSuperclass();
+            java.util.Collection<?> parts = (java.util.Collection<?>) fieldValue(ic, ext, "entries");
+            java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(ic.getIconWidth(), ic.getIconHeight(),
+                    java.awt.image.BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g = img.createGraphics();
+            for (Object e : parts) {
+                javax.swing.Icon part = (javax.swing.Icon) e.getClass().getField("icon").get(e);
+                String key = iconKey(part);
+                boolean off = key != null && key.endsWith("_disabled");
+                if (off) key = key.substring(0, key.length() - "_disabled".length());
+                javax.swing.Icon base = tablerBase(key, part.getIconWidth(), part.getIconHeight());
+                g.setComposite(java.awt.AlphaComposite.getInstance(java.awt.AlphaComposite.SRC_OVER, off ? 0.4f : 1f));
+                tintSolid(base != null ? base : part, tone).paintIcon(null, g,
+                        e.getClass().getField("x").getInt(e), e.getClass().getField("y").getInt(e));
+            }
+            g.dispose();
+            out = new javax.swing.ImageIcon(img);
+        } catch (Throwable t) { out = tintSolid(ic, tone); }
+        per.put(tk, out);
+        return out;
     }
 
     // Site favicons keep their colours. Generic renderers such as the plugin settings list show them too,
@@ -3415,21 +3599,24 @@ public class DialogConfirmAgent {
         }
     };
 
+    // The setters below revalidate and repaint even when nothing changes, and this runs on every tick.
+    private static final javax.swing.border.Border NO_BORDER = javax.swing.BorderFactory.createEmptyBorder();
+    private static final Dimension NO_SPACING = new Dimension(0, 0);
     private static void flattenConfigTable(JTable t) {
         try {
-            t.setShowGrid(false);
-            t.setIntercellSpacing(new Dimension(0, 0));
+            if (t.getShowHorizontalLines() || t.getShowVerticalLines()) t.setShowGrid(false);
+            if (!NO_SPACING.equals(t.getIntercellSpacing())) t.setIntercellSpacing(NO_SPACING);
             // UrlOrderTable forces horizontal lines on, so they take the card colour.
             if (!DIALOG_BG.equals(t.getGridColor())) t.setGridColor(DIALOG_BG);
 
             javax.swing.table.JTableHeader h = t.getTableHeader();
             if (h != null) {
                 if (!DIALOG_BG.equals(h.getBackground())) h.setBackground(DIALOG_BG);
-                h.setBorder(javax.swing.BorderFactory.createEmptyBorder());
+                if (h.getBorder() != NO_BORDER) h.setBorder(NO_BORDER);
                 javax.swing.table.TableCellRenderer dr = h.getDefaultRenderer();
                 if (dr instanceof JComponent) {
                     ((JComponent) dr).setBackground(DIALOG_BG);
-                    ((JComponent) dr).setBorder(javax.swing.BorderFactory.createEmptyBorder());
+                    ((JComponent) dr).setBorder(NO_BORDER);
                 }
             }
             javax.swing.table.TableColumnModel hcm = t.getColumnModel();
@@ -3440,8 +3627,8 @@ public class DialogConfirmAgent {
             Container sp = SwingUtilities.getAncestorOfClass(javax.swing.JScrollPane.class, t);
             if (sp instanceof javax.swing.JScrollPane) {
                 javax.swing.JScrollPane s = (javax.swing.JScrollPane) sp;
-                s.setBorder(javax.swing.BorderFactory.createEmptyBorder());
-                s.setViewportBorder(javax.swing.BorderFactory.createEmptyBorder());
+                if (s.getBorder() != NO_BORDER) s.setBorder(NO_BORDER);
+                if (s.getViewportBorder() != NO_BORDER) s.setViewportBorder(NO_BORDER);
                 // The table background fills the viewport, so the card reaches down to the sidebar's bottom.
                 if (!t.getFillsViewportHeight()) t.setFillsViewportHeight(true);
                 javax.swing.JViewport vp = s.getViewport();
@@ -3497,18 +3684,16 @@ public class DialogConfirmAgent {
         if (++stableTicks < 4) return;   // ~1.6 s after the main frame shows -> pack() done
 
         UIDefaults d = UIManager.getDefaults();
-        List<Object> keys = new ArrayList<>(d.keySet()); // snapshot: we mutate while iterating
+        // jd-highlighter brings its whole palette in the template, so it has nothing to remap; darkening
+        // its greys would sink the dialog surface and the scrollbar thumb into the base colour.
+        List<Object> keys = isHighlighter() ? new ArrayList<>() : new ArrayList<>(d.keySet());
         for (Object key : keys) {
             Object val = d.get(key);
             if (!(val instanceof Color)) continue;
             String ks = key.toString().toLowerCase();
             // Selection backgrounds -> the visible lighter grey (no colour accent).
-            // jd-highlighter keeps the accent on menu selections, whose selectionForeground
-            // stays dark and would be unreadable on grey. "menu" also matches the check box
-            // and radio button menu items.
             if (ks.contains("selectionbackground")) {
-                if (!(isHighlighter() && ks.contains("menu")))
-                    d.put(key, withAlpha(SEL, ((Color) val).getAlpha()));
+                d.put(key, withAlpha(SEL, ((Color) val).getAlpha()));
                 continue;
             }
             // Foreground / text greys must stay readable: de-blue them but NEVER darken
@@ -3534,15 +3719,6 @@ public class DialogConfirmAgent {
                 "Tree.icon.expandedColor", "Tree.icon.collapsedColor",
                 "Tree.icon.leafColor", "Tree.icon.closedColor", "Tree.icon.openColor" }) {
             d.put(k, new ColorUIResource(0xb0, 0xb0, 0xb0));
-        }
-        // jd-highlighter fills the download bar with the accent, so the percentage over
-        // the fill takes the dark accent foreground. Plain Dark keeps its bar colours in
-        // UIManager, where they survive setLookAndFeel.
-        if (isHighlighter()) {
-            d.put("ProgressBar.background",          new ColorUIResource(0x26, 0x26, 0x26));
-            d.put("ProgressBar.foreground",          new ColorUIResource(accentColor()));
-            d.put("ProgressBar.selectionForeground", new ColorUIResource(accentFg()));
-            d.put("ProgressBar.selectionBackground", new ColorUIResource(0xf4, 0xf4, 0xf4));
         }
         installProgressBarDefaults();
         chromeDone = true;   // set before the refresh so a throw can never cause a retry storm
@@ -3616,6 +3792,13 @@ public class DialogConfirmAgent {
 
     private static boolean isHighlighter() { return HIGHLIGHTER && (!DESKTOP || desktopFlatLaf); }
 
+    private static boolean isFlatDark(LookAndFeel laf) {
+        try {
+            return laf != null && laf.getClass().getName().startsWith("com.formdev.flatlaf.")
+                    && Boolean.TRUE.equals(laf.getClass().getMethod("isDark").invoke(laf));
+        } catch (Throwable t) { return false; }
+    }
+
     // jdownloader-theme.sh renders the accent into the defaults as "@accentColor = #rrggbb".
     // UIManager is no source for it, because enforceDarkChrome greys a blue accent there.
     private static final java.io.File RENDERED_DEFAULTS =
@@ -3666,8 +3849,8 @@ public class DialogConfirmAgent {
     // own tinted version.
     private static final Color DISABLED_TONE = PAL_DISABLED;
 
-    private static final java.util.Map<javax.swing.Icon, javax.swing.Icon> TINT_LIGHT = new java.util.WeakHashMap<>();
-    private static final java.util.Map<javax.swing.Icon, javax.swing.Icon> TINT_DARK  = new java.util.WeakHashMap<>();
+    private static final java.util.Map<javax.swing.Icon, java.util.Map<Integer, javax.swing.Icon>> TINTS =
+            new java.util.WeakHashMap<>();
     /**
      * A single-tone silhouette of an icon, cached per tone. JD caches its Icon objects at startup, so
      * recolouring the SVG files is not enough; this runs in the render path instead.
@@ -3675,10 +3858,9 @@ public class DialogConfirmAgent {
     private static javax.swing.Icon tintIcon(javax.swing.Icon orig, Color tint, Component c) {
         try {
             if (tint == null) return orig;
-            java.util.Map<javax.swing.Icon, javax.swing.Icon> cache =
-                    (tint.getRGB() == SIDEBAR_TEXT.getRGB()) ? TINT_LIGHT : TINT_DARK;
-            synchronized (cache) {
-                javax.swing.Icon cached = cache.get(orig);
+            synchronized (TINTS) {
+                java.util.Map<Integer, javax.swing.Icon> tones = TINTS.get(orig);
+                javax.swing.Icon cached = tones != null ? tones.get(tint.getRGB()) : null;
                 if (cached != null) return cached;
             }
             int w = orig.getIconWidth(), h = orig.getIconHeight();
@@ -3696,7 +3878,7 @@ public class DialogConfirmAgent {
                 }
             }
             javax.swing.Icon ti = new javax.swing.ImageIcon(img);
-            synchronized (cache) { cache.put(orig, ti); }
+            synchronized (TINTS) { TINTS.computeIfAbsent(orig, k -> new java.util.HashMap<>(4)).put(tint.getRGB(), ti); }
             return ti;
         } catch (Throwable t) { return orig; }
     }
@@ -4084,8 +4266,10 @@ public class DialogConfirmAgent {
             public void stateChanged(javax.swing.event.ChangeEvent e) {
                 javax.swing.ButtonModel m = mi.getModel();
                 // FlatLaf paints a dark slot behind the icon of a checked item, so that glyph stays light
-                // even when armed. A JMenu is selected whenever its popup is open, which is not the same.
-                boolean hot = mi.isEnabled() && m.isArmed() && (mi instanceof javax.swing.JMenu || !m.isSelected());
+                // even when armed. A JMenu is selected but not armed while its submenu is open,
+                // and its row keeps the accent then.
+                boolean open = mi instanceof javax.swing.JMenu && m.isSelected();
+                boolean hot = mi.isEnabled() && (open || m.isArmed() && (mi instanceof javax.swing.JMenu || !m.isSelected()));
                 Object want = mi.getClientProperty(hot ? "jdp.miDark" : "jdp.miLight");
                 if (want instanceof javax.swing.Icon) {
                     javax.swing.Icon wi = (javax.swing.Icon) want;
@@ -4094,7 +4278,7 @@ public class DialogConfirmAgent {
                 }
                 // forceMenuItemAccent only runs on the next tick, so the first hover in a fresh menu would
                 // still show light text on the accent.
-                Color miFg = (mi.isEnabled() && m.isArmed()) ? accentFg() : SIDEBAR_TEXT;
+                Color miFg = (mi.isEnabled() && (m.isArmed() || open)) ? accentFg() : SIDEBAR_TEXT;
                 if (!miFg.equals(mi.getForeground())) mi.setForeground(miFg);
             }
         });
@@ -4390,32 +4574,33 @@ public class DialogConfirmAgent {
                 if (r != null && r.getClass().getName().endsWith("sidebar.TreeRenderer")) {
                     // Centering happens in the hover wrapper, because TreeRenderer reconfigures its
                     // shared component on every call and would undo alignment set here.
+                    // The tiles share the full height of the sidebar and only fall back to their minimum
+                    // height, with a scrollbar, when the window is too low for that.
+                    javax.swing.JScrollPane ssp = (javax.swing.JScrollPane)
+                            javax.swing.SwingUtilities.getAncestorOfClass(javax.swing.JScrollPane.class, list);
+                    int rows = list.getModel().getSize();
+                    int viewH = ssp != null ? ssp.getViewport().getHeight() : 0;
+                    int rowH = rows > 0 && viewH > 0 ? Math.max(SIDEBAR_ROW_PX, viewH / rows) : SIDEBAR_ROW_PX;
                     try {
                         Field f = r.getClass().getField("DIMENSION");
                         Object dim = f.get(null);
-                        if (dim instanceof Dimension && ((Dimension) dim).height < SIDEBAR_ROW_PX) {
-                            ((Dimension) dim).height = SIDEBAR_ROW_PX;
-                        }
+                        if (dim instanceof Dimension && ((Dimension) dim).height != rowH) ((Dimension) dim).height = rowH;
                         // The JList caches row heights, and the advanced settings row with its 20px icon
                         // would stay short, so the list gets a fixed cell height.
-                        if (list.getFixedCellHeight() != SIDEBAR_ROW_PX) {
-                            list.setFixedCellHeight(SIDEBAR_ROW_PX);
+                        if (list.getFixedCellHeight() != rowH) {
+                            list.setFixedCellHeight(rowH);
                             list.revalidate();
                             list.repaint();
-                            System.out.println("[jd-dialog-agent] jd-highlighter: settings sidebar row height -> "
-                                    + SIDEBAR_ROW_PX + "px (fixed)");
                         }
                     } catch (Throwable t) {
                         System.out.println("[jd-dialog-agent] sidebar height bump failed: " + t);
                     }
                     installSidebarAccentHover(list, r);
                     clearSidebarBorders(list);
-                    // The taller rows push the list just past the viewport, and the scrollbar would clip
-                    // the tiles. The panel list is fixed and fits any normal window.
-                    javax.swing.JScrollPane ssp = (javax.swing.JScrollPane)
-                            javax.swing.SwingUtilities.getAncestorOfClass(javax.swing.JScrollPane.class, list);
-                    if (ssp != null && ssp.getVerticalScrollBarPolicy() != javax.swing.ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER)
-                        ssp.setVerticalScrollBarPolicy(javax.swing.ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER);
+                    int policy = rows * SIDEBAR_ROW_PX > viewH
+                            ? javax.swing.ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED
+                            : javax.swing.ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER;
+                    if (ssp != null && ssp.getVerticalScrollBarPolicy() != policy) ssp.setVerticalScrollBarPolicy(policy);
                     // JD rebuilds the panel on selection; styling it right after avoids an unstyled flash
                     // until the next tick.
                     if (list.getClientProperty("jdp.navRetheme") == null) {
@@ -4623,7 +4808,7 @@ public class DialogConfirmAgent {
                                 // JD's MigLayout anchors the RenderLabel at the top, so a top inset centres
                                 // it. The border is only replaced when the inset changes, to avoid a
                                 // repaint loop.
-                                int innerH = SIDEBAR_ROW_PX - 2 * SB_BTN_GAP_V;
+                                int innerH = Math.max(SIDEBAR_ROW_PX, l.getFixedCellHeight()) - 2 * SB_BTN_GAP_V;
                                 java.awt.Insets kcur = (kl.getBorder() instanceof javax.swing.border.EmptyBorder)
                                         ? ((javax.swing.border.EmptyBorder) kl.getBorder()).getBorderInsets(kl)
                                         : new java.awt.Insets(0, 0, 0, 0);
@@ -4750,9 +4935,12 @@ public class DialogConfirmAgent {
                 javax.swing.JMenuBar mb = ((javax.swing.JFrame) w).getJMenuBar();
                 if (mb != null) {
                     if (!CHROME_BASE.equals(mb.getBackground())) { mb.setBackground(CHROME_BASE); mb.setOpaque(true); }
-                    // FlatMenuBarBorder draws a separator line below the menu bar.
-                    if (!(mb.getBorder() instanceof javax.swing.border.EmptyBorder))
-                        mb.setBorder(javax.swing.BorderFactory.createEmptyBorder());
+                    // FlatMenuBarBorder draws a separator line below the menu bar. The first menu's
+                    // text sits 8px inside it, so the left inset puts the text on EDGE.
+                    javax.swing.border.Border mbb = mb.getBorder();
+                    if (!(mbb instanceof javax.swing.border.EmptyBorder)
+                            || ((javax.swing.border.EmptyBorder) mbb).getBorderInsets().left != EDGE - 8)
+                        mb.setBorder(javax.swing.BorderFactory.createEmptyBorder(0, EDGE - 8, 0, 0));
                 }
             }
             darkenToolbarsIn(w);
@@ -4892,15 +5080,13 @@ public class DialogConfirmAgent {
         if (changed) b.repaint();
     }
 
-    /** Fills the button with the colour around it and centres a mono close glyph. The jdp.closeSel
-     *  property tells it whether it sits on the selected tab. */
+    /** Fills the button with the tab's own pill colour and centres a mono close glyph. The tab header
+     *  reports the base colour, not the pill painted under it. The jdp.closeSel property tells it
+     *  whether it sits on the selected tab. */
     private static final class CloseUI extends javax.swing.plaf.basic.BasicButtonUI {
         private boolean sel(JComponent c) { return Boolean.TRUE.equals(c.getClientProperty("jdp.closeSel")); }
         @Override public void update(Graphics g, JComponent c) {
-            Color fill = sel(c) ? accentColor()
-                    : (c.getParent() != null && c.getParent().getBackground() != null
-                       ? c.getParent().getBackground() : PAL_BASE);
-            g.setColor(fill);
+            g.setColor(sel(c) ? accentColor() : TILE_GREY);
             g.fillRect(0, 0, c.getWidth(), c.getHeight());
             paint(g, c);
         }
@@ -5468,8 +5654,21 @@ public class DialogConfirmAgent {
                 }
                 styleDialogContent(cp, bg);
                 if (isUpdater) { roundUpdaterBar(cp); fitUpdaterWindow(w); }
+                else fitDialog(w);
             } catch (Throwable ignore) { }
         }
+    }
+
+    // AppWork packs a dialog before the theme's padding applies, which pushes the button row of the
+    // donation dialog below the window's edge. The window grows to its content and stays centred.
+    private static void fitDialog(Window w) {
+        Dimension pref = w.getPreferredSize(), size = w.getSize();
+        if (pref.width <= size.width && pref.height <= size.height) return;
+        java.awt.Rectangle screen = w.getGraphicsConfiguration().getBounds();
+        int nw = Math.min(Math.max(pref.width, size.width), screen.width);
+        int nh = Math.min(Math.max(pref.height, size.height), screen.height);
+        w.setBounds(w.getX() - (nw - size.width) / 2, w.getY() - (nh - size.height) / 2, nw, nh);
+        w.validate();
     }
 
     /** Gives AppWork dialogs the theme's surface, field and button fills and removes their framing

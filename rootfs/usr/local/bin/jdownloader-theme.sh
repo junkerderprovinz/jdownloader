@@ -27,6 +27,11 @@ ACCENT="${2:-${JD_ACCENT:-#ffee00}}"
 FLATLAF_DEFAULTS_DIR="${JD_FLATLAF_DEFAULTS_DIR:-/opt/JDownloader/flatlaf-defaults}"
 HL=0
 log() { echo "[jdownloader-theme] $*"; }
+# A short or mistyped value would end up as an empty control theme or a wrong colour.
+case "${ACCENT#\#}" in
+    [0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]) ;;
+    *) log "JD_ACCENT=${ACCENT} is not a #rrggbb colour, using #ffee00"; ACCENT="#ffee00" ;;
+esac
 
 # accent_fg and render_properties are copied from lib/accent.sh in jd-highlighter;
 # keep the two in sync.
