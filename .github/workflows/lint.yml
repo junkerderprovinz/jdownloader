@@ -66,3 +66,13 @@ jobs:
         run: |
           pip install --quiet pyflakes
           find rootfs -name '*.py' -print0 | xargs -0 python3 -m pyflakes
+
+  contracts:
+    name: Theme and agent contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Run local tests
+        run: |
+          pip install --quiet pytest
+          python3 -m pytest -q local-tests
