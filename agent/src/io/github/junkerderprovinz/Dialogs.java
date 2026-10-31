@@ -59,8 +59,8 @@ final class Dialogs {
                     if (isUpdater && rp instanceof JComponent) {
                         if (!bg.equals(rp.getBackground())) rp.setBackground(bg);
                         rp.setOpaque(true);
-                        // JD sizes the window tightly to its content and reverts any growth, so a larger
-                        // border would squeeze it. A little horizontal room is safe.
+                        // A little room at the sides keeps the text off the window edge; fitUpdaterWindow
+                        // grows the window to make room for it.
                         if (!(rp.getBorder() instanceof javax.swing.border.EmptyBorder))
                             rp.setBorder(javax.swing.BorderFactory.createEmptyBorder(0, 8, 0, 8));
                     }
@@ -373,6 +373,17 @@ final class Dialogs {
             try { java.awt.DisplayMode dm = gc.getDevice().getDisplayMode();
                   if (dm.getWidth()  > 0) scW = Math.min(scW, dm.getWidth());
                   if (dm.getHeight() > 0) scH = Math.min(scH, dm.getHeight()); } catch (Throwable t) { }
+            // JD sizes the window for its first state and adds the close button later without packing
+            // again, so with the side padding above the button ends up below the window edge.
+            if (w instanceof javax.swing.RootPaneContainer) {
+                javax.swing.JRootPane rp = ((javax.swing.RootPaneContainer) w).getRootPane();
+                java.awt.Dimension need = rp.getPreferredSize();
+                int dw = Math.max(0, need.width - rp.getWidth()), dh = Math.max(0, need.height - rp.getHeight());
+                if (dw > 0 || dh > 0) {
+                    w.setSize(w.getWidth() + dw, w.getHeight() + dh);
+                    w.validate();
+                }
+            }
             java.awt.Rectangle b = w.getBounds();
             final int m = 8;
             int nx = b.x, ny = b.y;
