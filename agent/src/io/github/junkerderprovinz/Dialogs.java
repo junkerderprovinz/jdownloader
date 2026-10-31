@@ -278,8 +278,14 @@ final class Dialogs {
             if (Boolean.TRUE.equals(l.getClientProperty("jdp.updLogo"))) return;
             java.awt.image.BufferedImage logo = logoImage();
             if (logo == null) return;
-            int sz = Math.max(l.getWidth(), l.getHeight());
-            if (sz < 32) sz = 64; if (sz > 96) sz = 96;
+            // ProgressLogo clips its picture to prefsize, the size of the icon it was built with, so the logo
+            // takes that size.
+            int sz = 48;
+            try {
+                java.lang.reflect.Field f = l.getClass().getDeclaredField("prefsize");
+                f.setAccessible(true);
+                sz = ((Dimension) f.get(l)).width;
+            } catch (Throwable ig) { }
             java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(sz, sz, java.awt.image.BufferedImage.TYPE_INT_ARGB);
             java.awt.Graphics2D g = img.createGraphics();
             g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);

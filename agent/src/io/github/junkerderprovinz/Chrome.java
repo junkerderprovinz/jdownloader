@@ -281,7 +281,9 @@ final class Chrome {
             if (hot) {
                 Graphics2D g2 = (Graphics2D) g.create();
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.setColor(accentColor());
+                // A toggle JD switches off while it is on, such as reconnect without a reconnect method,
+                // keeps a grey fill under its grey glyph; the accent would make it look available.
+                g2.setColor(b.isEnabled() ? accentColor() : PAL_BUTTON);
                 g2.fillRoundRect(0, 0, c.getWidth(), c.getHeight(), SB_BTN_ARC, SB_BTN_ARC);
                 g2.dispose();
             }
