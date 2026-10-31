@@ -297,15 +297,17 @@ final class Icons {
             // checked on every tick.
             monoToggleStateIcon(b, "jdp.monoSel", true);
             monoToggleStateIcon(b, "jdp.monoRSel", false);
-            if (cur == b.getClientProperty("jdp.monoBtn")) return;
+            if (cur == b.getClientProperty("jdp.monoBtn") || cur instanceof LiveMonoIcon) return;
             javax.swing.Icon mono = tablerForButton(b, cur, SIDEBAR_TEXT);
             if (mono == cur) {
                 // No key to look up, possibly an animated icon such as the updater's, which a one-off
                 // tint would cover for a single frame only.
                 mono = new LiveMonoIcon(cur, SIDEBAR_TEXT);
             }
-            b.setIcon(mono);
+            // Marked before it is set, or the icon listener takes it for a new icon from JD and wraps it
+            // again on every round.
             b.putClientProperty("jdp.monoBtn", mono);
+            b.setIcon(mono);
             // Hover, pressed and selected states paint the accent background, so their glyphs are dark.
             b.setRolloverIcon(tablerForButton(b, cur, accentFg()));
             // AppWork's ExtButton fills its hover itself and leaves rollover off, which hides this icon.
