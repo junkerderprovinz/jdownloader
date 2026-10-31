@@ -158,7 +158,12 @@ PYEOF
 # JD never discovers it and ignores the enabled flag cont-init writes, so a dropped
 # .dlc uploads but yields no links. It is requested the same way as FlatLaf, before a
 # JVM holds the single-instance lock, and the request is a no-op once the jar exists.
-folderwatch_installed() { ls "${JD_DIR}/extensions/" 2>/dev/null | grep -qi folderwatch; }
+folderwatch_installed() {
+    for f in "${JD_DIR}"/extensions/*; do
+        case "$(printf '%s' "${f##*/}" | tr '[:upper:]' '[:lower:]')" in *folderwatch*) return 0 ;; esac
+    done
+    return 1
+}
 seed_folderwatch_request() {
     folderwatch_installed && return 0
     python3 - "${JD_DIR}/update/versioninfo/JD/extensions.requestedinstalls.json" <<'PYEOF' >&2 || true

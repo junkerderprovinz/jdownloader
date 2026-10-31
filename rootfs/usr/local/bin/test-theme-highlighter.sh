@@ -4,7 +4,7 @@
 # plain Dark has to leave the baked defaults alone. Needs bash and python3, no Docker.
 set -eu
 
-HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+HERE=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 SCRIPT="${HERE}/jdownloader-theme.sh"
 TMPL_SRC="${HERE}/../../../opt/JDownloader/flatlaf-defaults/highlighter.properties.tmpl"
 
