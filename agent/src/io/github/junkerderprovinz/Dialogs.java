@@ -55,14 +55,16 @@ final class Dialogs {
                 if (rp != null) {
                     stripFramingBorder(rp);
                     if (rp.getLayeredPane() != null) stripFramingBorder(rp.getLayeredPane());
-                    if (!isUpdater && !(rp.getBorder() instanceof DialogEdgeBorder)) rp.setBorder(new DialogEdgeBorder());
+                    if (!isUpdater && !(rp.getBorder() instanceof DialogEdgeBorder)) rp.setBorder(new DialogEdgeBorder(PAL_DIVIDER));
                     if (isUpdater && rp instanceof JComponent) {
                         if (!bg.equals(rp.getBackground())) rp.setBackground(bg);
                         rp.setOpaque(true);
-                        // A little room at the sides keeps the text off the window edge; fitUpdaterWindow
-                        // grows the window to make room for it.
-                        if (!(rp.getBorder() instanceof javax.swing.border.EmptyBorder))
-                            rp.setBorder(javax.swing.BorderFactory.createEmptyBorder(0, 8, 0, 8));
+                        // The updater floats over the busy download list, so its edge is lighter than a
+                        // dialog's. A little room at the sides keeps the text off that edge;
+                        // fitUpdaterWindow grows the window to make room for both.
+                        if (!(rp.getBorder() instanceof javax.swing.border.CompoundBorder))
+                            rp.setBorder(javax.swing.BorderFactory.createCompoundBorder(new DialogEdgeBorder(PAL_SELECTION),
+                                    javax.swing.BorderFactory.createEmptyBorder(0, 8, 0, 8)));
                     }
                 }
                 styleDialogContent(cp, bg);
@@ -119,10 +121,12 @@ final class Dialogs {
 
     // Undecorated dialogs over a window that is not dimmed would melt into it without an edge.
     private static final class DialogEdgeBorder implements javax.swing.border.Border {
+        private final Color edge;
+        DialogEdgeBorder(Color edge) { this.edge = edge; }
         public java.awt.Insets getBorderInsets(Component c) { return new java.awt.Insets(1, 1, 1, 1); }
         public boolean isBorderOpaque() { return true; }
         public void paintBorder(Component c, Graphics g, int x, int y, int w, int h) {
-            g.setColor(PAL_DIVIDER);
+            g.setColor(edge);
             g.drawRect(x, y, w - 1, h - 1);
         }
     }
