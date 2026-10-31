@@ -227,7 +227,9 @@ final class Settings {
                 Object fg = b.getClientProperty("jdp.savedFg");
                 if (!(fg instanceof Color)) b.putClientProperty("jdp.savedFg", b.getForeground());
                 b.setContentAreaFilled(true);
-                if (b instanceof JComponent) ((JComponent) b).setOpaque(true);
+                // A round fill leaves its corners unpainted, so an opaque button would keep the hover
+                // colour there after the pointer leaves.
+                if (!(b.getUI() instanceof RoundButtonUI)) b.setOpaque(true);
                 b.setBackground(acc);
                 b.setForeground(accentFg());
                 b.repaint();
@@ -251,7 +253,7 @@ final class Settings {
                     Color acc = accentColor();
                     if (acc != null) {
                         b.setBackground(acc);
-                        if (b instanceof JComponent) ((JComponent) b).setOpaque(true);
+                        if (!(b.getUI() instanceof RoundButtonUI)) b.setOpaque(true);
                         b.setContentAreaFilled(true);
                     }
                     applied = true;

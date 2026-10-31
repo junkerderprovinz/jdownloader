@@ -150,7 +150,9 @@ final class Chrome {
             if (!want.equals(tp.getForegroundAt(i))) tp.setForegroundAt(i, want);
             // Unselected tabs get a grey tile like the sidebar; the selected tab paints
             // selectedBackground and ignores this.
-            Color tabBg = isSel ? accentColor() : TILE_GREY;
+            // On a card or dialog the tile grey nearly matches the surface, so tabs there take the button fill.
+            Color tile = PAL_BASE.equals(tp.getBackground()) ? TILE_GREY : PAL_BUTTON;
+            Color tabBg = isSel ? accentColor() : tile;
             if (!tabBg.equals(tp.getBackgroundAt(i))) tp.setBackgroundAt(i, tabBg);
             Color iconTone = isSel ? accentFg() : (isHover ? accentColor() : SIDEBAR_TEXT);
             javax.swing.Icon slot = tp.getIconAt(i);
