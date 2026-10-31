@@ -68,12 +68,14 @@ Component.focusedBorderColor  = @@ACCENT@@
 Button.focusedBorderColor     = @@ACCENT@@
 Button.hoverBorderColor       = @@ACCENT@@
 Button.hoverBackground        = @@ACCENT@@
-Button.focusedBackground      = @@ACCENT@@
+# Focus shows as the accent border alone: the round fill the agent paints has no focus state, so an
+# label in the ink meant for the accent fill would sit on the resting grey.
+Button.focusedBackground      = #2a2a2a
 # A disabled button keeps the resting fill and only its label dims.
 Button.disabledBackground     = #2a2a2a
 Button.hoverForeground        = @@ACCENT_FG@@
 Button.pressedForeground      = @@ACCENT_FG@@
-Button.focusedForeground      = @@ACCENT_FG@@
+Button.focusedForeground      = #f4f4f4
 Spinner.buttonBackground      = #1e1e1e
 ComboBox.buttonBackground     = #1e1e1e
 Button.borderWidth            = 0
