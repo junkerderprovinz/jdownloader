@@ -20,11 +20,12 @@
 
 <p align="center">
 A modern, plug-and-play Docker image for <b>JDownloader 2</b> on Unraid with a
-<b>fully dark and ad-free UI</b> out of the box: a monochrome IBM&nbsp;Carbon&nbsp;<code>#161616</code>
-dark across the <i>entire</i> interface (download list, link grabber <b>and</b> settings, not just
-the menu bar), with light fills + readable text on the progress bars and a borderless,
-maximised kiosk window. JDownloader's built-in advertisements are switched off, so the
-download graph keeps its full height. Full GUI in your browser via Selkies, zero first-run setup.
+<b>dark and ad-free UI</b> out of the box: <b>JD&nbsp;Highlighter</b>, a borderless IBM&nbsp;Carbon&nbsp;<code>#161616</code>
+theme with one accent colour you pick yourself, across the <i>entire</i> interface (download list,
+link grabber <b>and</b> settings, not just the menu bar), in a maximised kiosk window. A light
+version and the plain Carbon looks are a pick in JDownloader's settings. JDownloader's built-in advertisements are
+switched off, so the download graph keeps its full height. Full GUI in your browser via Selkies,
+zero first-run setup.
 </p>
 
 <!-- download-buttons: written by scripts/gen_download_buttons.py -->
@@ -88,8 +89,8 @@ If it has earned a place on your server or computer, toss a coin to your knight:
 The downloads in these pictures are Blender's open movies and two Linux images, loaded in a test container.
 
 <p align="center">
-  <img src=".github/assets/screenshots/jdownloader-downloads.png" alt="JDownloader's download list in a browser window, with three packages downloading and the speed graph in the toolbar" width="100%">
-  <br><em>The download list in Dark Mode, with the speed graph at full height</em>
+  <img src=".github/assets/screenshots/jdownloader-downloads.png" alt="JDownloader's download list in JD Highlighter Dark in a browser window, with three packages downloading and the speed graph in the toolbar" width="100%">
+  <br><em>The download list in JD Highlighter Dark, with the speed graph at full height</em>
 </p>
 
 <p align="center">
@@ -98,8 +99,13 @@ The downloads in these pictures are Blender's open movies and two Linux images, 
 </p>
 
 <p align="center">
-  <img src=".github/assets/screenshots/jdownloader-settings.png" alt="JDownloader's general settings, dark like the rest of the app" width="100%">
-  <br><em>The settings use the same dark palette as everything else</em>
+  <img src=".github/assets/screenshots/jdownloader-settings.png" alt="JDownloader's general settings in JD Highlighter Dark, on rounded cards" width="100%">
+  <br><em>The settings use the same palette and accent as everything else</em>
+</p>
+
+<p align="center">
+  <img src=".github/assets/screenshots/jdownloader-light.png" alt="The User Interface settings in JD Highlighter Light, with the accent colour row and the open Appearance menu listing the four looks" width="100%">
+  <br><em>Accent colour and look are picked in JDownloader's own settings</em>
 </p>
 
 <br>
@@ -107,7 +113,7 @@ The downloads in these pictures are Blender's open movies and two Linux images, 
 ## 2. What it does
 
 - **Selkies instead of noVNC.** A hybrid VNC and H.264 stream for a smooth desktop at 60 fps, a real clipboard in both directions, and file upload and download from the browser.
-- **Dark everywhere.** A monochrome IBM Carbon `#161616` palette covers the download list, the LinkGrabber and the settings, not only the menu bar. One variable switches to a matching light theme or to JDownloader's classic look.
+- **Dark everywhere, in your colour.** [JD Highlighter](https://github.com/junkerderprovinz/jd-highlighter) covers the download list, the LinkGrabber and the settings with IBM Carbon `#161616`, rounded cards and clean line icons, not only the menu bar. Under Settings › User Interface you pick the accent colour and the look: JD Highlighter Dark or Light, or the plain Carbon looks JD Plain Dark and Light. The pick survives image updates, and `JD_THEME=JDDEFAULT` still brings back JDownloader's classic look.
 - **No ads.** The premium banner, the nag columns and the deal popups are switched off, so the speed graph keeps its full height.
 - **Nothing to set up.** JDownloader installs itself on the first start and updates itself as usual, with Java 21 for the full Swing GUI.
 - **Your settings survive updates.** Links, accounts and session state live in `/config`, and the image runs on amd64 and arm64.
