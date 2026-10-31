@@ -220,8 +220,8 @@ ENV S6_KILL_GRACETIME=30000 \
 # Defaults the Unraid template can override:
 # JD_LANG       UI language as an ISO code (de, en, fr, ...)
 # JD_THEME      jd-highlighter-dark (also Dark), jd-highlighter-light, plain-dark
-#               (Carbon #161616), Light or JDDEFAULT
-# JD_ACCENT     accent colour for both JD Highlighter themes, any hex
+#               (Carbon #161616), Light or JDDEFAULT. The JD Highlighter accent and
+#               its dark or light variant are picked in JD's settings.
 # JD_SELFUPDATE false turns off JD's self-update checks. The same channel delivers
 #               the hoster plugins, which go stale within weeks.
 # JD_INST_DIR   install path, only worth changing for debugging
@@ -230,7 +230,6 @@ ENV S6_KILL_GRACETIME=30000 \
 #               zoom would blur it by scaling up the Selkies H.264 stream.
 ENV JD_LANG=en \
     JD_THEME=jd-highlighter-dark \
-    JD_ACCENT=#ffee00 \
     JD_SELFUPDATE=true \
     JD_INST_DIR=/config/JDownloader \
     JD_UI_SCALE= \

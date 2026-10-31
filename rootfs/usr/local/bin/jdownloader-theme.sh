@@ -9,7 +9,7 @@
 #
 #   Dark  = JD_Plain (flat) icons and the IBM Carbon #161616 monochrome palette
 #   Light = JD_Plain (flat) icons and JD's default light colours
-#   jd-highlighter-dark = the Dark palette, borderless, with one accent colour (JD_ACCENT)
+#   jd-highlighter-dark = the Dark palette, borderless, with one accent colour picked in JD
 #   jd-highlighter-light = the same design on a light Carbon palette
 #
 # The file is always overwritten, since the env var wins over whatever JD wrote on
@@ -22,16 +22,19 @@
 THEME="${1:-Dark}"
 JD_DIR="${JD_INST_DIR:-/config/JDownloader}"
 JD_CFG="${JD_DIR}/cfg"
-# The jd-highlighter accent is baked into the FlatLaf control defaults on every start.
-# autostart passes it as $2; tests point JD_FLATLAF_DEFAULTS_DIR elsewhere.
-ACCENT="${2:-${JD_ACCENT:-#ffee00}}"
+# The accent is picked in JD's settings, which store it in JD_HL_STORE, and baked into the
+# FlatLaf control defaults on every start. Tests pass it as $2 and point
+# JD_FLATLAF_DEFAULTS_DIR elsewhere.
+HL_STORE="${JD_HL_STORE:-/config/.jd-highlighter}"
+ACCENT="${2:-$(cat "${HL_STORE}/accent" 2>/dev/null)}"
+ACCENT="${ACCENT:-#ffee00}"
 FLATLAF_DEFAULTS_DIR="${JD_FLATLAF_DEFAULTS_DIR:-/opt/JDownloader/flatlaf-defaults}"
 HL=0
 log() { echo "[jdownloader-theme] $*"; }
 # A short or mistyped value would end up as an empty control theme or a wrong colour.
 case "${ACCENT#\#}" in
     [0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]) ;;
-    *) log "JD_ACCENT=${ACCENT} is not a #rrggbb colour, using #ffee00"; ACCENT="#ffee00" ;;
+    *) log "accent ${ACCENT} is not a #rrggbb colour, using #ffee00"; ACCENT="#ffee00" ;;
 esac
 
 # accent_fg and render_properties are copied from lib/accent.sh in jd-highlighter;

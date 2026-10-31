@@ -514,3 +514,20 @@ def test_setup_publishes_the_canonical_theme_to_every_service():
     pos = setup.index("canonical")
     assert "/run/s6/container_environment/JD_THEME" in setup[pos:pos + 400]
     assert pos < setup.index("jdownloader-theme.sh")
+
+
+def test_variant_picked_in_jd_wins_for_highlighter_themes(tmp_path):
+    (tmp_path / "variant").write_text("light\n")
+    assert h.canonical_theme("Dark", str(tmp_path)) == "jd-highlighter-light"
+    assert h.canonical_theme("jd-highlighter-dark", str(tmp_path)) == "jd-highlighter-light"
+    assert h.canonical_theme("plain-dark", str(tmp_path)) == "plain-dark"
+    assert h.canonical_theme("Light", str(tmp_path)) == "Light"
+    (tmp_path / "variant").write_text("sepia\n")
+    assert h.canonical_theme("Dark", str(tmp_path)) == "jd-highlighter-dark"
+
+
+def test_autostart_reads_the_variant_before_every_launch():
+    auto = AUTOSTART.read_text(encoding="utf-8")
+    loop = auto.index("fast_exits=0\nwhile true; do")
+    assert 'canonical "${JD_THEME}"' in auto[loop:loop + 600]
+    assert "JD_ACCENT" not in auto

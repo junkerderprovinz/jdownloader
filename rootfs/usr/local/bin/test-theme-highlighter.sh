@@ -21,9 +21,8 @@ mkdir -p "${JD1}" "${DEF1}"
 cp "${TMPL_SRC}" "${DEF1}/highlighter.properties.tmpl"
 
 JD_INST_DIR="${JD1}" \
-JD_ACCENT="#ffee00" \
 JD_FLATLAF_DEFAULTS_DIR="${DEF1}" \
-    bash "${SCRIPT}" jd-highlighter >/dev/null
+    bash "${SCRIPT}" jd-highlighter "#ffee00" >/dev/null
 
 JSON="${JD1}/cfg/laf/FlatDarkLaf.json"
 [ -f "${JSON}" ] || { echo "FAIL: colorfor* JSON not written (${JSON})"; exit 1; }
@@ -53,9 +52,8 @@ DEF2="${WORK}/def2"
 mkdir -p "${JD2}" "${DEF2}"
 cp "${TMPL_SRC}" "${DEF2}/highlighter.properties.tmpl"
 JD_INST_DIR="${JD2}" \
-JD_ACCENT="#4589ff" \
 JD_FLATLAF_DEFAULTS_DIR="${DEF2}" \
-    bash "${SCRIPT}" jd-highlighter >/dev/null
+    bash "${SCRIPT}" jd-highlighter "#4589ff" >/dev/null
 grep -Eq '^TabbedPane.selectedForeground +=  ?#f4f4f4$' "${DEF2}/FlatDarkLaf.properties" \
     || { echo "FAIL: dark accent should get light text #f4f4f4"; exit 1; }
 
@@ -68,9 +66,8 @@ BAKED="ORIGINAL-BAKED-DARK-DEFAULTS"
 printf '%s\n' "${BAKED}" > "${DEF3}/FlatDarkLaf.properties"
 
 JD_INST_DIR="${JD3}" \
-JD_ACCENT="#ffee00" \
 JD_FLATLAF_DEFAULTS_DIR="${DEF3}" \
-    bash "${SCRIPT}" Dark >/dev/null
+    bash "${SCRIPT}" plain-dark >/dev/null
 
 python3 -c "import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d.get('lookandfeeltheme')=='FLATLAF_DARK' else 1)" \
     "${JD3}/cfg/org.jdownloader.settings.GraphicalUserInterfaceSettings.json" \
@@ -81,5 +78,19 @@ fi
 python3 -c "import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d.get('colorfortablemouseoverrowbackground')=='#ff0b0b0b' else 1)" \
     "${JD3}/cfg/laf/FlatDarkLaf.json" \
     || { echo "FAIL: Dark path row hover changed"; exit 1; }
+
+# Without an argument the accent comes from the one picked in JD's settings.
+JD4="${WORK}/jd4"
+DEF4="${WORK}/def4"
+STORE4="${WORK}/store4"
+mkdir -p "${JD4}" "${DEF4}" "${STORE4}"
+cp "${TMPL_SRC}" "${DEF4}/highlighter.properties.tmpl"
+printf '#4589ff\n' > "${STORE4}/accent"
+JD_INST_DIR="${JD4}" \
+JD_FLATLAF_DEFAULTS_DIR="${DEF4}" \
+JD_HL_STORE="${STORE4}" \
+    bash "${SCRIPT}" jd-highlighter-dark >/dev/null
+grep -Eq '^@accentColor +=  ?#4589ff$' "${DEF4}/FlatDarkLaf.properties" \
+    || { echo "FAIL: stored accent not used"; exit 1; }
 
 echo "ALL PASS"

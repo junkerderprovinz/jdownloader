@@ -757,6 +757,19 @@ bootstrap_flatlaf_if_needed
 
 fast_exits=0
 while true; do
+    # A dark or light variant picked in JD's settings takes effect on the next JD start, so it is
+    # read again before every launch; JD's JVM and the theme script get it through JD_THEME.
+    case "${JD_THEME}" in
+        jd-highlighter-*)
+            JD_THEME=$(python3 "${HELPERS}" canonical "${JD_THEME}")
+            export JD_THEME
+            case "${JD_THEME}" in
+                *-light) EXPECT_LAF="flatlight" ;;
+                *)       EXPECT_LAF="flatdark" ;;
+            esac
+            ;;
+    esac
+
     # The flat icon pack is for FlatLaf only; classic JDDEFAULT keeps JD's stock
     # icons. EXPECT_CLASSIC is already normalised, where comparing the raw JD_THEME
     # would trip over casing and whitespace.
@@ -814,7 +827,7 @@ while true; do
     seed_folderwatch_request
     # JD's self-update can reset cfg/laf/*.json, and cont-init alone would lose that
     # race on some boots.
-    /usr/local/bin/jdownloader-theme.sh "${THEME_APPLY}" "${JD_ACCENT:-#ffee00}" >/dev/null 2>&1 || true
+    /usr/local/bin/jdownloader-theme.sh "${THEME_APPLY}" >/dev/null 2>&1 || true
 
     # JD's first-run install puts its colourful flat icons back after the theme hook
     # has recoloured them. With mono icons active, a background loop recolours flat

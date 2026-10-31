@@ -43,11 +43,11 @@ public class DialogConfirmAgent {
     static final boolean HIGHLIGHTER = DESKTOP
             || System.getenv().getOrDefault("JD_THEME", "").toLowerCase(java.util.Locale.ROOT).contains("highlight");
 
-    // JD Highlighter Light runs on FlatLightLaf with the same layout and a light palette. The
-    // container picks it by JD_THEME, the desktop installer by -Djd.highlighter.variant.
-    static final boolean LIGHT = HIGHLIGHTER && (DESKTOP
-            ? "light".equalsIgnoreCase(System.getProperty("jd.highlighter.variant", "").trim())
-            : System.getenv().getOrDefault("JD_THEME", "").toLowerCase(java.util.Locale.ROOT).contains("highlighter-light"));
+    // JD Highlighter Light runs on FlatLightLaf with the same layout and a light palette. The variant
+    // chosen in the settings wins; before that, the container goes by JD_THEME and the desktop is dark.
+    static final boolean LIGHT = HIGHLIGHTER && (Appearance.storedVariant() != null
+            ? "light".equals(Appearance.storedVariant())
+            : !DESKTOP && System.getenv().getOrDefault("JD_THEME", "").toLowerCase(java.util.Locale.ROOT).contains("highlighter-light"));
 
     // A desktop JD can still run another look and feel (FlatLaf arrives with JD's own
     // design download), and the polish on top of it would leave a half-themed window.

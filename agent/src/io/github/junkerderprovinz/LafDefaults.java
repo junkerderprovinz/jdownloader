@@ -466,8 +466,8 @@ final class LafDefaults {
             }
         } catch (Throwable ignore) { }
         if (hex == null || hex.isEmpty()) {
-            String env = System.getenv("JD_ACCENT");
-            hex = (env != null && !env.isEmpty()) ? env : "#ffee00";
+            String stored = Appearance.storedAccent();
+            hex = stored != null ? stored : Appearance.DEFAULT_ACCENT;
         }
         if (!hex.startsWith("#")) hex = "#" + hex;
         try { accentCache = Color.decode(hex); }

@@ -274,7 +274,7 @@ final class Icons {
     private static void monoButtonIcon(javax.swing.AbstractButton b) {
         try {
             javax.swing.Icon cur = b.getIcon();
-            if (cur == null) return;
+            if (cur == null || SITE_LOGOS.contains(cur)) return;
             // Once per mono icon, and before the early return below.
             Object mb0 = b.getClientProperty("jdp.monoBtn");
             if (mb0 instanceof javax.swing.Icon && b.getClientProperty("jdp.disInval") != mb0

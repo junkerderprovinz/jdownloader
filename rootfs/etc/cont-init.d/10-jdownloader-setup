@@ -232,5 +232,8 @@ if [[ -d /downloads ]]; then
 fi
 
 chown -R "${PUID:-911}:${PGID:-911}" /config 2>/dev/null || true
+# autostart renders the FlatLaf defaults again before every JD start, as the app user, so an
+# accent or variant picked in JD's settings shows after JD restarts.
+chown -R "${PUID:-911}:${PGID:-911}" /opt/JDownloader/flatlaf-defaults 2>/dev/null || true
 
 log "setup done (JD_LANG=${JD_LANG:-en}, JD_THEME=${JD_THEME:-jd-highlighter-dark})"

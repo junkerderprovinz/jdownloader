@@ -38,6 +38,7 @@ final class HighlighterPass {
     // why open popups are styled again on every tick.
     private static final Step[] STEPS = {
         onChange("styleSidebar", Settings::styleSidebar),
+        onChange("addAppearanceRows", Appearance::addRows),
         onChange("stripSectionUnderlines", Settings::stripSectionUnderlines),
         everyTick("recolorMainTabs", Chrome::recolorMainTabs),
         everyTick("flushMenuBarItems", Menus::flushMenuBarItems),
