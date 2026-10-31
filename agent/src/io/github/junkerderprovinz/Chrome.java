@@ -138,12 +138,14 @@ final class Chrome {
     }
 
     /** Dark text and icon on the selected tab, accent on the hovered one, light on the rest. JD's custom
-     *  tab components bypass FlatLaf's selectedForeground, so the foreground is set per tab. */
+     *  tab components bypass FlatLaf's selectedForeground, so the foreground is set per tab. On the
+     *  light palette accent text would not read on the pale tile, so a hovered tab fills with the accent. */
     private static void applyTabForegrounds(javax.swing.JTabbedPane tp, Color selFg, Color norFg, int hover) {
         int sel = tp.getSelectedIndex();
         for (int i = 0; i < tp.getTabCount(); i++) {
-            boolean isSel = (i == sel);
-            boolean isHover = (hover >= 0 && i == hover && !isSel);
+            boolean isHover = (hover >= 0 && i == hover && i != sel);
+            boolean isSel = (i == sel) || (LIGHT && isHover);
+            if (LIGHT) isHover = false;
             Color want = new Color((isSel ? selFg : (isHover ? accentColor() : norFg)).getRGB());
             if (!want.equals(tp.getForegroundAt(i))) tp.setForegroundAt(i, want);
             // Unselected tabs get a grey tile like the sidebar; the selected tab paints
@@ -248,7 +250,7 @@ final class Chrome {
         Object cached = b.getClientProperty(pk);
         if (ic == b.getClientProperty(bk) && cached instanceof javax.swing.Icon) return (javax.swing.Icon) cached;
         // As bright as the table header gear next to it; EXPANDER_LIGHT would look grey.
-        javax.swing.Icon m = tintSolid(ic, hot ? accentColor() : SIDEBAR_TEXT);
+        javax.swing.Icon m = tintSolid(ic, hot ? hoverInk() : SIDEBAR_TEXT);
         if (m == null) m = ic;
         b.putClientProperty(bk, ic);
         b.putClientProperty(pk, m);

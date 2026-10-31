@@ -484,4 +484,12 @@ final class LafDefaults {
         double lum = 0.299 * a.getRed() + 0.587 * a.getGreen() + 0.114 * a.getBlue();
         return lum > 140 ? INK_DARK : INK_LIGHT;
     }
+
+    /** The accent as hover text or glyph on the surface. A light accent does not read on the light
+     *  palette's white cards, so there it is darkened. */
+    static Color hoverInk() {
+        Color a = accentColor();
+        if (!LIGHT || INK_LIGHT.equals(accentFg())) return a;
+        return new Color(a.getRed() * 55 / 100, a.getGreen() * 55 / 100, a.getBlue() * 55 / 100);
+    }
 }

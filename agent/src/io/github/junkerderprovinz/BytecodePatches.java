@@ -77,6 +77,7 @@ final class BytecodePatches {
                             if (SEARCH_CAT.equals(className)) return patchSearchCategory(classfileBuffer, loader);
                             if (FAV_ICONS.equals(className)) return patchFavIcons(classfileBuffer, loader);
                             if (ACTION_BAR.equals(className)) return patchDropdownImage(classfileBuffer, loader);
+                            if (PSEUDO_COMBO.equals(className)) return patchPopIcon(classfileBuffer, loader);
                             if (DOMAIN_INFO.equals(className)) return patchFavIconArrival(classfileBuffer, loader);
                             if (className != null && (className.startsWith("jd/gui/") || className.startsWith("org/jdownloader/gui/"))
                                     && contains(classfileBuffer, GET_FAV_ICON))
@@ -470,6 +471,9 @@ final class BytecodePatches {
     private static final String DOMAIN_INFO = "org/jdownloader/DomainInfo";
     private static final byte[] GET_FAV_ICON = "getFavIcon".getBytes(java.nio.charset.StandardCharsets.US_ASCII);
     private static final String ACTION_BAR = "org/jdownloader/gui/views/downloads/bottombar/CustomizeableActionBar";
+    // The quick filter in the bottom bar is a PseudoCombo, which paints its arrow from getPopIcon
+    // on top of the button.
+    private static final String PSEUDO_COMBO = "org/jdownloader/gui/views/components/PseudoCombo";
     // FlatLaf paints a hovered top-level menu's text in the menu bar's foreground and switches to
     // selectionForeground only when the item is armed, which rollover is not, so the hover text ends
     // up light on the accent.
@@ -805,6 +809,41 @@ final class BytecodePatches {
             return null;
         }
         System.out.println("[jd-dialog-agent] patched CustomizeableActionBar.createDropdownImage -> mono dropdown glyphs");
+        return cw.toByteArray();
+    }
+
+    private static byte[] patchPopIcon(byte[] original, final ClassLoader loader) {
+        ClassReader cr = new ClassReader(original);
+        ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES) {
+            @Override
+            protected ClassLoader getClassLoader() { return loader != null ? loader : super.getClassLoader(); }
+        };
+        final int[] n = { 0 };
+        ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
+            @Override
+            public MethodVisitor visitMethod(int access, String name, String desc, String sig, String[] ex) {
+                MethodVisitor mv = super.visitMethod(access, name, desc, sig, ex);
+                if (!("getPopIcon".equals(name) && "(Z)Ljavax/swing/Icon;".equals(desc))) return mv;
+                n[0]++;
+                return new MethodVisitor(Opcodes.ASM9, mv) {
+                    @Override
+                    public void visitInsn(int op) {
+                        if (op == Opcodes.ARETURN) {
+                            super.visitVarInsn(Opcodes.ALOAD, 0);
+                            super.visitMethodInsn(Opcodes.INVOKESTATIC, AGENT_INTERNAL, "popIcon",
+                                    "(Ljavax/swing/Icon;Ljava/awt/Component;)Ljavax/swing/Icon;", false);
+                        }
+                        super.visitInsn(op);
+                    }
+                };
+            }
+        };
+        cr.accept(cv, 0);
+        if (n[0] == 0) {
+            System.out.println("[jd-dialog-agent] PseudoCombo.getPopIcon not found, combo arrows left as-is");
+            return null;
+        }
+        System.out.println("[jd-dialog-agent] patched PseudoCombo.getPopIcon -> no arrow on bottom bar buttons");
         return cw.toByteArray();
     }
 

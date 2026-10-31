@@ -80,6 +80,7 @@ final class Cards {
             if (c != bar && (c.getY() != bar.getY() || c.getHeight() != bar.getHeight())) continue;
             javax.swing.JPanel p = (javax.swing.JPanel) c;
             roundButtonsIn(p);
+            barButtons(p);
             if (p.getBorder() instanceof CardBorder) continue;
             boolean right = c.getX() > bar.getX();
             CardBorder card = new CardBorder(new java.awt.Insets(0, right ? 0 : EDGE, CARD_GAP, EDGE), new java.awt.Insets(6, 8, 6, 8));
@@ -88,6 +89,21 @@ final class Cards {
             java.awt.Insets in = card.getBorderInsets(p);
             growFixedHeight(p, 24 + in.top + in.bottom);
             p.revalidate();
+        }
+    }
+    // The bar's buttons get the button fill, so they read as buttons on the card, and lose the small
+    // arrow buttons JD puts next to an action to open a menu of related actions.
+    private static void barButtons(Container bar) {
+        for (Component ch : bar.getComponents()) {
+            if (!(ch instanceof javax.swing.AbstractButton)) continue;
+            javax.swing.AbstractButton b = (javax.swing.AbstractButton) ch;
+            if (b.getClass().getName().endsWith("CustomizeableActionBar$2") && b.getWidth() <= 16) {
+                if (b.isVisible()) { b.setVisible(false); bar.revalidate(); }
+                continue;
+            }
+            if (b.getClientProperty(NO_POP_ARROW) == null) { b.putClientProperty(NO_POP_ARROW, Boolean.TRUE); b.repaint(); }
+            boolean hot = b.getModel().isRollover() || b.getModel().isPressed();
+            if (!hot && !PAL_BUTTON.equals(b.getBackground())) b.setBackground(PAL_BUTTON);
         }
     }
     // JD pins the bar with a MigLayout "height 24!", which leaves no room for the card's padding.

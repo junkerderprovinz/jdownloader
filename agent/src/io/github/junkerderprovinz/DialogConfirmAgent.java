@@ -369,26 +369,30 @@ public class DialogConfirmAgent {
     static final java.util.Set<javax.swing.Icon> SITE_LOGOS =
             java.util.Collections.synchronizedSet(java.util.Collections.newSetFromMap(new java.util.WeakHashMap<javax.swing.Icon, Boolean>()));
 
-    /** Called from the patched CustomizeableActionBar.createDropdownImage: the glyph in the text colour and
-     *  a small chevron in place of JD's arrow. */
+    /** Called from the patched CustomizeableActionBar.createDropdownImage: only the glyph, in the text
+     *  colour. The bottom bar buttons read as plain buttons, so JD's arrow next to the glyph goes. */
     public static javax.swing.ImageIcon monoDropdownIcon(javax.swing.ImageIcon orig, boolean up, java.awt.Image glyph) {
         try {
             if (orig == null || glyph == null || !isHighlighter()) return orig;
-            int w = orig.getIconWidth(), h = orig.getIconHeight();
-            int gw = glyph.getWidth(null), gh = glyph.getHeight(null);
-            if (w <= gw || h <= 0 || gw <= 0 || gh <= 0) return orig;
-            java.awt.image.BufferedImage out = new java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+            if (glyph.getWidth(null) <= 0 || glyph.getHeight(null) <= 0) return orig;
+            javax.swing.Icon mono = tintSolid(new javax.swing.ImageIcon(glyph), SIDEBAR_TEXT);
+            java.awt.image.BufferedImage out = new java.awt.image.BufferedImage(
+                    mono.getIconWidth(), mono.getIconHeight(), java.awt.image.BufferedImage.TYPE_INT_ARGB);
             java.awt.Graphics2D g = out.createGraphics();
-            g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
-            tintSolid(new javax.swing.ImageIcon(glyph), SIDEBAR_TEXT).paintIcon(null, g, 0, (h - gh) / 2);
-            g.setColor(SIDEBAR_TEXT);
-            g.setStroke(new java.awt.BasicStroke(1.4f, java.awt.BasicStroke.CAP_ROUND, java.awt.BasicStroke.JOIN_ROUND));
-            int cx = gw + (w - gw) / 2, cy = h / 2, d = 2, tip = up ? -1 : 1;
-            g.drawPolyline(new int[] { cx - d, cx, cx + d }, new int[] { cy - tip, cy + tip, cy - tip }, 3);
+            mono.paintIcon(null, g, 0, 0);
             g.dispose();
             return new javax.swing.ImageIcon(out);
         } catch (Throwable t) { return orig; }
     }
+
+    private static final javax.swing.Icon NO_ICON = new javax.swing.ImageIcon(
+            new java.awt.image.BufferedImage(1, 1, java.awt.image.BufferedImage.TYPE_INT_ARGB));
+    /** Called from the patched PseudoCombo.getPopIcon: no arrow on a combo the bottom bar marked. */
+    public static javax.swing.Icon popIcon(javax.swing.Icon orig, Component c) {
+        if (!isHighlighter() || !(c instanceof JComponent) || ((JComponent) c).getClientProperty(NO_POP_ARROW) == null) return orig;
+        return NO_ICON;
+    }
+    static final String NO_POP_ARROW = "jdp.noPopArrow";
 
     // JD's status rings (update check, extraction, link crawler) are CircledProgressBars that paint
     // coloured animated glyphs, and the update globe draws through a custom path that cannot be

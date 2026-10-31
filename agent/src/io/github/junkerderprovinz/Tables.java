@@ -627,7 +627,7 @@ final class Tables {
             try {
                 Object hc = hdr.getClientProperty("jdp.hoverCol");
                 boolean hot = (hc instanceof Integer) && ((Integer) hc).intValue() == col;
-                if (c != null) c.setForeground(hot ? accentColor() : SIDEBAR_TEXT);
+                if (c != null) c.setForeground(hot ? hoverInk() : SIDEBAR_TEXT);
                 if (c instanceof JComponent) {
                     JComponent jc = (JComponent) c;
                     javax.swing.border.Border cur = jc.getBorder();
