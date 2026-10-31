@@ -1,0 +1,198 @@
+# JD Highlighter Light control theme, loaded through FlatLaf's registerCustomDefaultsSource. It mirrors
+# highlighter.properties.tmpl with the light palette. @@ACCENT@@ and @@ACCENT_FG@@ are filled in when the
+# theme is applied (jdownloader-theme.sh in the container, the installer on the desktop).
+
+# Base. Cards, dialogs and lists sit as #ffffff on the #f4f4f4 chrome; fields sit a little
+# below the base so they still read on a white card.
+@background          = #f4f4f4
+@foreground          = #161616
+@componentBackground = #e8e8e8
+@disabledForeground  = #a8a8a8
+
+# Accent.
+@accentColor                    = @@ACCENT@@
+# The toolbar toggles (clipboard, reconnect, premium, silent) are FlatLaf toggle buttons, which
+# Button.* does not reach; without these keys their hover never paints the accent.
+ToggleButton.selectedBackground         = @@ACCENT@@
+ToggleButton.hoverBackground            = @@ACCENT@@
+ToggleButton.pressedBackground          = @@ACCENT@@
+ToggleButton.toolbar.hoverBackground    = @@ACCENT@@
+ToggleButton.toolbar.pressedBackground  = @@ACCENT@@
+ToggleButton.toolbar.selectedBackground = @@ACCENT@@
+# The default button (Save & Restart, Ok) looks like every other button: a #e0e0e0 fill,
+# accent on hover, no frame.
+Button.default.foreground        = #161616
+Button.default.background         = #e0e0e0
+Button.default.borderColor       = #e0e0e0
+Button.default.focusedBorderColor = @@ACCENT@@
+Button.default.focusedBackground = @@ACCENT@@
+Button.default.hoverBackground   = @@ACCENT@@
+Button.default.boldText          = false
+# On the light chrome a bare accent check barely reads, so a checked box is filled with the accent.
+CheckBox.icon.checkmarkColor     = @@ACCENT_FG@@
+RadioButton.icon.centerColor     = @@ACCENT_FG@@
+RadioButton.icon.selectedBackground = @@ACCENT@@
+# An unchecked box on the light chrome needs a dark enough border to be seen at a glance.
+CheckBox.icon.borderColor            = #6f6f6f
+# Component.borderWidth 0 below would take the box's frame too.
+CheckBox.icon.borderWidth            = 1
+RadioButton.icon.borderWidth         = 1
+CheckBox.icon.background             = #ffffff
+CheckBox.icon.selectedBorderColor    = @@ACCENT@@
+CheckBox.icon.selectedBackground     = @@ACCENT@@
+CheckBox.icon.focusedBorderColor     = @@ACCENT@@
+CheckBox.icon.hoverBorderColor       = @@ACCENT@@
+CheckBox.icon.disabledBorderColor    = #a8a8a8
+RadioButton.icon.borderColor         = #6f6f6f
+RadioButton.icon.background          = #ffffff
+RadioButton.icon.selectedBorderColor = @@ACCENT@@
+RadioButton.icon.focusedBorderColor  = @@ACCENT@@
+RadioButton.icon.disabledBorderColor = #a8a8a8
+ProgressBar.selectionForeground = @@ACCENT_FG@@
+ProgressBar.background          = #e0e0e0
+ProgressBar.selectionBackground = #161616
+
+# Selection stays neutral so text reads at any accent.
+@selectionBackground = #d0d0d0
+@selectionForeground = #161616
+
+# Borderless. Fields always draw a 1px FlatBorder; borderWidth 0 removes it and keeps padding
+# and arc, and the border colour matches the fill so no hairline is left.
+Component.borderWidth         = 0
+Component.borderColor         = #ececec
+Component.disabledBorderColor = #ececec
+Component.focusWidth          = 0
+Component.innerFocusWidth     = 0
+Component.focusColor          = @@ACCENT@@
+# FlatRoundBorder and FlatButtonBorder, which JD's AppWork inputs use, read these instead of
+# drawing FlatLaf's blue focus frame.
+Component.focusedBorderColor  = @@ACCENT@@
+Button.focusedBorderColor     = @@ACCENT@@
+Button.hoverBorderColor       = @@ACCENT@@
+Button.hoverBackground        = @@ACCENT@@
+# Focus shows as the accent border alone: the round fill the agent paints has no focus state, so an
+# label in the ink meant for the accent fill would sit on the resting grey.
+Button.focusedBackground      = #e0e0e0
+# A disabled button keeps the resting fill and only its label dims.
+Button.disabledBackground     = #e0e0e0
+Button.hoverForeground        = @@ACCENT_FG@@
+Button.pressedForeground      = @@ACCENT_FG@@
+Button.focusedForeground      = #161616
+Spinner.buttonBackground      = #e8e8e8
+ComboBox.buttonBackground     = #e8e8e8
+Button.borderWidth            = 0
+Button.default.borderWidth    = 0
+Separator.foreground          = #f4f4f4
+TabbedPane.showTabSeparators  = false
+MenuBar.borderColor           = #f4f4f4
+ToolBar.borderColor           = #f4f4f4
+PopupMenu.borderColor         = #e0e0e0
+# FlatLaf leaves the toolbar strip a shade off the chrome; the menu bar, toolbar and
+# the separators between toolbar groups all sit on the base.
+MenuBar.background            = #f4f4f4
+ToolBar.background            = #f4f4f4
+ToolBar.separatorColor        = #f4f4f4
+
+# One corner radius everywhere: 8px, the agent's UI_RADIUS. FlatLaf's arc is a diameter,
+# Popup.borderCornerRadius and picom's corner-radius are radii.
+Button.arc        = 16
+Component.arc     = 16
+TextComponent.arc = 16
+CheckBox.arc      = 4
+ProgressBar.arc   = 16
+PopupMenu.arc            = 16
+Popup.borderCornerRadius = 8
+Spinner.arc       = 16
+ComboBox.arc      = 16
+
+# Roomier controls. Dropdown popups are JLists, so List.cellMargins sets the row height;
+# minimumHeight and the combo padding size the closed field.
+Component.minimumHeight = 30
+ComboBox.padding        = 5,8,5,8
+List.cellMargins        = 7,10,7,10
+List.selectionInsets    = 1,2,1,2
+List.selectionArc       = 16
+
+# JOptionPane dialogs lift off the chrome by shade; the agent recolours AppWork's own dialogs.
+OptionPane.background = #ffffff
+RootPane.background   = #ffffff
+
+# Main tabs: the selected tab is an accent pill. FlatLaf lets the rollover background replace
+# the selected one, so a dark hover colour blanked the pill under the mouse. The agent nulls
+# the UI's hoverColor; these values only matter if that reflection fails.
+TabbedPane.selectedBackground = @@ACCENT@@
+TabbedPane.selectedForeground = @@ACCENT_FG@@
+TabbedPane.tabSelectionHeight = 0
+TabbedPane.showContentSeparator   = false
+TabbedPane.contentSeparatorHeight = 0
+TabbedPane.hoverColor         = @@ACCENT@@
+TabbedPane.hoverForeground    = @@ACCENT_FG@@
+TabbedPane.background         = #f4f4f4
+TabbedPane.tabArc             = 16
+TabbedPane.cardTabArc         = 16
+TabbedPane.tabInsets          = 6,18,6,18
+# The bottom inset leaves room between the tab strip and the download table.
+TabbedPane.tabAreaInsets      = 2,12,12,14
+
+# Toolbar and menus: accent on hover and selection.
+Button.toolbar.hoverBackground    = @@ACCENT@@
+Button.toolbar.pressedBackground  = @@ACCENT@@
+Button.toolbar.selectedBackground = @@ACCENT@@
+MenuBar.hoverBackground           = @@ACCENT@@
+# Same insets and arc as the pills the agent paints behind the top-level menus.
+MenuBar.selectionInsets           = 2,4,2,4
+MenuBar.selectionArc              = 16
+MenuBar.itemMargins               = 7,16,7,16
+MenuBar.selectionBackground       = @@ACCENT@@
+MenuBar.selectionForeground       = @@ACCENT_FG@@
+Menu.hoverBackground              = @@ACCENT@@
+Menu.selectionBackground          = @@ACCENT@@
+Menu.selectionForeground          = @@ACCENT_FG@@
+MenuItem.selectionBackground      = @@ACCENT@@
+MenuItem.selectionForeground      = @@ACCENT_FG@@
+MenuItem.acceleratorForeground          = #6f6f6f
+MenuItem.acceleratorSelectionForeground = @@ACCENT_FG@@
+# A checked item shows its state as a badge on the glyph, so the slot behind the icon stays clear.
+MenuItem.checkBackground          = #00000000
+# Menu rows follow the roughly 30px rhythm of the settings buttons.
+MenuItem.margin                    = 6,16,6,16
+Menu.margin                        = 6,16,6,16
+CheckBoxMenuItem.margin            = 6,16,6,16
+RadioButtonMenuItem.margin         = 6,16,6,16
+MenuItem.selectionInsets           = 1,2,1,2
+MenuItem.selectionArc              = 16
+# A fixed icon column lines the item text up whether a row has an icon or not. Where FlatLaf
+# lacks the key, the agent's monoMenuItemIcon evens out the gap per item.
+MenuItem.minimumIconSize           = 16,16
+MenuItem.iconTextGap               = 10
+
+# No lines anywhere. A separator darker than the header fill shows as a hairline, so the
+# grid, separators and underline all take the fill they sit on.
+Table.showHorizontalLines            = false
+Table.showVerticalLines              = false
+Table.showTrailingVerticalLine       = false
+Table.gridColor                      = #f4f4f4
+Table.intercellSpacing               = 0,0
+# The column header belongs to the list card; the agent adds the #f4f4f4 margin around it.
+TableHeader.background                = #ffffff
+TableHeader.foreground               = #161616
+TableHeader.separatorColor           = #ffffff
+TableHeader.bottomSeparatorColor     = #ffffff
+TableHeader.showTrailingVerticalLine = false
+TableHeader.height                   = 28
+ScrollPane.border                    = 0,0,0,0
+List.border                          = 0,0,0,0
+Tree.border                          = 0,0,0,0
+# JD's content scrollbars use colorforscrollbars*, but the settings sidebar has a plain
+# FlatLaf scrollbar that would otherwise paint an unthemed thumb and a lighter gutter.
+ScrollBar.thumb                      = #c6c6c6
+ScrollBar.hoverThumbColor            = #a8a8a8
+ScrollBar.pressedThumbColor          = #a8a8a8
+ScrollBar.track                      = #f4f4f4
+ScrollBar.hoverTrackColor            = #f4f4f4
+ScrollBar.background                 = #f4f4f4
+SplitPane.background                 = #f4f4f4
+SplitPaneDivider.draggingColor       = #f4f4f4
+
+# FlatLaf shows tooltips only while JD has the focus, which in a browser stream it often does not.
+ToolTipManager.enableToolTipMode = allWindows

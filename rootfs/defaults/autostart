@@ -43,6 +43,7 @@ case "${_case_theme}" in
     jddefault)      xsetroot -solid '#d7e7f0' 2>/dev/null || true ;;
     *)              xsetroot -solid '#161616' 2>/dev/null || true ;;
 esac
+
 unset _case_theme
 
 JD_DIR="${JD_INST_DIR:-/config/JDownloader}"
@@ -150,6 +151,37 @@ if changed:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     json.dump(ids, open(path, "w"))
     print("[jdownloader-autostart] requested synthetica extension(s) for classic JDDEFAULT")
+PYEOF
+}
+
+# folderwatch is an optional extension that is not part of Core.jar. Without its jar
+# JD never discovers it and ignores the enabled flag cont-init writes, so a dropped
+# .dlc uploads but yields no links. It is requested the same way as FlatLaf, before a
+# JVM holds the single-instance lock, and the request is a no-op once the jar exists.
+folderwatch_installed() {
+    for f in "${JD_DIR}"/extensions/*; do
+        case "$(printf '%s' "${f##*/}" | tr '[:upper:]' '[:lower:]')" in *folderwatch*) return 0 ;; esac
+    done
+    return 1
+}
+seed_folderwatch_request() {
+    folderwatch_installed && return 0
+    python3 - "${JD_DIR}/update/versioninfo/JD/extensions.requestedinstalls.json" <<'PYEOF' >&2 || true
+import json, os, sys
+path = sys.argv[1]
+ids = []
+if os.path.exists(path):
+    try:
+        ids = json.load(open(path))
+        if not isinstance(ids, list):
+            ids = []
+    except Exception:
+        ids = []
+if "folderwatch" not in ids:
+    ids.append("folderwatch")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    json.dump(ids, open(path, "w"))
+    print("[jdownloader-autostart] requested folderwatch extension install")
 PYEOF
 }
 
@@ -450,6 +482,7 @@ if [ ! -f "${JD_DIR}/Core.jar" ]; then
     else
         seed_synthetica_request
     fi
+    seed_folderwatch_request
     java -Djava.awt.headless=true -jar "${LAUNCHER}" < /dev/null >> /config/jd-headless-install.log 2>&1 &
     tries=0
     settle=0
@@ -508,7 +541,7 @@ echo "" >&2
 # and a leftover marker would make the watcher below exit at once, so the READY
 # banner would only fire on the first boot. The agent's markers go too, so a stale
 # .jd-laf-applied cannot vouch for this run.
-rm -f /tmp/.jd-ready /tmp/.jd-agent.pid /tmp/.jd-laf-applied /tmp/.jd-laf-restart-request /tmp/.jd-classic-bootstrap-tried /tmp/.jd-flatlaf-bootstrap-tried
+rm -f /tmp/.jd-ready /tmp/.jd-expect-laf /tmp/.jd-agent.pid /tmp/.jd-laf-applied /tmp/.jd-laf-restart-request /tmp/.jd-classic-bootstrap-tried /tmp/.jd-flatlaf-bootstrap-tried
 
 # The agent inside JD's JVM writes /tmp/.jd-agent.pid (its JVM pid) and
 # /tmp/.jd-laf-applied (the class name of the look and feel actually applied). The
@@ -623,6 +656,11 @@ heal_restart() {
     pid_age=0
     while true; do
         sleep 8
+        # This watcher runs in its own subshell, so it takes the expected look and feel from the
+        # launch loop, which reads the variant picked in JD again before every start.
+        if [ -s /tmp/.jd-expect-laf ]; then
+            read -r EXPECT_CLASSIC EXPECT_LAF < /tmp/.jd-expect-laf
+        fi
         now=$(date +%s)
         if [ $((now - window_start)) -ge 3600 ]; then
             window_start=${now}
@@ -703,7 +741,7 @@ heal_restart() {
         fi
         if [ "${mismatch}" -ge 4 ]; then
             heals=$((heals + 1)); mismatch=0
-            echo "[jdownloader-autostart] applied LAF differs from expected (JD_THEME=${JD_THEME:-Dark}), restarting JD to apply (${heals}/3 this hour)" >&2
+            echo "[jdownloader-autostart] applied LAF differs from expected (${EXPECT_LAF:-classic}), restarting JD to apply (${heals}/3 this hour)" >&2
             heal_restart
             sleep 25
         fi
@@ -717,6 +755,29 @@ bootstrap_flatlaf_if_needed
 
 fast_exits=0
 while true; do
+    # A theme picked in JD's settings takes effect on the next JD start, so it is read again before
+    # every launch; JD's JVM and the theme script get it through JD_THEME.
+    if [ -f "${HELPERS}" ]; then
+        JD_THEME=$(python3 "${HELPERS}" canonical "${JD_THEME}")
+        export JD_THEME
+        _resolved=$(python3 "${HELPERS}" resolve "${JD_THEME}")
+        EXPECT_LAF=$(printf '%s\n' "${_resolved}" | awk -F= '/^expect_laf=/{print $2; exit}')
+        EXPECT_CLASSIC=$(printf '%s\n' "${_resolved}" | awk -F= '/^expect_classic=/{print $2; exit}')
+        unset _resolved
+        printf '%s %s' "${EXPECT_CLASSIC:-0}" "${EXPECT_LAF}" > /tmp/.jd-expect-laf
+    fi
+    # JD Highlighter rounds the dialog window corners through picom. Java's setShape cannot
+    # anti-alias top-level windows and X-SHAPE leaves jagged edges, so a compositor with the
+    # xrender backend is the only way on the GPU-less Xvfb display. /defaults/picom.conf turns
+    # off everything that would compete with the Selkies encoder; svc-de's finish script reaps it.
+    case "${JD_THEME}" in
+        jd-highlighter-*)
+            if command -v picom >/dev/null 2>&1 && ! pgrep -x picom >/dev/null 2>&1; then
+                picom --config /defaults/picom.conf --log-level=warn > /config/picom.log 2>&1 &
+            fi
+            ;;
+    esac
+
     # The flat icon pack is for FlatLaf only; classic JDDEFAULT keeps JD's stock
     # icons. EXPECT_CLASSIC is already normalised, where comparing the raw JD_THEME
     # would trip over casing and whitespace.
@@ -771,9 +832,22 @@ while true; do
             fi
         fi
     fi
+    seed_folderwatch_request
     # JD's self-update can reset cfg/laf/*.json, and cont-init alone would lose that
     # race on some boots.
     /usr/local/bin/jdownloader-theme.sh "${THEME_APPLY}" >/dev/null 2>&1 || true
+
+    # JD's first-run install puts its colourful flat icons back after the theme hook
+    # has recoloured them. With mono icons active, a background loop recolours flat
+    # again for about 2.5 minutes; the script skips icons it already marked, and JD
+    # reads the SVGs again on repaint, so no restart is needed.
+    if [ -s /tmp/.jd-mono-hex ]; then
+        ( _hex="$(cat /tmp/.jd-mono-hex 2>/dev/null)"
+          for _i in $(seq 1 30); do
+              sleep 5
+              python3 /usr/local/bin/jd-mono-icons.py "${JD_DIR}/themes/flat" "${_hex}" >/dev/null 2>&1 || true
+          done ) &
+    fi
 
     # The tray extension's startup probe raises the "tray isn't supported" popup;
     # with its jar renamed, JD's extension loader skips it.
@@ -847,6 +921,12 @@ PYEOF
     # A crash-looping JD must not inherit the previous JVM's markers, or READY would
     # report a look and feel this launch never applied.
     rm -f /tmp/.jd-agent.pid /tmp/.jd-laf-applied /tmp/.jd-laf-restart-request
+
+    # ExtensionController.init skips the rescan while its discovery cache is non-empty.
+    # The headless pre-install writes that cache before folderwatch is installed, so
+    # the extension would never start on the first boot. A rescan costs milliseconds,
+    # and each extension keeps its enabled state in its own cfg.
+    rm -f "${JD_DIR}/tmp/extensioncache/extensionInfos.json"
 
     launch_ts=$(date +%s)
     echo "[jdownloader-autostart] launching JDownloader JVM (the GUI starts here)..." >&2

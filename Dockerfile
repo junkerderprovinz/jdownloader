@@ -86,7 +86,11 @@ RUN set -eux; \
         fonts-hack \
         locales coreutils \
         # openbox-xdg-autostart needs PyXDG
-        python3-xdg; \
+        python3-xdg \
+        # Rounds the dialog window corners for jd-highlighter. The xrender backend
+        # works on the GPU-less Xvfb display, and /defaults/picom.conf turns off
+        # everything that would compete with the Selkies encoder.
+        picom; \
     # Build the font cache so Java finds the fonts on the first start
     fc-cache -f -v >/dev/null 2>&1 || true; \
     apt-get clean; \
@@ -170,6 +174,13 @@ RUN set -eux; \
         sed -i -e '/To support LSIO projects visit:/d' -e '\#linuxserver\.io/donate#d' "$run"; \
     fi
 
+# The JD Highlighter themes render over the Plain control defaults in place, so the
+# theme script needs the shipped files to bring Plain Dark and Plain Light back.
+RUN mkdir -p /opt/JDownloader/flatlaf-defaults/plain && \
+    cp /opt/JDownloader/flatlaf-defaults/FlatDarkLaf.properties \
+       /opt/JDownloader/flatlaf-defaults/FlatLightLaf.properties \
+       /opt/JDownloader/flatlaf-defaults/plain/
+
 # autostart loads the agent through JAVA_TOOL_OPTIONS.
 COPY --from=agent-builder /build/jd-dialog-agent.jar /opt/JDownloader/jd-dialog-agent.jar
 
@@ -208,7 +219,9 @@ ENV S6_KILL_GRACETIME=30000 \
 
 # Defaults the Unraid template can override:
 # JD_LANG       UI language as an ISO code (de, en, fr, ...)
-# JD_THEME      Dark (Carbon #161616) or Light
+# JD_THEME      jd-highlighter-dark (also Dark), jd-highlighter-light, plain-dark
+#               (Carbon #161616), Light or JDDEFAULT: the look a container starts with.
+#               A look and an accent picked in JD's settings win over it.
 # JD_SELFUPDATE false turns off JD's self-update checks. The same channel delivers
 #               the hoster plugins, which go stale within weeks.
 # JD_INST_DIR   install path, only worth changing for debugging
@@ -216,7 +229,7 @@ ENV S6_KILL_GRACETIME=30000 \
 #               larger at full pixel density, so text stays sharp where browser
 #               zoom would blur it by scaling up the Selkies H.264 stream.
 ENV JD_LANG=en \
-    JD_THEME=Dark \
+    JD_THEME=jd-highlighter-dark \
     JD_SELFUPDATE=true \
     JD_INST_DIR=/config/JDownloader \
     JD_UI_SCALE= \

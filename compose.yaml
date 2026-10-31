@@ -18,8 +18,7 @@ services:
       - "./appdata:/config"
       - "./downloads:/downloads"
     environment:
-      JD_THEME: Dark
-      JD_ACCENT: "#ffee00"
+      JD_THEME: jd-highlighter-dark
       JD_SELFUPDATE: "true"
       JD_ENABLE_BROWSER: auto
       TZ: Europe/Vienna

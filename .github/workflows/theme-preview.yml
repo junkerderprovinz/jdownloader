@@ -1,0 +1,87 @@
+name: Preview Image
+
+# Builds the jd-highlighter branch, boots it with JD_THEME=jd-highlighter-dark to prove the
+# theme applies and the JVM stays up, and pushes it as :jd-highlighter-preview for a
+# parallel test container. :latest is never touched.
+
+on:
+  push:
+    branches: [ feat/jd-highlighter-rebased ]
+    paths:
+      - '.github/workflows/theme-preview.yml'
+      - 'rootfs/opt/JDownloader/flatlaf-defaults/highlighter.properties.tmpl'
+      - 'rootfs/usr/local/bin/jdownloader-theme.sh'
+      - 'rootfs/etc/cont-init.d/10-jdownloader-setup'
+      - 'rootfs/defaults/autostart'
+      - 'agent/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      IMG: ghcr.io/junkerderprovinz/jdownloader:jd-highlighter-preview
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Build the branch image (amd64)
+        run: DOCKER_BUILDKIT=1 docker build -t jd:preview .
+
+      - name: Boot with jd-highlighter and check for a crash
+        run: |
+          set -uo pipefail
+          docker run -d --name jd \
+            -e JD_THEME=jd-highlighter-dark -e JD_ICONS=mono -e JD_DEBUG_GEO=1 \
+            -p 3000:3000 -p 3001:3001 jd:preview
+          for i in $(seq 1 90); do
+            docker logs jd 2>&1 | grep -q "IS READY" && { echo "READY after ~$((i*10))s"; break; }
+            [ -z "$(docker ps -q --filter name=jd)" ] && { echo "exited early:"; docker logs jd || true; exit 1; }
+            sleep 10
+          done
+          sleep 20
+          docker logs jd > full.log 2>&1 || true
+          grep -E "wrote accented FlatLaf defaults|registered custom defaults source|mono icons.*recoloured|folderwatch enabled" full.log | tail -8 || echo "(no theme signals)"
+          grep -qE "mono icons.*recoloured [1-9][0-9]* svgs" full.log || { echo "::error::mono icon recolour produced nothing"; exit 1; }
+          # JD resets flat during its install and a background loop recolours it again, so
+          # the marker can be missing at this moment. The geometry probe screenshot decides.
+          docker exec jd sh -c 'grep -ql hlmono /config/JDownloader/themes/flat/org/jdownloader/images/settings.svg 2>/dev/null' \
+            && echo "flat is mono in place (marker present)" \
+            || echo "::warning::flat mono marker not there yet, the geometry probe will show it"
+          if grep -E "UnsupportedClassVersionError|processing of -javaagent failed|FATAL ERROR in native method|agent load/premain call failed" full.log; then
+            echo "::error::agent or JVM crash signature, not pushing"; exit 1
+          fi
+          echo "clean, publishing the preview tag"
+
+      - name: Folderwatch imports a dropped crawljob
+        run: |
+          set -uo pipefail
+          FOLDERS=/config/JDownloader/cfg/org.jdownloader.extensions.folderwatchV2.FolderWatchExtension.folders.json
+          docker exec jd sh -c 'ls /config/JDownloader/extensions/ | grep -qi folderwatch' \
+            || { echo "::error::FolderWatch.jar not installed"; exit 1; }
+          echo "folders.json:"; docker exec jd cat "$FOLDERS" 2>/dev/null || echo "(missing)"
+          docker exec jd sh -c "grep -q '/config/Desktop' $FOLDERS" \
+            || { echo "::error::folderwatch is not watching /config/Desktop"; exit 1; }
+          # Selkies uploads belong to abc. folderwatch moves an imported file to added/.
+          docker exec -u abc jd sh -c 'mkdir -p /config/Desktop && printf "text=https://example.org/fw-citest.bin\npackageName=fw-citest\n" > /config/Desktop/fw-citest.crawljob'
+          ok=0
+          for i in $(seq 1 15); do
+            docker exec jd sh -c 'ls /config/Desktop/added/*.crawljob >/dev/null 2>&1' \
+              && { ok=1; echo "folderwatch imported the crawljob after ~$((i*5))s"; break; }
+            sleep 5
+          done
+          [ "$ok" = 1 ] || { echo "::error::folderwatch did not pick up the crawljob"; docker exec jd sh -c 'ls -la /config/Desktop /config/Desktop/added 2>/dev/null || true'; docker logs jd 2>&1 | grep -iE "folderwatch" | tail -30 || true; exit 1; }
+          echo "folderwatch picked up the crawljob"
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Push the preview tag
+        run: |
+          docker tag jd:preview "$IMG"
+          docker push "$IMG"
+          echo "published $IMG"

@@ -25,6 +25,12 @@ container image. Each bundled component retains its upstream license:
                                  https://github.com/JFormDesigner/FlatLaf
   * Icons8 "flat" icon set       CC BY-ND 3.0 (bundled verbatim, see
                                  rootfs/opt/JDownloader/themes-default/.../icons8.license)
+  * Tabler Icons (jd-highlighter chrome icons, rasterised unmodified)
+                                 MIT, see rootfs/opt/jd-tabler/LICENSE.tabler
+                                 https://tabler.io/icons
+  * ASM (unpacked into the dialog agent jar)
+                                 BSD-3-Clause, see rootfs/opt/JDownloader/LICENSE.asm
+                                 https://asm.ow2.io/
   * Fonts (Noto, DejaVu, Liberation, Hack)
                                  OFL-1.1 / dejavu license / OFL-1.1 / MIT+Bitstream
 
