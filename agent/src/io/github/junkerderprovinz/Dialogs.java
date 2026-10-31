@@ -175,7 +175,7 @@ final class Dialogs {
 
     // JD's FlatLaf build ignores the arc on combo borders, so their corners are masked in the colour of
     // the surface they sit on, like the text fields FlatLaf does round.
-    private static void roundCorners(JComponent c, Color surface) {
+    static void roundCorners(JComponent c, Color surface) {
         if (c.getClientProperty("jdp.roundMask") != null) return;
         c.putClientProperty("jdp.roundMask", Boolean.TRUE);
         javax.swing.border.Border mask = new RoundCornerMaskBorder(surface, UI_RADIUS);

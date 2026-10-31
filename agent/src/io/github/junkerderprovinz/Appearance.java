@@ -2,7 +2,6 @@ package io.github.junkerderprovinz;
 
 import javax.swing.AbstractButton;
 import javax.swing.JButton;
-import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.SwingUtilities;
@@ -71,11 +70,12 @@ final class Appearance {
         }
     }
 
-    // The container offers all of its looks and stores the pick as the theme, which replaces JD_THEME;
-    // the desktop package only brings the two JD Highlighter variants.
-    private static final String[] THEMES = { "jd-highlighter-dark", "jd-highlighter-light", "plain-dark", "Light", "JDDEFAULT" };
+    // The container offers its four own looks and stores the pick as the theme, which replaces JD_THEME;
+    // the desktop package only brings the two JD Highlighter variants. JD's classic look stays reachable
+    // through JD_THEME alone.
+    private static final String[] THEMES = { "jd-highlighter-dark", "jd-highlighter-light", "plain-dark", "Light" };
     // Theme names are product names, so they stay the same in every language.
-    private static final String[] THEME_NAMES = { "JD Highlighter Dark", "JD Highlighter Light", "JD Plain Dark", "FlatLaf Light", "JD Default" };
+    private static final String[] THEME_NAMES = { "JD Highlighter Dark", "JD Highlighter Light", "JD Plain Dark", "JD Plain Light" };
 
     private static void addRowsTo(JComponent panel) {
         if (panel.getClientProperty("jdp.appearanceRows") != null) return;
@@ -91,26 +91,27 @@ final class Appearance {
         Object fieldCc = constraints(panel, kids[lang]);
         trimClickHint((AbstractButton) kids[lang]);
 
-        int count = DESKTOP ? 2 : THEMES.length;
-        final JComboBox<String> theme = new JComboBox<>(java.util.Arrays.copyOf(THEME_NAMES, count));
-        centerText(theme);
+        // A button like the language row next to it, which opens the list of looks as a menu.
+        final int count = DESKTOP ? 2 : THEMES.length;
         final int now = currentTheme();
-        theme.setSelectedIndex(Math.min(now, count - 1));
-        // Arrow keys in the open list change the selection on every step, so only the pick that is left
-        // when the list closes counts.
-        final int[] last = { now };
-        final Runnable apply = () -> {
-            int pick = theme.getSelectedIndex();
-            if (pick == last[0] || pick < 0) return;
-            last[0] = pick;
-            if (DESKTOP) save("variant", pick == 1 ? "light" : "dark");
-            else save("theme", THEMES[pick]);
-        };
-        theme.addActionListener(e -> { if (!theme.isPopupVisible()) SwingUtilities.invokeLater(apply); });
-        theme.addPopupMenuListener(new javax.swing.event.PopupMenuListener() {
-            public void popupMenuWillBecomeVisible(javax.swing.event.PopupMenuEvent e) { }
-            public void popupMenuWillBecomeInvisible(javax.swing.event.PopupMenuEvent e) { SwingUtilities.invokeLater(apply); }
-            public void popupMenuCanceled(javax.swing.event.PopupMenuEvent e) { }
+        final JButton theme = new JButton(now < 0 ? (de ? "Auswählen" : "Choose") : THEME_NAMES[now]);
+        theme.addActionListener(e -> {
+            javax.swing.JPopupMenu menu = new javax.swing.JPopupMenu();
+            for (int i = 0; i < count; i++) {
+                final int pick = i;
+                // The current look is set in bold; a radio dot would push its name off the centre.
+                javax.swing.JMenuItem item = new javax.swing.JMenuItem(THEME_NAMES[i]);
+                item.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
+                if (i == now) item.setFont(item.getFont().deriveFont(java.awt.Font.BOLD));
+                item.addActionListener(a -> {
+                    if (pick == now) return;
+                    if (DESKTOP) save("variant", pick == 1 ? "light" : "dark");
+                    else save("theme", THEMES[pick]);
+                });
+                menu.add(item);
+            }
+            menu.setPopupSize(theme.getWidth(), menu.getPreferredSize().height);
+            menu.show(theme, 0, theme.getHeight() + 4);
         });
 
         int at = lang + 1;
@@ -137,28 +138,12 @@ final class Appearance {
         panel.repaint();
     }
 
-    // The buttons in the rows around it center their text on the whole field; the combo's text area
-    // ends at the arrow, so the shown value gets the arrow's width as a left inset to line up.
-    private static void centerText(final JComboBox<String> combo) {
-        final javax.swing.ListCellRenderer<? super String> base = combo.getRenderer();
-        combo.setRenderer((list, value, index, selected, focus) -> {
-            Component c = base.getListCellRendererComponent(list, value, index, selected, focus);
-            if (c instanceof JLabel) {
-                JLabel l = (JLabel) c;
-                l.setHorizontalAlignment(JLabel.CENTER);
-                int arrow = 0;
-                if (index < 0) for (Component k : combo.getComponents()) if (k instanceof JButton) arrow = k.getWidth();
-                l.setBorder(javax.swing.BorderFactory.createEmptyBorder(0, arrow, 0, 0));
-            }
-            return c;
-        });
-    }
-
+    // JD's classic look is not in the list, so it has no entry to mark.
     private static int currentTheme() {
         if (DESKTOP) return LIGHT ? 1 : 0;
         String t = System.getenv().getOrDefault("JD_THEME", "").trim();
         for (int i = 0; i < THEMES.length; i++) if (THEMES[i].equalsIgnoreCase(t)) return i;
-        return 0;
+        return -1;
     }
 
     // JD labels the language button "German (click to change)"; a button already says that it can be clicked.

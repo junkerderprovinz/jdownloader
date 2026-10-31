@@ -137,7 +137,10 @@ final class Settings {
                         // borderWidth=0 only reaches FlatBorder, and the settings pages are not dialogs,
                         // so recolorDialogs never strips their AppWork frames.
                         stripFramingBorder((JComponent) ch);
-                        if (ch instanceof javax.swing.JComboBox) styleComboPopup((javax.swing.JComboBox<?>) ch);
+                        if (ch instanceof javax.swing.JComboBox) {
+                            styleComboPopup((javax.swing.JComboBox<?>) ch);
+                            roundCorners((JComponent) ch, DIALOG_BG);
+                        }
                     } else if (ch instanceof javax.swing.AbstractButton && !isCheckLike(ch)) {
                         javax.swing.AbstractButton ab = (javax.swing.AbstractButton) ch;
                         // A hovered button carries the accent from installBtnHoverBg.
