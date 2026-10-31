@@ -208,7 +208,9 @@ final class Dialogs {
                 if (ch instanceof javax.swing.JScrollPane && isTextInput((javax.swing.JScrollPane) ch)) {
                     roundTextArea((javax.swing.JScrollPane) ch, bg);
                 } else if (ch instanceof javax.swing.JPanel || ch instanceof javax.swing.JOptionPane
-                        || ch instanceof javax.swing.Box || ch instanceof javax.swing.JScrollPane) {
+                        || ch instanceof javax.swing.Box || ch instanceof javax.swing.JScrollPane
+                        // FlatLaf fills a tab strip with the window base, a dark bar on the dialog.
+                        || ch instanceof javax.swing.JTabbedPane || ch instanceof javax.swing.JColorChooser) {
                     if (!bg.equals(ch.getBackground())) ch.setBackground(bg);
                     stripFramingBorder((JComponent) ch);
                 } else if (ch instanceof javax.swing.text.JTextComponent
@@ -238,7 +240,16 @@ final class Dialogs {
                     if (!hot && !SIDEBAR_TEXT.equals(ab.getForeground())) ab.setForeground(SIDEBAR_TEXT);
                     installBtnHoverFg(ab);
                     installBtnHoverBg(ab);
-                    if (bg != UPDATER_BG) roundButton(ab);
+                    if (bg != UPDATER_BG) {
+                        roundButton(ab);
+                        // FlatLaf's button border draws an outline whose arc differs from the painted fill,
+                        // which leaves slivers of the accent in the corners; only its padding is kept.
+                        javax.swing.border.Border fb = ab.getBorder();
+                        if (fb != null && fb.getClass().getName().contains("FlatButtonBorder")) {
+                            java.awt.Insets in = fb.getBorderInsets(ab);
+                            ab.setBorder(javax.swing.BorderFactory.createEmptyBorder(in.top, in.left, in.bottom, in.right));
+                        }
+                    }
                     // This FlatLaf build ignores a per-component arc, so the updater buttons are rounded by a
                     // corner mask. The original border stays inside it to keep the padding.
                     if (bg == UPDATER_BG && ab.getClientProperty("jdp.updBtnMask") == null) {
