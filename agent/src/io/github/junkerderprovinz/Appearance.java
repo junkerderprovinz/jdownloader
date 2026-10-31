@@ -74,8 +74,8 @@ final class Appearance {
     // The container offers all of its looks and stores the pick as the theme, which replaces JD_THEME;
     // the desktop package only brings the two JD Highlighter variants.
     private static final String[] THEMES = { "jd-highlighter-dark", "jd-highlighter-light", "plain-dark", "Light", "JDDEFAULT" };
-    private static final String[] THEME_NAMES_DE = { "Highlighter Dunkel", "Highlighter Hell", "Schlicht Dunkel", "Hell", "JDownloader klassisch" };
-    private static final String[] THEME_NAMES_EN = { "Highlighter Dark", "Highlighter Light", "Plain Dark", "Light", "JDownloader classic" };
+    // Theme names are product names, so they stay the same in every language.
+    private static final String[] THEME_NAMES = { "JD Highlighter Dark", "JD Highlighter Light", "JD Plain Dark", "FlatLaf Light", "JD Default" };
 
     private static void addRowsTo(JComponent panel) {
         if (panel.getClientProperty("jdp.appearanceRows") != null) return;
@@ -92,8 +92,8 @@ final class Appearance {
         trimClickHint((AbstractButton) kids[lang]);
 
         int count = DESKTOP ? 2 : THEMES.length;
-        String[] names = java.util.Arrays.copyOf(de ? THEME_NAMES_DE : THEME_NAMES_EN, count);
-        final JComboBox<String> theme = new JComboBox<>(names);
+        final JComboBox<String> theme = new JComboBox<>(java.util.Arrays.copyOf(THEME_NAMES, count));
+        centerText(theme);
         final int now = currentTheme();
         theme.setSelectedIndex(Math.min(now, count - 1));
         // Arrow keys in the open list change the selection on every step, so only the pick that is left
@@ -135,6 +135,23 @@ final class Appearance {
         panel.add(theme, fieldCc, at);
         panel.revalidate();
         panel.repaint();
+    }
+
+    // The buttons in the rows around it center their text on the whole field; the combo's text area
+    // ends at the arrow, so the shown value gets the arrow's width as a left inset to line up.
+    private static void centerText(final JComboBox<String> combo) {
+        final javax.swing.ListCellRenderer<? super String> base = combo.getRenderer();
+        combo.setRenderer((list, value, index, selected, focus) -> {
+            Component c = base.getListCellRendererComponent(list, value, index, selected, focus);
+            if (c instanceof JLabel) {
+                JLabel l = (JLabel) c;
+                l.setHorizontalAlignment(JLabel.CENTER);
+                int arrow = 0;
+                if (index < 0) for (Component k : combo.getComponents()) if (k instanceof JButton) arrow = k.getWidth();
+                l.setBorder(javax.swing.BorderFactory.createEmptyBorder(0, arrow, 0, 0));
+            }
+            return c;
+        });
     }
 
     private static int currentTheme() {
