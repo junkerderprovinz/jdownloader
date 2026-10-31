@@ -531,3 +531,11 @@ def test_autostart_reads_the_variant_before_every_launch():
     loop = auto.index("fast_exits=0\nwhile true; do")
     assert 'canonical "${JD_THEME}"' in auto[loop:loop + 600]
     assert "JD_ACCENT" not in auto
+
+
+def test_laf_watcher_follows_the_variant_of_the_current_launch():
+    auto = AUTOSTART.read_text(encoding="utf-8")
+    watcher = auto.split("window_start=$(date +%s)")[1].split(") &")[0]
+    assert "/tmp/.jd-expect-laf" in watcher
+    loop = auto[auto.index("fast_exits=0\nwhile true; do"):]
+    assert "> /tmp/.jd-expect-laf" in loop[:900]

@@ -179,6 +179,16 @@ final class Menus {
                         javax.swing.border.Border pad = new javax.swing.border.EmptyBorder(3, 11, 3, 0);
                         javax.swing.border.Border old = jc.getBorder();
                         jc.setBorder(old == null ? pad : new javax.swing.border.CompoundBorder(pad, old));
+                        // Next to check box items, as in the bottom bar's menu, JD indents the row label for a
+                        // check column that FlatLaf does not draw, which pushes these rows out of line.
+                        for (Component k : jc.getComponents()) {
+                            if (!(k instanceof javax.swing.JLabel)) continue;
+                            javax.swing.border.Border lb = ((javax.swing.JLabel) k).getBorder();
+                            if (lb instanceof javax.swing.border.EmptyBorder) {
+                                java.awt.Insets in = ((javax.swing.border.EmptyBorder) lb).getBorderInsets();
+                                if (in.left > 0) ((javax.swing.JLabel) k).setBorder(new javax.swing.border.EmptyBorder(in.top, 0, in.bottom, in.right));
+                            }
+                        }
                     }
                 }
             }

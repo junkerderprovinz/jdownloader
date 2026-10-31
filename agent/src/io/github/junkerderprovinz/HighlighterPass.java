@@ -60,6 +60,7 @@ final class HighlighterPass {
         onChange("cardBottomArea", Cards::cardBottomArea),
         onChange("alignToolbarLeft", Cards::alignToolbarLeft),
         onChange("monoConfigTableIcons", Tables::monoConfigTableIcons),
+        onChange("monoTreeIcons", Tables::monoTreeIcons),
         everyTick("fixWidthLockIcon", Tables::fixWidthLockIcon),
         onChange("stylePropertiesPanel", Settings::stylePropertiesPanel),
         onChange("monoSectionHeaders", Settings::monoSectionHeaders),

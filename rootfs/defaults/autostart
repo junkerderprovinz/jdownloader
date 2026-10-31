@@ -548,7 +548,7 @@ echo "" >&2
 # and a leftover marker would make the watcher below exit at once, so the READY
 # banner would only fire on the first boot. The agent's markers go too, so a stale
 # .jd-laf-applied cannot vouch for this run.
-rm -f /tmp/.jd-ready /tmp/.jd-agent.pid /tmp/.jd-laf-applied /tmp/.jd-laf-restart-request /tmp/.jd-classic-bootstrap-tried /tmp/.jd-flatlaf-bootstrap-tried
+rm -f /tmp/.jd-ready /tmp/.jd-expect-laf /tmp/.jd-agent.pid /tmp/.jd-laf-applied /tmp/.jd-laf-restart-request /tmp/.jd-classic-bootstrap-tried /tmp/.jd-flatlaf-bootstrap-tried
 
 # The agent inside JD's JVM writes /tmp/.jd-agent.pid (its JVM pid) and
 # /tmp/.jd-laf-applied (the class name of the look and feel actually applied). The
@@ -663,6 +663,9 @@ heal_restart() {
     pid_age=0
     while true; do
         sleep 8
+        # This watcher runs in its own subshell, so it takes the expected look and feel from the
+        # launch loop, which reads the variant picked in JD again before every start.
+        [ -s /tmp/.jd-expect-laf ] && EXPECT_LAF=$(cat /tmp/.jd-expect-laf)
         now=$(date +%s)
         if [ $((now - window_start)) -ge 3600 ]; then
             window_start=${now}
@@ -743,7 +746,7 @@ heal_restart() {
         fi
         if [ "${mismatch}" -ge 4 ]; then
             heals=$((heals + 1)); mismatch=0
-            echo "[jdownloader-autostart] applied LAF differs from expected (JD_THEME=${JD_THEME:-Dark}), restarting JD to apply (${heals}/3 this hour)" >&2
+            echo "[jdownloader-autostart] applied LAF differs from expected (${EXPECT_LAF:-classic}), restarting JD to apply (${heals}/3 this hour)" >&2
             heal_restart
             sleep 25
         fi
@@ -767,6 +770,7 @@ while true; do
                 *-light) EXPECT_LAF="flatlight" ;;
                 *)       EXPECT_LAF="flatdark" ;;
             esac
+            printf '%s' "${EXPECT_LAF}" > /tmp/.jd-expect-laf
             ;;
     esac
 

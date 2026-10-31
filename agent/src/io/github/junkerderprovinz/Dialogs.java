@@ -158,12 +158,52 @@ final class Dialogs {
         return c != null && c.getRed() > 200 && c.getGreen() < 80 && c.getBlue() < 80;
     }
 
+    private static boolean isTextInput(javax.swing.JScrollPane sp) {
+        Component v = sp.getViewport() != null ? sp.getViewport().getView() : null;
+        return v instanceof javax.swing.text.JTextComponent && ((javax.swing.text.JTextComponent) v).isEditable();
+    }
+
+    // A text area sits in a scroll pane on the dialog surface, so its fill started inside the pane's
+    // margin and kept square corners. The pane takes the field fill and the rounded corners instead.
+    private static void roundTextArea(javax.swing.JScrollPane sp, Color bg) {
+        Component v = sp.getViewport().getView();
+        if (!FIELD_BG.equals(v.getBackground())) v.setBackground(FIELD_BG);
+        if (!FIELD_BG.equals(sp.getViewport().getBackground())) sp.getViewport().setBackground(FIELD_BG);
+        if (!FIELD_BG.equals(sp.getBackground())) { sp.setBackground(FIELD_BG); sp.setOpaque(true); }
+        roundCorners(sp, bg);
+    }
+
+    // JD's FlatLaf build ignores the arc on combo borders, so their corners are masked in the colour of
+    // the surface they sit on, like the text fields FlatLaf does round.
+    private static void roundCorners(JComponent c, Color surface) {
+        if (c.getClientProperty("jdp.roundMask") != null) return;
+        c.putClientProperty("jdp.roundMask", Boolean.TRUE);
+        javax.swing.border.Border mask = new RoundCornerMaskBorder(surface, UI_RADIUS);
+        javax.swing.border.Border ob = c.getBorder();
+        c.setBorder(ob == null ? mask : javax.swing.BorderFactory.createCompoundBorder(mask, ob));
+    }
+
+    // JD adds its own padding inside FlatLaf's field border, which on a 22 to 24px high field leaves no
+    // room for the text and cuts it off at the bottom. The vertical part of both goes.
+    private static void fitSingleLine(javax.swing.JTextField f) {
+        if (f.getClientProperty("jdp.fitLine") != null || !(f.getBorder() instanceof javax.swing.border.CompoundBorder)) return;
+        javax.swing.border.CompoundBorder cb = (javax.swing.border.CompoundBorder) f.getBorder();
+        if (!(cb.getInsideBorder() instanceof javax.swing.border.EmptyBorder)) return;
+        f.putClientProperty("jdp.fitLine", Boolean.TRUE);
+        java.awt.Insets in = ((javax.swing.border.EmptyBorder) cb.getInsideBorder()).getBorderInsets();
+        java.awt.Insets m = f.getMargin();
+        if (m != null) f.setMargin(new java.awt.Insets(0, m.left, 0, m.right));
+        f.setBorder(new javax.swing.border.CompoundBorder(cb.getOutsideBorder(), new javax.swing.border.EmptyBorder(0, in.left, 0, in.right)));
+    }
+
     /** Gives AppWork dialogs the theme's surface, field and button fills and removes their framing
      *  borders. Runs on every tick so content built later is caught; icons are handled by monoChromeIcons. */
     private static void styleDialogContent(Container c, Color bg) {
         for (Component ch : c.getComponents()) {
             try {
-                if (ch instanceof javax.swing.JPanel || ch instanceof javax.swing.JOptionPane
+                if (ch instanceof javax.swing.JScrollPane && isTextInput((javax.swing.JScrollPane) ch)) {
+                    roundTextArea((javax.swing.JScrollPane) ch, bg);
+                } else if (ch instanceof javax.swing.JPanel || ch instanceof javax.swing.JOptionPane
                         || ch instanceof javax.swing.Box || ch instanceof javax.swing.JScrollPane) {
                     if (!bg.equals(ch.getBackground())) ch.setBackground(bg);
                     stripFramingBorder((JComponent) ch);
@@ -182,7 +222,9 @@ final class Dialogs {
                     if (ch instanceof javax.swing.JComboBox) {
                         styleComboPopup((javax.swing.JComboBox<?>) ch);
                         monoComboRenderer((javax.swing.JComboBox<?>) ch);
+                        roundCorners((JComponent) ch, bg);
                     }
+                    if (ch instanceof javax.swing.JTextField) fitSingleLine((javax.swing.JTextField) ch);
                 } else if (ch instanceof javax.swing.AbstractButton && !isCheckLike(ch)) {
                     javax.swing.AbstractButton ab = (javax.swing.AbstractButton) ch;
                     boolean hot = ab.getModel().isRollover() || ab.getModel().isPressed();

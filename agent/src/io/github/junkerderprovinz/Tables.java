@@ -485,6 +485,41 @@ final class Tables {
         return false;
     }
 
+    // Trees such as the menu editor's list JD's own filled icons, so their rows get the Tabler set too.
+    static void monoTreeIcons() {
+        for (Window w : Window.getWindows()) if (w.isShowing()) monoTreesIn(w);
+    }
+    private static void monoTreesIn(Container c) {
+        for (Component ch : c.getComponents()) {
+            if (ch instanceof javax.swing.JTree) {
+                javax.swing.JTree t = (javax.swing.JTree) ch;
+                javax.swing.tree.TreeCellRenderer r = t.getCellRenderer();
+                if (r != null && !(r instanceof MonoTreeRenderer)) t.setCellRenderer(new MonoTreeRenderer(r));
+            } else if (ch instanceof Container) {
+                monoTreesIn((Container) ch);
+            }
+        }
+    }
+    private static final class MonoTreeRenderer implements javax.swing.tree.TreeCellRenderer {
+        private final javax.swing.tree.TreeCellRenderer base;
+        private final java.util.Map<javax.swing.Icon, javax.swing.Icon> mono = new java.util.WeakHashMap<>();
+        MonoTreeRenderer(javax.swing.tree.TreeCellRenderer base) { this.base = base; }
+        public Component getTreeCellRendererComponent(javax.swing.JTree tree, Object value, boolean sel,
+                                                      boolean expanded, boolean leaf, int row, boolean focus) {
+            Component c = base.getTreeCellRendererComponent(tree, value, sel, expanded, leaf, row, focus);
+            if (c instanceof javax.swing.JLabel) {
+                javax.swing.JLabel l = (javax.swing.JLabel) c;
+                javax.swing.Icon ic = l.getIcon();
+                if (ic != null && !mono.containsValue(ic) && !isSiteLogo(ic)) {
+                    javax.swing.Icon m = mono.get(ic);
+                    if (m == null) { m = tablerIcon(ic, SIDEBAR_TEXT, l); mono.put(ic, m); }
+                    l.setIcon(m);
+                }
+            }
+            return c;
+        }
+    }
+
     // Mono icons in the settings tables (packagizer, extensions, advanced). The jdp.extCfg mark set here
     // is what wrapExtCellRenderer reads.
     static void monoConfigTableIcons() {
