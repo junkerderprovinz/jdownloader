@@ -516,24 +516,25 @@ def test_setup_publishes_the_canonical_theme_to_every_service():
     assert pos < setup.index("jdownloader-theme.sh")
 
 
-def test_variant_picked_in_jd_wins_for_highlighter_themes(tmp_path):
-    (tmp_path / "variant").write_text("light\n")
+def test_theme_picked_in_jd_wins_over_the_variable(tmp_path):
+    (tmp_path / "theme").write_text("jd-highlighter-light\n")
     assert h.canonical_theme("Dark", str(tmp_path)) == "jd-highlighter-light"
-    assert h.canonical_theme("jd-highlighter-dark", str(tmp_path)) == "jd-highlighter-light"
-    assert h.canonical_theme("plain-dark", str(tmp_path)) == "plain-dark"
-    assert h.canonical_theme("Light", str(tmp_path)) == "Light"
-    (tmp_path / "variant").write_text("sepia\n")
+    assert h.canonical_theme("JDDEFAULT", str(tmp_path)) == "jd-highlighter-light"
+    (tmp_path / "theme").write_text("JDDEFAULT\n")
+    assert h.canonical_theme("jd-highlighter-dark", str(tmp_path)) == "JDDEFAULT"
+    (tmp_path / "theme").write_text("sepia\n")
     assert h.canonical_theme("Dark", str(tmp_path)) == "jd-highlighter-dark"
+    assert h.canonical_theme("plain-dark", str(tmp_path)) == "plain-dark"
 
 
-def test_autostart_reads_the_variant_before_every_launch():
+def test_autostart_reads_the_theme_before_every_launch():
     auto = AUTOSTART.read_text(encoding="utf-8")
     loop = auto.index("fast_exits=0\nwhile true; do")
     assert 'canonical "${JD_THEME}"' in auto[loop:loop + 600]
     assert "JD_ACCENT" not in auto
 
 
-def test_laf_watcher_follows_the_variant_of_the_current_launch():
+def test_laf_watcher_follows_the_theme_of_the_current_launch():
     auto = AUTOSTART.read_text(encoding="utf-8")
     watcher = auto.split("window_start=$(date +%s)")[1].split(") &")[0]
     assert "/tmp/.jd-expect-laf" in watcher

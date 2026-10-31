@@ -1,5 +1,6 @@
 package io.github.junkerderprovinz;
 
+import javax.swing.AbstractButton;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JComponent;
@@ -70,6 +71,12 @@ final class Appearance {
         }
     }
 
+    // The container offers all of its looks and stores the pick as the theme, which replaces JD_THEME;
+    // the desktop package only brings the two JD Highlighter variants.
+    private static final String[] THEMES = { "jd-highlighter-dark", "jd-highlighter-light", "plain-dark", "Light", "JDDEFAULT" };
+    private static final String[] THEME_NAMES_DE = { "Highlighter Dunkel", "Highlighter Hell", "Schlicht Dunkel", "Hell", "JDownloader klassisch" };
+    private static final String[] THEME_NAMES_EN = { "Highlighter Dark", "Highlighter Light", "Plain Dark", "Light", "JDownloader classic" };
+
     private static void addRowsTo(JComponent panel) {
         if (panel.getClientProperty("jdp.appearanceRows") != null) return;
         Component[] kids = panel.getComponents();
@@ -82,36 +89,65 @@ final class Appearance {
         boolean de = german();
         Object labelCc = constraints(panel, kids[lang - 1]);
         Object fieldCc = constraints(panel, kids[lang]);
+        trimClickHint((AbstractButton) kids[lang]);
 
-        final JButton accent = new JButton();
-        final String current = storedAccent() != null ? storedAccent() : String.format("#%06x", accentColor().getRGB() & 0xffffff);
-        accent.setText(current + (de ? " (klicken, um zu ändern)" : " (click to change)"));
-        javax.swing.Icon swatch = new Swatch(Color.decode(current));
-        SITE_LOGOS.add(swatch);
-        accent.setIcon(swatch);
-        accent.addActionListener(e -> {
-            Color picked = pickColor(SwingUtilities.getWindowAncestor(accent), Color.decode(current), de);
-            if (picked == null) return;
-            String hex = String.format("#%06x", picked.getRGB() & 0xffffff);
-            if (hex.equals(current)) return;
-            save("accent", hex);
-        });
-
-        final JComboBox<String> variant = new JComboBox<>(de ? new String[] { "Dunkel", "Hell" } : new String[] { "Dark", "Light" });
-        variant.setSelectedIndex(LIGHT ? 1 : 0);
-        variant.addActionListener(e -> {
-            String want = variant.getSelectedIndex() == 1 ? "light" : "dark";
-            if (want.equals(LIGHT ? "light" : "dark")) return;
-            save("variant", want);
+        int count = DESKTOP ? 2 : THEMES.length;
+        String[] names = java.util.Arrays.copyOf(de ? THEME_NAMES_DE : THEME_NAMES_EN, count);
+        final JComboBox<String> theme = new JComboBox<>(names);
+        final int now = currentTheme();
+        theme.setSelectedIndex(Math.min(now, count - 1));
+        // Arrow keys in the open list change the selection on every step, so only the pick that is left
+        // when the list closes counts.
+        final int[] last = { now };
+        final Runnable apply = () -> {
+            int pick = theme.getSelectedIndex();
+            if (pick == last[0] || pick < 0) return;
+            last[0] = pick;
+            if (DESKTOP) save("variant", pick == 1 ? "light" : "dark");
+            else save("theme", THEMES[pick]);
+        };
+        theme.addActionListener(e -> { if (!theme.isPopupVisible()) SwingUtilities.invokeLater(apply); });
+        theme.addPopupMenuListener(new javax.swing.event.PopupMenuListener() {
+            public void popupMenuWillBecomeVisible(javax.swing.event.PopupMenuEvent e) { }
+            public void popupMenuWillBecomeInvisible(javax.swing.event.PopupMenuEvent e) { SwingUtilities.invokeLater(apply); }
+            public void popupMenuCanceled(javax.swing.event.PopupMenuEvent e) { }
         });
 
         int at = lang + 1;
-        panel.add(rowLabel(de ? "Akzentfarbe" : "Accent colour"), labelCc, at++);
-        panel.add(accent, fieldCc, at++);
+        if (HIGHLIGHTER) {
+            final JButton accent = new JButton();
+            final String current = storedAccent() != null ? storedAccent() : String.format("#%06x", accentColor().getRGB() & 0xffffff);
+            accent.setText(current);
+            javax.swing.Icon swatch = new Swatch(Color.decode(current));
+            SITE_LOGOS.add(swatch);
+            accent.setIcon(swatch);
+            accent.addActionListener(e -> {
+                Color picked = pickColor(SwingUtilities.getWindowAncestor(accent), Color.decode(current), de);
+                if (picked == null) return;
+                String hex = String.format("#%06x", picked.getRGB() & 0xffffff);
+                if (hex.equals(current)) return;
+                save("accent", hex);
+            });
+            panel.add(rowLabel(de ? "Akzentfarbe" : "Accent colour"), labelCc, at++);
+            panel.add(accent, fieldCc, at++);
+        }
         panel.add(rowLabel(de ? "Erscheinungsbild" : "Appearance"), labelCc, at++);
-        panel.add(variant, fieldCc, at);
+        panel.add(theme, fieldCc, at);
         panel.revalidate();
         panel.repaint();
+    }
+
+    private static int currentTheme() {
+        if (DESKTOP) return LIGHT ? 1 : 0;
+        String t = System.getenv().getOrDefault("JD_THEME", "").trim();
+        for (int i = 0; i < THEMES.length; i++) if (THEMES[i].equalsIgnoreCase(t)) return i;
+        return 0;
+    }
+
+    // JD labels the language button "German (click to change)"; a button already says that it can be clicked.
+    private static void trimClickHint(AbstractButton b) {
+        String t = b.getText();
+        if (t != null && t.matches(".*\\S\\s+\\([^()]*\\)")) b.setText(t.replaceFirst("\\s+\\([^()]*\\)$", ""));
     }
 
     // Swing's own chooser dialog puts OK on the left and adds a preview of sample text; this one keeps

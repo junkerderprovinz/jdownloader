@@ -24,23 +24,23 @@ def normalize_theme(theme: str | None) -> str:
 HL_STORE = os.environ.get("JD_HL_STORE", "/config/.jd-highlighter")
 
 
+PICKABLE_THEMES = ("jd-highlighter-dark", "jd-highlighter-light", "plain-dark", "Light", "JDDEFAULT")
+
+
 def canonical_theme(theme: str | None, store: str = HL_STORE) -> str:
-    """The JD_THEME every later stage sees. Dark, an empty value and the short jd-highlighter all
-    mean JD Highlighter Dark; the plain Carbon look is plain-dark. Other values pass unchanged.
-    For a JD Highlighter theme, the variant picked in JD's settings wins over the variable."""
-    t = normalize_theme(theme)
-    if t in ("dark", "jd-highlighter"):
-        t = "jd-highlighter-dark"
-    if not t.startswith("jd-highlighter-"):
-        return (theme or "").strip()
+    """The JD_THEME every later stage sees. A theme picked in JD's settings wins over the variable.
+    Dark, an empty value and the short jd-highlighter all mean JD Highlighter Dark; the plain Carbon
+    look is plain-dark. Other values pass unchanged."""
     try:
-        with open(os.path.join(store, "variant")) as f:
-            v = f.read().strip()
-        if v in ("dark", "light"):
-            return "jd-highlighter-" + v
+        with open(os.path.join(store, "theme")) as f:
+            picked = f.read().strip()
+        if picked in PICKABLE_THEMES:
+            return picked
     except OSError:
         pass
-    return t
+    if normalize_theme(theme) in ("dark", "jd-highlighter"):
+        return "jd-highlighter-dark"
+    return (theme or "").strip()
 
 
 def is_classic_theme(theme: str | None) -> bool:

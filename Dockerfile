@@ -220,8 +220,8 @@ ENV S6_KILL_GRACETIME=30000 \
 # Defaults the Unraid template can override:
 # JD_LANG       UI language as an ISO code (de, en, fr, ...)
 # JD_THEME      jd-highlighter-dark (also Dark), jd-highlighter-light, plain-dark
-#               (Carbon #161616), Light or JDDEFAULT. The JD Highlighter accent and
-#               its dark or light variant are picked in JD's settings.
+#               (Carbon #161616), Light or JDDEFAULT: the look a container starts with.
+#               A look and an accent picked in JD's settings win over it.
 # JD_SELFUPDATE false turns off JD's self-update checks. The same channel delivers
 #               the hoster plugins, which go stale within weeks.
 # JD_INST_DIR   install path, only worth changing for debugging

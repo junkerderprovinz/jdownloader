@@ -43,11 +43,11 @@ public class DialogConfirmAgent {
     static final boolean HIGHLIGHTER = DESKTOP
             || System.getenv().getOrDefault("JD_THEME", "").toLowerCase(java.util.Locale.ROOT).contains("highlight");
 
-    // JD Highlighter Light runs on FlatLightLaf with the same layout and a light palette. The variant
-    // chosen in the settings wins; before that, the container goes by JD_THEME and the desktop is dark.
-    static final boolean LIGHT = HIGHLIGHTER && (Appearance.storedVariant() != null
+    // JD Highlighter Light runs on FlatLightLaf with the same layout and a light palette. The desktop
+    // stores the variant picked in the settings; the container's start script folds the pick into JD_THEME.
+    static final boolean LIGHT = HIGHLIGHTER && (DESKTOP
             ? "light".equals(Appearance.storedVariant())
-            : !DESKTOP && System.getenv().getOrDefault("JD_THEME", "").toLowerCase(java.util.Locale.ROOT).contains("highlighter-light"));
+            : System.getenv().getOrDefault("JD_THEME", "").toLowerCase(java.util.Locale.ROOT).contains("highlighter-light"));
 
     // A desktop JD can still run another look and feel (FlatLaf arrives with JD's own
     // design download), and the polish on top of it would leave a half-themed window.
@@ -202,6 +202,9 @@ public class DialogConfirmAgent {
             replaceSpeedGraph();
             if (isHighlighter()) HighlighterPass.run(TICK_TIMING);
         }
+        // The container's other looks keep the appearance row, so the way back to JD Highlighter
+        // stays in JD's settings.
+        if (!DESKTOP && !isHighlighter()) Appearance.addRows();
         if (++lafTick >= 12) {   // every ~5s (ticks run every 400ms)
             lafTick = 0;
             if (!DESKTOP) writeLafMarker();

@@ -44,18 +44,6 @@ case "${_case_theme}" in
     *)              xsetroot -solid '#161616' 2>/dev/null || true ;;
 esac
 
-# jd-highlighter rounds the dialog window corners through picom. Java's setShape
-# cannot anti-alias top-level windows and X-SHAPE leaves jagged edges, so a
-# compositor with the xrender backend is the only way on the GPU-less Xvfb display.
-# /defaults/picom.conf turns off everything that would compete with the Selkies
-# encoder; svc-de's finish script reaps it on shutdown.
-case "${_case_theme}" in
-    jd-highlighter|*highlight*)
-        if command -v picom >/dev/null 2>&1; then
-            picom --config /defaults/picom.conf --log-level=warn > /config/picom.log 2>&1 &
-        fi
-        ;;
-esac
 unset _case_theme
 
 JD_DIR="${JD_INST_DIR:-/config/JDownloader}"
@@ -665,7 +653,9 @@ heal_restart() {
         sleep 8
         # This watcher runs in its own subshell, so it takes the expected look and feel from the
         # launch loop, which reads the variant picked in JD again before every start.
-        [ -s /tmp/.jd-expect-laf ] && EXPECT_LAF=$(cat /tmp/.jd-expect-laf)
+        if [ -s /tmp/.jd-expect-laf ]; then
+            read -r EXPECT_CLASSIC EXPECT_LAF < /tmp/.jd-expect-laf
+        fi
         now=$(date +%s)
         if [ $((now - window_start)) -ge 3600 ]; then
             window_start=${now}
@@ -760,17 +750,26 @@ bootstrap_flatlaf_if_needed
 
 fast_exits=0
 while true; do
-    # A dark or light variant picked in JD's settings takes effect on the next JD start, so it is
-    # read again before every launch; JD's JVM and the theme script get it through JD_THEME.
+    # A theme picked in JD's settings takes effect on the next JD start, so it is read again before
+    # every launch; JD's JVM and the theme script get it through JD_THEME.
+    if [ -f "${HELPERS}" ]; then
+        JD_THEME=$(python3 "${HELPERS}" canonical "${JD_THEME}")
+        export JD_THEME
+        _resolved=$(python3 "${HELPERS}" resolve "${JD_THEME}")
+        EXPECT_LAF=$(printf '%s\n' "${_resolved}" | awk -F= '/^expect_laf=/{print $2; exit}')
+        EXPECT_CLASSIC=$(printf '%s\n' "${_resolved}" | awk -F= '/^expect_classic=/{print $2; exit}')
+        unset _resolved
+        printf '%s %s' "${EXPECT_CLASSIC:-0}" "${EXPECT_LAF}" > /tmp/.jd-expect-laf
+    fi
+    # JD Highlighter rounds the dialog window corners through picom. Java's setShape cannot
+    # anti-alias top-level windows and X-SHAPE leaves jagged edges, so a compositor with the
+    # xrender backend is the only way on the GPU-less Xvfb display. /defaults/picom.conf turns
+    # off everything that would compete with the Selkies encoder; svc-de's finish script reaps it.
     case "${JD_THEME}" in
         jd-highlighter-*)
-            JD_THEME=$(python3 "${HELPERS}" canonical "${JD_THEME}")
-            export JD_THEME
-            case "${JD_THEME}" in
-                *-light) EXPECT_LAF="flatlight" ;;
-                *)       EXPECT_LAF="flatdark" ;;
-            esac
-            printf '%s' "${EXPECT_LAF}" > /tmp/.jd-expect-laf
+            if command -v picom >/dev/null 2>&1 && ! pgrep -x picom >/dev/null 2>&1; then
+                picom --config /defaults/picom.conf --log-level=warn > /config/picom.log 2>&1 &
+            fi
             ;;
     esac
 
