@@ -398,6 +398,16 @@ final class Dialogs {
             if (nx < sc.x + m) nx = sc.x + m;
             if (ny < sc.y + m) ny = sc.y + m;
             if (nx != b.x || ny != b.y) w.setLocation(nx, ny);
+            // After a size change, by this method or by JD packing again, the compositor shows the window
+            // black until something inside it repaints, so the whole window is painted once more.
+            if (w instanceof javax.swing.RootPaneContainer) {
+                javax.swing.JRootPane rp = ((javax.swing.RootPaneContainer) w).getRootPane();
+                java.awt.Dimension now = w.getSize();
+                if (!now.equals(rp.getClientProperty("jdp.updSize"))) {
+                    rp.putClientProperty("jdp.updSize", now);
+                    w.repaint();
+                }
+            }
         } catch (Throwable ig) { }
     }
     /** Removes decorative frames, including AppWork's grey dialog border, and keeps plain padding. */
