@@ -417,8 +417,11 @@ public class DialogConfirmAgent {
             }
             boolean active = c.isEnabled() && (indet || (val > min && val < max));
             Graphics2D g = (Graphics2D) g0;
-            int w = c.getWidth(), h = c.getHeight();
-            int d = Math.min(w, h) - 5;
+            int w = c.getWidth(), h = c.getHeight(), side = Math.min(w, h);
+            // Half of the stroke lies outside the circle and the stroke grows with the ring, so a large
+            // ring such as the one in JD's start window needs room for it at the component's edge.
+            int d = side - 5;
+            if (d + d / 9f > side - 2) d = (side - 4) * 9 / 10;
             if (d < 6) return true;
             int x = (w - d) / 2, y = (h - d) / 2;
             if (active) {
