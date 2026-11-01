@@ -56,6 +56,7 @@ final class HighlighterPass {
         onChange("borderlessConfigTables", Tables::borderlessConfigTables),
         onChange("unifyConfigFields", Settings::unifyConfigFields),
         onChange("monoTableRowIcons", Tables::monoTableRowIcons),
+        onChange("cleanConnectionColumns", Tables::cleanConnectionColumns),
         onChange("indentNameColumns", Tables::indentNameColumns),
         onChange("cardMainTables", Cards::cardMainTables),
         onChange("cardBottomArea", Cards::cardBottomArea),

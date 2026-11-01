@@ -229,6 +229,34 @@ final class Tables {
         }
     }
 
+    // The connection column paints its glyphs (resume, direct or proxy, chunks, forced) straight from its
+    // own fields, which no renderer hook reaches, so each column gets their Tabler twins once.
+    private static final java.util.Set<Object> CONNECTION_DONE =
+            java.util.Collections.newSetFromMap(new java.util.WeakHashMap<Object, Boolean>());
+    static void cleanConnectionColumns() {
+        for (Window w : Window.getWindows()) {
+            if (!w.isShowing()) continue;
+            List<JTable> tables = new ArrayList<>();
+            collectTables(w, tables);
+            for (JTable t : tables) {
+                for (Object col : extColumns(t)) {
+                    if (!col.getClass().getName().endsWith(".ConnectionColumn") || !CONNECTION_DONE.add(col)) continue;
+                    for (Field f : col.getClass().getDeclaredFields()) {
+                        if (!javax.swing.Icon.class.isAssignableFrom(f.getType())
+                                || java.lang.reflect.Modifier.isStatic(f.getModifiers())) continue;
+                        try {
+                            f.setAccessible(true);
+                            javax.swing.Icon ic = (javax.swing.Icon) f.get(col);
+                            if (ic == null) continue;
+                            javax.swing.Icon base = tablerBase(iconKey(ic), ic.getIconWidth(), ic.getIconHeight());
+                            if (base != null) f.set(col, new RowFlipIcon(tintIcon(base, SIDEBAR_TEXT, null), tintIcon(base, accentFg(), null)));
+                        } catch (Throwable ignore) { }
+                    }
+                }
+            }
+        }
+    }
+
     /** Paints the light icon on a normal row and the dark one when the cell background is the accent. */
     static final class RowFlipIcon implements javax.swing.Icon {
         private final javax.swing.Icon light, dark;
@@ -349,7 +377,8 @@ final class Tables {
         if (s.contains("wait") || s.contains("final") || s.contains("hourglass")) return "wait";
         if (s.contains("start") || s.equals("run")) return "run";
         if (s.contains("help") || s.contains("unknown") || s.contains("question")) return "help";
-        return null;
+        // Any other glyph with a Tabler twin, such as the download arrow of a running link, keeps its key.
+        return tablerBase(ik, 16, 16) != null ? ik : null;
     }
 
     // The list icons are recoloured in a wrapping cell renderer, since JD's live repaints would undo any

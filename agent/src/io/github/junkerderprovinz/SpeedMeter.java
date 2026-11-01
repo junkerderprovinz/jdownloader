@@ -32,6 +32,7 @@ import java.util.Set;
 import java.util.WeakHashMap;
 
 import static io.github.junkerderprovinz.DialogConfirmAgent.*;
+import static io.github.junkerderprovinz.LafDefaults.*;
 import static io.github.junkerderprovinz.Menus.*;
 
 /** The toolbar speed graph, its row height and the speed limit editors. */
@@ -245,6 +246,19 @@ final class SpeedMeter {
             } catch (Throwable ignore) {
                 colText = speedGraphTextColor();
             }
+            // JD's speed meter colours are a fixed green, which is the one colour left outside the accent.
+            if (isHighlighter()) {
+                Color a = accentColor();
+                colTop = a;
+                colBottom = mix(a, PAL_BASE, 0.7f);
+                colAvg = mix(a, PAL_TEXT, 0.4f);
+            }
+        }
+
+        private static Color mix(Color a, Color b, float t) {
+            return new Color(Math.round(a.getRed() + (b.getRed() - a.getRed()) * t),
+                    Math.round(a.getGreen() + (b.getGreen() - a.getGreen()) * t),
+                    Math.round(a.getBlue() + (b.getBlue() - a.getBlue()) * t));
         }
 
         private Color speedGraphTextColor() {
@@ -411,8 +425,16 @@ final class SpeedMeter {
                 String as = nativeString("getAverageSpeedString");
                 String cs = nativeString("getSpeedString");
                 String line = ((as != null ? as : "Ø " + fmt(avg)) + "  " + (cs != null ? cs : fmt(cur))).trim();
+                int tx = w - g2.getFontMetrics().stringWidth(line) - pad;
+                // A light accent under light text would swallow it, so the text gets a rim in the base colour.
+                if (isHighlighter()) {
+                    g2.setColor(PAL_BASE);
+                    for (int dx = -1; dx <= 1; dx++)
+                        for (int dy = -1; dy <= 1; dy++)
+                            if (dx != 0 || dy != 0) g2.drawString(line, tx + dx, ty + dy);
+                }
                 g2.setColor(colText);
-                g2.drawString(line, w - g2.getFontMetrics().stringWidth(line) - pad, ty);
+                g2.drawString(line, tx, ty);
             } finally {
                 g2.dispose();
             }
