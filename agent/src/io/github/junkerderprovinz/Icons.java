@@ -86,43 +86,82 @@ final class Icons {
     }
 
     private static String resolveKey(javax.swing.Icon ic, int depth) {
-        if (ic == null || depth > 3) return null;
+        if (ic == null || depth > 5) return null;
         try {
             java.lang.reflect.Method m = ic.getClass().getMethod("getIdentifier");
             try { m.setAccessible(true); } catch (Throwable ignore) { }
             Object id = m.invoke(ic);
-            if (id != null) {
-                java.lang.reflect.Method gk = id.getClass().getMethod("getKey");
-                try { gk.setAccessible(true); } catch (Throwable ignore) { }
-                Object k = gk.invoke(id);
-                if (k != null) { String s = k.toString(); if (!s.isEmpty() && !"null".equals(s)) return s; }
-            }
+            String k = id != null ? identifierKey(id, 0) : null;
+            if (k != null) return k;
         } catch (Throwable ignore) { }
-        for (Class<?> cl = ic.getClass(); cl != null && cl != Object.class; cl = cl.getSuperclass()) {
+        return firstKey(ic, depth);
+    }
+
+    // A merged icon drops its parts once it has painted them into one image and keeps only their
+    // identifiers, as a list inside its own identifier.
+    private static String identifierKey(Object id, int depth) {
+        try {
+            java.lang.reflect.Method gk = id.getClass().getMethod("getKey");
+            try { gk.setAccessible(true); } catch (Throwable ignore) { }
+            Object k = gk.invoke(id);
+            if (k != null) { String s = k.toString(); if (!s.isEmpty() && !"null".equals(s)) return s; }
+        } catch (Throwable ignore) { }
+        if (depth > 3) return null;
+        String box = null;
+        for (Class<?> cl = id.getClass(); cl != null && cl != Object.class; cl = cl.getSuperclass()) {
+            for (java.lang.reflect.Field f : cl.getDeclaredFields()) {
+                if (java.lang.reflect.Modifier.isStatic(f.getModifiers()) || !java.util.Collection.class.isAssignableFrom(f.getType())) continue;
+                try {
+                    f.setAccessible(true);
+                    java.util.Collection<?> parts = (java.util.Collection<?>) f.get(id);
+                    if (parts == null) continue;
+                    for (Object p : parts) {
+                        if (p == null || p.getClass() != id.getClass()) continue;
+                        String k = identifierKey(p, depth + 1);
+                        if (k != null && !k.startsWith("checkbox")) return k;
+                        if (box == null) box = k;
+                    }
+                } catch (Throwable ignore) { }
+            }
+        }
+        return box;
+    }
+
+    // A check box merged onto an action glyph, as in the row menu's Disable and Skip, shows the state, so
+    // the glyph's own key wins over the box's.
+    private static String firstKey(Object node, int depth) {
+        String box = null;
+        for (Class<?> cl = node.getClass(); cl != null && cl != Object.class; cl = cl.getSuperclass()) {
             for (java.lang.reflect.Field f : cl.getDeclaredFields()) {
                 if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) continue;
                 try {
                     f.setAccessible(true);
-                    String k = keyFromValue(f.get(ic), depth);
-                    if (k != null) return k;
+                    String k = keyFromValue(f.get(node), depth);
+                    if (k != null && !k.startsWith("checkbox")) return k;
+                    if (box == null) box = k;
                 } catch (Throwable ignore) { }
             }
         }
-        return null;
+        return box;
     }
 
+    // MergedIcon keeps its parts in wrapper entries rather than as plain Icons, so AppWork and JD objects
+    // inside a collection are searched as well.
     private static String keyFromValue(Object v, int depth) {
         if (v instanceof javax.swing.Icon) return resolveKey((javax.swing.Icon) v, depth + 1);
-        if (v instanceof Object[]) {
-            for (Object o : (Object[]) v) if (o instanceof javax.swing.Icon) {
-                String k = resolveKey((javax.swing.Icon) o, depth + 1); if (k != null) return k;
-            }
-        } else if (v instanceof java.util.Collection) {
-            for (Object o : (java.util.Collection<?>) v) if (o instanceof javax.swing.Icon) {
-                String k = resolveKey((javax.swing.Icon) o, depth + 1); if (k != null) return k;
-            }
+        java.util.Collection<?> items = v instanceof Object[] ? java.util.Arrays.asList((Object[]) v)
+                : v instanceof java.util.Collection ? (java.util.Collection<?>) v : null;
+        if (items == null) return null;
+        String box = null;
+        for (Object o : items) {
+            String k = null;
+            if (o instanceof javax.swing.Icon) k = resolveKey((javax.swing.Icon) o, depth + 1);
+            else if (o != null && depth < 5 && (o.getClass().getName().startsWith("org.appwork.")
+                    || o.getClass().getName().startsWith("org.jdownloader."))) k = firstKey(o, depth + 1);
+            if (k != null && !k.startsWith("checkbox")) return k;
+            if (box == null) box = k;
         }
-        return null;
+        return box;
     }
 
     /** The Tabler icon for a JD key at w x h, scaled from the nearest shipped size. */

@@ -153,7 +153,7 @@
   "save": "device-floppy",
   "saveto": "device-floppy",
   "search": "search",
-  "select": "click",
+  "select": "toggle-left",
   "server": "server",
   "settings": "settings",
   "sidebar": "layout-sidebar",
