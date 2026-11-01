@@ -288,6 +288,25 @@ public class DialogConfirmAgent {
 
     private static final java.util.Map<String, javax.swing.Icon> CHROME_CLEAN =
             new java.util.concurrent.ConcurrentHashMap<String, javax.swing.Icon>();
+
+    // The icon ids of JD's file type groups (CompiledFiletypeFilter), plus "file" for the rest.
+    private static final java.util.Set<String> FILE_TYPE_KEYS = new java.util.HashSet<String>(java.util.Arrays.asList(
+            "audio", "video", "text", "language", "file", "document", "desktop", "hashsum"));
+
+    /** Whether the theme runs right now. Unlike isHighlighter it does not wait for the first tick. */
+    static boolean themeLafNow() {
+        return HIGHLIGHTER && (!DESKTOP || isThemeLaf(UIManager.getLookAndFeel()));
+    }
+
+    /** Called from the patched LinkInfo.getIcon in place of CrossSystem.isWindows. */
+    public static boolean systemFileIcons() {
+        return System.getProperty("os.name", "").startsWith("Windows") && !themeLafNow();
+    }
+
+    /** Called from the setForeground the agent adds to RendererProgressBar: list bars fill with the accent. */
+    public static Color progressFill(Color original) {
+        try { return isHighlighter() ? accentColor() : original; } catch (Throwable t) { return original; }
+    }
     /** Called from NewTheme.getIcon; replaces a few chrome glyphs and passes everything else through. */
     public static javax.swing.Icon cleanChromeIcon(javax.swing.Icon original, String key, int size) {
         try {
@@ -301,6 +320,11 @@ public class DialogConfirmAgent {
             } else if (k.equals("search") || k.equals("image")) {
                 // Search fields and the hoster chooser's logo column paint a fresh AbstractIcon, which
                 // nothing else reaches.
+                tab = k; tint = SIDEBAR_TEXT;
+            } else if (FILE_TYPE_KEYS.contains(k)) {
+                // LinkInfo keeps the icon of each file type in a cache, so it has to be right the first
+                // time, when the tick may not have run yet.
+                if (!themeLafNow()) return original;
                 tab = k; tint = SIDEBAR_TEXT;
             } else {
                 return original;

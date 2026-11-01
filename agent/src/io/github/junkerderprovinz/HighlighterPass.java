@@ -43,6 +43,7 @@ final class HighlighterPass {
         everyTick("recolorMainTabs", Chrome::recolorMainTabs),
         everyTick("flushMenuBarItems", Menus::flushMenuBarItems),
         onChange("darkenChromeBars", Chrome::darkenChromeBars),
+        onChange("hideAccountBar", Chrome::hideAccountBar),
         onChange("monoChromeIcons", Icons::monoChromeIcons),
         onChange("roundToolbarButtons", Chrome::roundToolbarButtons),
         everyTick("badgeViewsMenu", Views::badgeViewsMenu),

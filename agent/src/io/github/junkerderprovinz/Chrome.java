@@ -25,6 +25,23 @@ final class Chrome {
 
     private static final Color TILE_GREY = PAL_TRACK;   // unselected main tab
 
+    // The status bar lists every account as a small favicon, which repeats the account manager and
+    // breaks the clean bottom edge. JD shows the panel again when an account changes, and that change
+    // starts another pass.
+    static void hideAccountBar() {
+        for (Window w : Window.getWindows()) if (w.isShowing()) hideAccountBarIn(w);
+    }
+
+    private static void hideAccountBarIn(Container c) {
+        for (Component child : c.getComponents()) {
+            if (child.getClass().getName().endsWith(".premiumbar.ServicePanel")) {
+                if (child.isVisible()) child.setVisible(false);
+            } else if (child instanceof Container) {
+                hideAccountBarIn((Container) child);
+            }
+        }
+    }
+
     // The ToolBar and MenuBar defaults only reach components created later, and the LAF re-apply at
     // boot can fail, so the live menu bar and toolbar get the base colour directly.
     private static final Color CHROME_BASE = PAL_BASE;

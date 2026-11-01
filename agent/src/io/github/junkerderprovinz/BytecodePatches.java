@@ -71,6 +71,8 @@ final class BytecodePatches {
                                 return patchStatusColumn(classfileBuffer, loader, className);
                             if (FLAT_TABUI.equals(className)) return patchTabbedPaneUI(classfileBuffer, loader);
                             if (NEW_THEME.equals(className)) return patchNewTheme(classfileBuffer, loader);
+                            if (LINK_INFO.equals(className)) return patchLinkInfoIcon(classfileBuffer, loader);
+                            if (RENDERER_BAR.equals(className)) return patchProgressFill(classfileBuffer, loader);
                             // Config-panel ExtTables ignore renderers set on them, so the
                             // render path itself is wrapped.
                             if (EXT_TABLE.equals(className)) return patchExtTableRenderer(classfileBuffer, loader);
@@ -659,6 +661,76 @@ final class BytecodePatches {
             return null;
         }
         System.out.println("[jd-dialog-agent] patched NewTheme.getIcon -> light chrome icons");
+        return cw.toByteArray();
+    }
+
+    // On Windows LinkInfo asks the shell for a file's icon before it looks at JD's file types, so the list
+    // shows coloured system icons there and the theme's glyphs everywhere else. The CrossSystem.isWindows
+    // call in that method goes through systemFileIcons, which says no while the theme is on.
+    private static final String LINK_INFO = "jd/plugins/LinkInfo";
+    private static byte[] patchLinkInfoIcon(byte[] original, final ClassLoader loader) {
+        ClassReader cr = new ClassReader(original);
+        ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES) {
+            @Override
+            protected ClassLoader getClassLoader() { return loader != null ? loader : super.getClassLoader(); }
+        };
+        final int[] n = { 0 };
+        ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
+            @Override
+            public MethodVisitor visitMethod(int access, String name, String desc, String sig, String[] ex) {
+                MethodVisitor mv = super.visitMethod(access, name, desc, sig, ex);
+                if (!"getIcon".equals(name) || (access & Opcodes.ACC_STATIC) == 0) return mv;
+                return new MethodVisitor(Opcodes.ASM9, mv) {
+                    @Override
+                    public void visitMethodInsn(int op, String owner, String mname, String mdesc, boolean itf) {
+                        if (op == Opcodes.INVOKESTATIC && "org/appwork/utils/os/CrossSystem".equals(owner)
+                                && "isWindows".equals(mname) && "()Z".equals(mdesc)) {
+                            n[0]++;
+                            super.visitMethodInsn(Opcodes.INVOKESTATIC, AGENT_INTERNAL, "systemFileIcons", "()Z", false);
+                            return;
+                        }
+                        super.visitMethodInsn(op, owner, mname, mdesc, itf);
+                    }
+                };
+            }
+        };
+        cr.accept(cv, 0);
+        if (n[0] == 0) {
+            System.out.println("[jd-dialog-agent] LinkInfo.getIcon not found, file icons left as-is");
+            return null;
+        }
+        System.out.println("[jd-dialog-agent] patched LinkInfo.getIcon -> theme file icons");
+        return cw.toByteArray();
+    }
+
+    // JD sets a list bar's colour on every render, first the cell's contrast colour and then that of the
+    // row highlighter, which for packages is the text colour. Both end in setForeground, so the bar gets
+    // its own setForeground that hands the colour to progressFill.
+    private static final String RENDERER_BAR = "org/appwork/swing/exttable/renderercomponents/RendererProgressBar";
+    private static byte[] patchProgressFill(byte[] original, final ClassLoader loader) {
+        ClassReader cr = new ClassReader(original);
+        ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES) {
+            @Override
+            protected ClassLoader getClassLoader() { return loader != null ? loader : super.getClassLoader(); }
+        };
+        final String superName = cr.getSuperName();
+        ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
+            @Override
+            public void visitEnd() {
+                MethodVisitor mv = super.visitMethod(Opcodes.ACC_PUBLIC, "setForeground", "(Ljava/awt/Color;)V", null, null);
+                mv.visitCode();
+                mv.visitVarInsn(Opcodes.ALOAD, 0);
+                mv.visitVarInsn(Opcodes.ALOAD, 1);
+                mv.visitMethodInsn(Opcodes.INVOKESTATIC, AGENT_INTERNAL, "progressFill", "(Ljava/awt/Color;)Ljava/awt/Color;", false);
+                mv.visitMethodInsn(Opcodes.INVOKESPECIAL, superName, "setForeground", "(Ljava/awt/Color;)V", false);
+                mv.visitInsn(Opcodes.RETURN);
+                mv.visitMaxs(0, 0);
+                mv.visitEnd();
+                super.visitEnd();
+            }
+        };
+        cr.accept(cv, 0);
+        System.out.println("[jd-dialog-agent] patched RendererProgressBar.setForeground -> accent fill");
         return cw.toByteArray();
     }
 
