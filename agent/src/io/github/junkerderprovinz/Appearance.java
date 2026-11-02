@@ -20,9 +20,9 @@ import static io.github.junkerderprovinz.DialogConfirmAgent.*;
 import static io.github.junkerderprovinz.LafDefaults.*;
 
 /**
- * The accent colour and the dark or light variant, chosen in Settings › User Interface. Both are
- * stored next to the theme and take effect when JD starts again, the way JD's own language
- * choice does.
+ * The accent colour, the dark or light variant and the account bar, chosen in Settings › User
+ * Interface. They are stored next to the theme; the accent and the variant take effect when JD
+ * starts again, the way JD's own language choice does.
  */
 final class Appearance {
 
@@ -30,6 +30,8 @@ final class Appearance {
     // in the folder the installer set up.
     static final File STORE = DESKTOP ? new File(HL_HOME) : new File("/config/.jd-highlighter");
     static final String DEFAULT_ACCENT = "#ffee00";
+    // Read once here, since the highlighter pass asks on every change to the window tree.
+    static volatile boolean accountBarShown = "shown".equals(read("accountbar"));
 
     private Appearance() { }
 
@@ -131,6 +133,24 @@ final class Appearance {
             });
             panel.add(rowLabel(de ? "Akzentfarbe" : "Accent colour"), labelCc, at++);
             panel.add(accent, fieldCc, at++);
+
+            // Unlike the rows that need a restart, the account bar follows the switch right away.
+            final Switch bar = new Switch(accountBarShown);
+            bar.addItemListener(e -> {
+                boolean shown = bar.isSelected();
+                try {
+                    write("accountbar", shown ? "shown" : "hidden");
+                } catch (Throwable t) {
+                    javax.swing.JOptionPane.showMessageDialog(null, (de ? "Konnte nicht gespeichert werden: " : "Could not be saved: ") + t.getMessage());
+                }
+                accountBarShown = shown;
+                Chrome.setAccountBarVisible(shown);
+            });
+            javax.swing.JPanel barCell = new javax.swing.JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 0, 0));
+            barCell.setOpaque(false);
+            barCell.add(bar);
+            panel.add(rowLabel(de ? "Kontoleiste" : "Account bar"), labelCc, at++);
+            panel.add(barCell, fieldCc, at++);
         }
         panel.add(rowLabel(de ? "Erscheinungsbild" : "Appearance"), labelCc, at++);
         panel.add(theme, fieldCc, at);
@@ -262,6 +282,39 @@ final class Appearance {
             g.fillRoundRect(x, y, 16, 16, 6, 6);
             g.setColor(PAL_DIVIDER);
             g.drawRoundRect(x, y, 15, 15, 6, 6);
+            g.dispose();
+        }
+    }
+
+    /** An on/off switch in the accent colour. */
+    private static final class Switch extends javax.swing.JToggleButton {
+        private static final int W = 36, H = 20, PAD = 3;
+
+        Switch(boolean on) {
+            super((String) null, on);
+            setContentAreaFilled(false);
+            setBorderPainted(false);
+            setFocusPainted(false);
+            setOpaque(false);
+            setPreferredSize(new java.awt.Dimension(W, H));
+        }
+
+        @Override protected void paintComponent(Graphics g0) {
+            Graphics2D g = (Graphics2D) g0.create();
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            int y = (getHeight() - H) / 2, knob = H - 2 * PAD;
+            if (isSelected()) {
+                g.setColor(accentColor());
+                g.fillRoundRect(0, y, W, H, H, H);
+                g.setColor(accentFg());
+                g.fillOval(W - PAD - knob, y + PAD, knob, knob);
+            } else {
+                g.setColor(PAL_TRACK);
+                g.fillRoundRect(0, y, W, H, H, H);
+                g.setColor(PAL_DIVIDER);
+                g.drawRoundRect(0, y, W - 1, H - 1, H, H);
+                g.fillOval(PAD, y + PAD, knob, knob);
+            }
             g.dispose();
         }
     }

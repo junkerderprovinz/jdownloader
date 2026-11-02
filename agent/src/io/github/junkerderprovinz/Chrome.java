@@ -26,18 +26,22 @@ final class Chrome {
     private static final Color TILE_GREY = PAL_TRACK;   // unselected main tab
 
     // The status bar lists every account as a small favicon, which repeats the account manager and
-    // breaks the clean bottom edge. JD shows the panel again when an account changes, and that change
-    // starts another pass.
+    // breaks the clean bottom edge, so it stays hidden unless the switch under User Interface shows it.
+    // JD shows the panel again when an account changes, and that change starts another pass.
     static void hideAccountBar() {
-        for (Window w : Window.getWindows()) if (w.isShowing()) hideAccountBarIn(w);
+        if (!Appearance.accountBarShown) setAccountBarVisible(false);
     }
 
-    private static void hideAccountBarIn(Container c) {
+    static void setAccountBarVisible(boolean visible) {
+        for (Window w : Window.getWindows()) if (w.isShowing()) setAccountBarVisibleIn(w, visible);
+    }
+
+    private static void setAccountBarVisibleIn(Container c, boolean visible) {
         for (Component child : c.getComponents()) {
             if (child.getClass().getName().endsWith(".premiumbar.ServicePanel")) {
-                if (child.isVisible()) child.setVisible(false);
+                if (child.isVisible() != visible) child.setVisible(visible);
             } else if (child instanceof Container) {
-                hideAccountBarIn((Container) child);
+                setAccountBarVisibleIn((Container) child, visible);
             }
         }
     }

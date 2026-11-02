@@ -559,3 +559,9 @@ def test_mono_recolour_leaves_the_icons_the_agent_restores_alone(tmp_path):
     for name in names:
         assert (tmp_path / "flat" / images / name).read_bytes() == (src / images / name).read_bytes()
     assert "<!--hlmono-->" in (tmp_path / "flat" / images / "add.svg").read_text(encoding="utf-8")
+
+
+def test_account_bar_stays_hidden_unless_the_switch_shows_it():
+    src = agent_source()
+    assert "Appearance.accountBarShown" in method_text(src, "static void hideAccountBar()")
+    assert '"accountbar"' in method_text(src, "private static void addRowsTo(")
