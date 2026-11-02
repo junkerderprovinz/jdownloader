@@ -308,7 +308,7 @@ final class Cards {
                     changed = true;
                 }
                 Object lm = tb.getLayout();
-                if (lm != null && lm.getClass().getName().contains("MigLayout") && first.getX() > CARD_GAP + 1) {
+                if (lm != null && lm.getClass().getName().contains("MigLayout") && first.getX() > TB_LEFT + 1) {
                     try {
                         lm.getClass().getMethod("setLayoutConstraints", Object.class).invoke(lm, "ins 0 0 0 0");
                         try { lm.getClass().getMethod("invalidateLayout", Container.class).invoke(lm, tb); } catch (Throwable ig) { }
