@@ -29,20 +29,42 @@ final class Chrome {
     // breaks the clean bottom edge, so it stays hidden unless the switch under User Interface shows it.
     // JD shows the panel again when an account changes, and that change starts another pass.
     static void hideAccountBar() {
-        if (!Appearance.accountBarShown) setAccountBarVisible(false);
+        accountBar(Appearance.accountBarShown ? null : Boolean.FALSE);
     }
 
     static void setAccountBarVisible(boolean visible) {
-        for (Window w : Window.getWindows()) if (w.isShowing()) setAccountBarVisibleIn(w, visible);
+        accountBar(visible);
     }
 
-    private static void setAccountBarVisibleIn(Container c, boolean visible) {
+    // A null visibility leaves JD's own choice alone.
+    private static void accountBar(Boolean visible) {
+        for (Window w : Window.getWindows()) if (w.isShowing()) accountBarIn(w, visible);
+    }
+
+    private static void accountBarIn(Container c, Boolean visible) {
         for (Component child : c.getComponents()) {
             if (child.getClass().getName().endsWith(".premiumbar.ServicePanel")) {
-                if (child.isVisible() != visible) child.setVisible(visible);
+                if (visible != null && child.isVisible() != visible) child.setVisible(visible);
+                insetStatusBar(child);
             } else if (child instanceof Container) {
-                setAccountBarVisibleIn((Container) child, visible);
+                accountBarIn((Container) child, visible);
             }
+        }
+    }
+
+    // The status bar starts on the window edge; the inset puts the account icons on EDGE with the cards
+    // above. The check on the border keeps it to a single revalidate, which matters because each one
+    // starts another pass.
+    private static final javax.swing.border.Border STATUS_INSET = javax.swing.BorderFactory.createEmptyBorder(0, EDGE, 0, EDGE);
+    private static void insetStatusBar(Component servicePanel) {
+        for (Container p = servicePanel.getParent(); p != null; p = p.getParent()) {
+            if (!(p instanceof JComponent) || !p.getClass().getName().endsWith(".StatusBarImpl")) continue;
+            JComponent bar = (JComponent) p;
+            javax.swing.border.Border b = bar.getBorder();
+            if (b instanceof javax.swing.border.CompoundBorder && ((javax.swing.border.CompoundBorder) b).getInsideBorder() == STATUS_INSET) return;
+            bar.setBorder(javax.swing.BorderFactory.createCompoundBorder(b, STATUS_INSET));
+            bar.revalidate();
+            return;
         }
     }
 
