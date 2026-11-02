@@ -9,6 +9,10 @@ import os, re, sys
 root = sys.argv[1]
 mono = sys.argv[2]
 MARK = "<!--hlmono-->"
+# The dialog agent puts its own copies of these back whenever their size differs, so a
+# recolour here would make the two overwrite each other every few seconds.
+AGENT_OWNED = ("/images/tree_plus.svg", "/images/tree_minus.svg",
+               "/images/exttable/lockColumn.svg", "/images/exttable/widthLocked.svg")
 
 def lum(h):
     h = h.lstrip('#')
@@ -38,6 +42,8 @@ for dirpath, _, files in os.walk(root):
         if not fn.lower().endswith('.svg'):
             continue
         p = os.path.join(dirpath, fn)
+        if p.replace(os.sep, '/').endswith(AGENT_OWNED):
+            continue
         try:
             with open(p, 'r', encoding='utf-8', errors='ignore') as fh:
                 svg = fh.read()

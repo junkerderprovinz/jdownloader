@@ -540,3 +540,22 @@ def test_laf_watcher_follows_the_theme_of_the_current_launch():
     assert "/tmp/.jd-expect-laf" in watcher
     loop = auto[auto.index("fast_exits=0\nwhile true; do"):]
     assert "> /tmp/.jd-expect-laf" in loop[:900]
+
+
+def test_mono_recolour_leaves_the_icons_the_agent_restores_alone(tmp_path):
+    import shutil
+    import subprocess
+    import sys
+
+    src = ROOT / "rootfs" / "opt" / "JDownloader" / "themes-default" / "flat"
+    shutil.copytree(src, tmp_path / "flat")
+    script = ROOT / "rootfs" / "usr" / "local" / "bin" / "jd-mono-icons.py"
+    subprocess.run([sys.executable, str(script), str(tmp_path / "flat"), "#161616"], check=True, capture_output=True)
+
+    restored = re.search(r"EXPANDER_ICONS = \{(.*?)\};", agent_source(), re.S).group(1)
+    names = re.findall(r'"([^"]+\.svg)"', restored)
+    assert len(names) == 4
+    images = Path("org") / "jdownloader" / "images"
+    for name in names:
+        assert (tmp_path / "flat" / images / name).read_bytes() == (src / images / name).read_bytes()
+    assert "<!--hlmono-->" in (tmp_path / "flat" / images / "add.svg").read_text(encoding="utf-8")
