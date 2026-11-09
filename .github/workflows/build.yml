@@ -133,8 +133,10 @@ jobs:
           # other own-image repos. Without this override the action derives it from
           # the first tag, which `type=semver,pattern={{version}}` strips of its `v`.
           # Outside tag builds and rebuilds the expression is empty and the action's
-          # value stands.
-          labels: ${{ (github.ref_type == 'tag' || needs.release.outputs.tag != '') && format('org.opencontainers.image.version={0}', needs.release.outputs.tag || github.ref_name) || '' }}
+          # value stands. A rebuild also carries the release's commit, not main's.
+          labels: |
+            ${{ (github.ref_type == 'tag' || needs.release.outputs.tag != '') && format('org.opencontainers.image.version={0}', needs.release.outputs.tag || github.ref_name) || '' }}
+            ${{ needs.release.outputs.tag != '' && format('org.opencontainers.image.revision={0}', needs.release.outputs.sha) || '' }}
 
       # Smoke-test gate: build the amd64 image, boot it and require the Selkies
       # WebUI to respond before anything is pushed, which catches an s6, Selkies
