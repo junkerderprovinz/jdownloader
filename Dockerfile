@@ -13,7 +13,7 @@ ARG BASE_TAG=ubunturesolute@sha256:b1bb00f7eb2f4df3ad87f621aa046379777cd5a5aa6c2
 # It also enforces the dark chrome and guards two AppWork/jsyntaxpane NPEs that fire
 # under FlatLaf and break the Event Scripter editor; those bytecode guards need ASM,
 # shaded into the agent jar.
-FROM eclipse-temurin:25.0.5_8-jdk@sha256:83f4a7fc27df94dcc7b8de04d14cbbba8da14406f921e966969c3b09000aa507 AS agent-builder
+FROM eclipse-temurin:25.0.5_8-jdk@sha256:b8705e936964c228dfce359e63dbf08f6c69cb380ed1d576b1f6b1064f15567d AS agent-builder
 WORKDIR /build
 # ASM (BSD-3-Clause) is pinned and checked against its SHA-256, so a swapped
 # artifact fails the build.
