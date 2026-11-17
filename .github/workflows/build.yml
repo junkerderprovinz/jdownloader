@@ -159,8 +159,9 @@ jobs:
           # agent-builder is the only stage that compiles our own source and takes
           # about 3 s, so it always runs fresh. From the cache, a tag-only push
           # could restore an older agent layer. Both builds do this so the smoke
-          # test and the pushed image compile the same agent.
-          no-cache-filters: agent-builder
+          # test and the pushed image compile the same agent. A rebuild without the
+          # cache compiles it anyway, and buildx refuses both flags together.
+          no-cache-filters: ${{ needs.release.outputs.tag == '' && 'agent-builder' || '' }}
           no-cache: ${{ needs.release.outputs.tag != '' }}
 
       - name: Smoke test (amd64 must boot and serve the WebUI)
@@ -275,7 +276,7 @@ jobs:
           cache-to: type=gha,mode=max
           # See the smoke build above: force a fresh agent-builder compile so the shipped
           # agent never depends on a cached layer from another build.
-          no-cache-filters: agent-builder
+          no-cache-filters: ${{ needs.release.outputs.tag == '' && 'agent-builder' || '' }}
           no-cache: ${{ needs.release.outputs.tag != '' }}
 
       # Mirrors the GitHub README to the Docker Hub Overview with DOCKERHUB_TOKEN,
