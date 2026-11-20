@@ -6,6 +6,7 @@
 
 # The Selkies base breaks compatibility between flavors, so the flavor is pinned.
 # ubunturesolute is Ubuntu 26.04 with Selkies 2.0.
+# renovate: datasource=docker depName=ghcr.io/linuxserver/baseimage-selkies
 ARG BASE_TAG=ubunturesolute@sha256:6c5843fa3df0c9463d0c0d97f17f9d974704a63e43fc146526f5c67e29c5f2ba
 
 # The agent clicks through the first-run and update installer dialogs, which JD
