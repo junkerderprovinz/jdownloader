@@ -70,6 +70,8 @@ ENV SELKIES_USE_CSS_SCALING="true" \
 
 RUN set -eux; \
     apt-get update; \
+    # The upgrade takes the security fixes published since the base image was built.
+    DEBIAN_FRONTEND=noninteractive apt-get upgrade -y; \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         # A full JRE, since the JD GUI needs AWT and Swing
         openjdk-21-jre \
