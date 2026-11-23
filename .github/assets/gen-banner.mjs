@@ -16,12 +16,13 @@
  *
  * The Myriad Pro OTFs live in .github/assets/_fonts/, which is gitignored, so only the outlines
  * land in the SVG. Nominative use of the product's own mark. The letters are flat: #161616 on
- * the light card, light on dark. The claim uses Lato (OFL). The globe (icon.svg: green earth
- * and gold arrow) is embedded verbatim in both themes.
+ * the light card, light on dark. The claim uses Bree Light, read as TTF from HOUSE_FONTS
+ * (default %LOCALAPPDATA%\halleluja-fonts) and never committed. The globe (icon.svg: green
+ * earth and gold arrow) is embedded verbatim in both themes.
  *
  * Deps: `npm i -g @resvg/resvg-js opentype.js`. Run: node .github/assets/gen-banner.mjs
  */
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -57,13 +58,9 @@ const J_RUN = { text: "J", x: 0, y: 251.1, size: 300 }; // "J" in Semibold
 
 const black = opentype.parse(readFileSync(join(__dir, "_fonts", "MyriadPro-Black.otf")).buffer);
 const semi = opentype.parse(readFileSync(join(__dir, "_fonts", "MyriadPro-Semibold.otf")).buffer);
-const latoFile = join(tmpdir(), "JD-Lato-Regular.ttf");
-if (!existsSync(latoFile)) {
-  const r = await fetch("https://github.com/google/fonts/raw/main/ofl/lato/Lato-Regular.ttf");
-  if (!r.ok) throw new Error(`Lato fetch ${r.status}`);
-  writeFileSync(latoFile, Buffer.from(await r.arrayBuffer()));
-}
-const lato = opentype.parse(readFileSync(latoFile).buffer);
+// The house typeface is licensed, so it is read from a local folder and never committed.
+const fonts = process.env.HOUSE_FONTS ?? join(process.env.LOCALAPPDATA ?? tmpdir(), "halleluja-fonts");
+const claimFont = opentype.parse(readFileSync(join(fonts, "bree-light.ttf")).buffer);
 
 // Render a text run to a path at (x, baseline) with optional letter-spacing (em). y-down coords.
 function runPath(font, text, x, baseline, size, lsEm = 0) {
@@ -112,16 +109,16 @@ const bb = new Resvg(
 const s2 = Math.min(WM_TARGET / bb.height, (W - textX - 80) / bb.width);   // height target, width-capped so the wordmark cannot overflow
 const wmH = bb.height * s2;
 const wmWFit = bb.width * s2;
-const claimAsc = lato.ascender * claimSize / lato.unitsPerEm;
-const claimDesc = -lato.descender * claimSize / lato.unitsPerEm;
+const claimAsc = claimFont.ascender * claimSize / claimFont.unitsPerEm;
+const claimDesc = -claimFont.descender * claimSize / claimFont.unitsPerEm;
 const NAME_CLAIM_GAP = 8;
 const blockH = wmH + NAME_CLAIM_GAP + claimAsc + claimDesc;
 const top = H / 2 - blockH / 2;
 const wmX = textX - bb.x * s2;                             // left-anchor the wordmark's ink at textX
 const wmTop = top - bb.y * s2;                             // wordmark visible top -> `top`
 const claimBaseline = top + wmH + NAME_CLAIM_GAP + claimAsc;
-const claimStartX = textX + (wmWFit - runWidth(lato, CLAIM, claimSize)) / 2; // claim centred on the wordmark
-const claimPath = runPath(lato, CLAIM, claimStartX, claimBaseline, claimSize);
+const claimStartX = textX + (wmWFit - runWidth(claimFont, CLAIM, claimSize)) / 2; // claim centred on the wordmark
+const claimPath = runPath(claimFont, CLAIM, claimStartX, claimBaseline, claimSize);
 
 // Globe: light card keeps the Carbon-dark body; dark card lightens it so it reads on #0d1117.
 const iconRaw = readFileSync(join(__dir, "icon.svg"), "utf8").replace(/<\?xml[^>]*\?>\s*/, "");
