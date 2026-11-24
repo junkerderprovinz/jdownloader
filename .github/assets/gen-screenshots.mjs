@@ -4,7 +4,7 @@
  * The raw captures are 1904x952 grabs of the X display (screenshots/raw), taken with the same
  * packages every time: Big Buck Bunny, Sintel and Linux ISOs.
  *
- * Captions are set in Bree Serif Light with the line below in Bree Light, read as TTF from
+ * Captions are set in Bree Serif Regular with the line below in Bree Light, read as TTF from
  * HOUSE_FONTS (default %LOCALAPPDATA%\halleluja-fonts). The browser bar keeps Lato.
  *
  * Needs playwright-core installed globally with its Chromium.
@@ -37,7 +37,7 @@ const dataUrl = (buf, type) => `data:${type};base64,${buf.toString("base64")}`;
 // The house typeface is licensed, so it is read from a local folder and never committed.
 const fonts = process.env.HOUSE_FONTS ?? join(process.env.LOCALAPPDATA ?? tmpdir(), "halleluja-fonts");
 const houseFont = (file) => dataUrl(readFileSync(join(fonts, file)), "font/ttf");
-const breeSerif = houseFont("bree-serif-light.ttf");
+const breeSerif = houseFont("bree-serif-regular.ttf");
 const bree = houseFont("bree-light.ttf");
 const lato = dataUrl(await cached("Lato-Regular.ttf", "https://github.com/google/fonts/raw/main/ofl/lato/Lato-Regular.ttf"), "font/ttf");
 const logo = dataUrl(readFileSync(join(here, "icon.svg")), "image/svg+xml");
@@ -74,7 +74,7 @@ const BAR_H = 42;
 
 function frame(shot, png) {
   return `<!doctype html><html><head><meta charset="utf-8"><style>
-@font-face { font-family: "Bree Serif"; src: url(${breeSerif}); font-weight: 300; }
+@font-face { font-family: "Bree Serif"; src: url(${breeSerif}); font-weight: 400; }
 @font-face { font-family: Bree; src: url(${bree}); font-weight: 300; }
 @font-face { font-family: Lato; src: url(${lato}); }
 * { box-sizing: border-box; margin: 0; }
@@ -87,7 +87,7 @@ body { width: ${W}px; height: ${H}px; overflow: hidden; position: relative; font
 .vignette { inset: 0; box-shadow: inset 0 0 200px rgba(0,0,0,.6); }
 .copy { position: absolute; left: 84px; top: 0; bottom: 0; width: 470px; display: flex; flex-direction: column; justify-content: center; gap: 28px; }
 .copy img { width: 96px; }
-h1 { font: 300 60px/1.12 "Bree Serif", serif; color: #f4f4f4; text-wrap: balance; }
+h1 { font: 400 60px/1.12 "Bree Serif", serif; color: #f4f4f4; text-wrap: balance; }
 h1 em { font-style: normal; color: #FCC419; }
 .copy p { font: 300 26px/1.45 Bree, sans-serif; color: #9d9481; text-wrap: pretty; }
 .stage { position: absolute; left: 630px; top: ${(H - VIEW_H - TABS_H - BAR_H) / 2}px; width: ${VIEW_W}px; height: ${VIEW_H + TABS_H + BAR_H}px; perspective: 2400px; }
@@ -128,7 +128,7 @@ try {
     // Rendered at twice the size and drawn at half, or the tilt softens the small text.
     const big = await browser.newPage({ viewport: { width: W, height: H }, deviceScaleFactor: 2 });
     await big.setContent(frame(shot, raw));
-    await big.evaluate(() => Promise.all(['300 1em "Bree Serif"', "300 1em Bree", "1em Lato"].map((f) => document.fonts.load(f))));
+    await big.evaluate(() => Promise.all(['400 1em "Bree Serif"', "300 1em Bree", "1em Lato"].map((f) => document.fonts.load(f))));
     await big.evaluate(() => Promise.all([...document.images].map((img) => img.decode())));
     const png = await big.screenshot();
     await big.close();
