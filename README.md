@@ -188,7 +188,7 @@ You do not have to take my word for it. The code is open and every release note 
 
 <br>
 
-Questions? Check the [support thread](https://forums.unraid.net/topic/199305-support-junkerderprovinz-jdownloader-2/). Bugs, ideas or feature requests? Please [open a GitHub issue](https://github.com/junkerderprovinz/jdownloader/issues).
+Questions, bugs, ideas or feature requests? Please [open a GitHub issue](https://github.com/junkerderprovinz/jdownloader/issues).
 
 <br>
 
